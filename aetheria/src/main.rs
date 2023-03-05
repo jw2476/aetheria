@@ -14,15 +14,15 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     let (event_loop, window) = create_window();
 
     let entry = Entry::linked();
     let instance = vulkan::Instance::new(&entry).expect("Vulkan instance creation failed");
-    let physicals = instance
-        .get_physical_devices()
-        .expect("Fetching physical devices failed");
-    let physical = physicals.first().expect("No vulkan compatible devices");
-    println!("{}", physical.properties.device_name);
+    let surface = vulkan::Surface::new(&instance, &window).expect("Vulkan surface creation failed");
+    let device =
+        unsafe { vulkan::Device::new(&instance, &surface).expect("Vulkan device creation failed") };
 
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();

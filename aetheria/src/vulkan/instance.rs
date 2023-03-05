@@ -2,6 +2,7 @@ use ash::{extensions::khr, prelude::*, vk};
 use bytemuck::cast_slice;
 use cstr::cstr;
 use std::{clone::Clone, collections::HashSet, ffi::CStr, hash::Hash, ops::Deref, result::Result};
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct PhysicalDeviceProperties {
@@ -31,7 +32,7 @@ impl Deref for PhysicalDeviceProperties {
 
 #[derive(Debug, Clone)]
 pub struct PhysicalDevice {
-    physical: vk::PhysicalDevice,
+    pub(crate) physical: vk::PhysicalDevice,
     pub properties: PhysicalDeviceProperties,
     pub queue_families: Vec<vk::QueueFamilyProperties>,
     pub features: vk::PhysicalDeviceFeatures,
@@ -54,8 +55,30 @@ impl PhysicalDevice {
 }
 
 #[derive(Clone)]
+pub struct InstanceExtensions {
+    pub surface: Option<khr::Surface>,
+    pub xlib_surface: Option<khr::XlibSurface>,
+}
+
+impl InstanceExtensions {
+    pub fn load(entry: &ash::Entry, instance: &ash::Instance, available: &[&CStr]) -> Self {
+        Self {
+            surface: available
+                .iter()
+                .find(|ext| **ext == khr::Surface::name())
+                .map(|_| khr::Surface::new(entry, instance)),
+            xlib_surface: available
+                .iter()
+                .find(|ext| **ext == khr::XlibSurface::name())
+                .map(|_| khr::XlibSurface::new(entry, instance)),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Instance {
     instance: ash::Instance,
+    pub extensions: InstanceExtensions,
 }
 
 impl Instance {
@@ -82,11 +105,14 @@ impl Instance {
             })
             .collect();
 
-        let wanted_layers = get_wanted_layers();
+        let wanted_layers = super::get_wanted_layers();
         let wanted_extensions = get_wanted_extensions();
 
-        let wanted_layers = intersection(&wanted_layers, &available_layer_names);
-        let wanted_extensions = intersection(&wanted_extensions, &available_extension_names);
+        let wanted_layers = super::intersection(&wanted_layers, &available_layer_names);
+        let wanted_extensions = super::intersection(&wanted_extensions, &available_extension_names);
+
+        info!("Using instance layers: {:?}", wanted_layers);
+        info!("Using instance extensions: {:?}", wanted_extensions);
 
         let wanted_layers_raw: Vec<*const i8> =
             wanted_layers.iter().map(|name| name.as_ptr()).collect();
@@ -100,7 +126,10 @@ impl Instance {
 
         let instance = unsafe { entry.create_instance(&instance_info, None)? };
 
-        Ok(Self { instance })
+        Ok(Self {
+            extensions: InstanceExtensions::load(entry, &instance, &available_extension_names),
+            instance,
+        })
     }
 
     pub fn get_physical_devices(&self) -> Result<Vec<PhysicalDevice>, vk::Result> {
@@ -122,27 +151,7 @@ impl Deref for Instance {
     }
 }
 
-#[cfg(debug_assertions)]
-fn get_wanted_layers() -> Vec<&'static CStr> {
-    vec![cstr!("VK_LAYER_KHRONOS_validation")]
-}
-
-#[cfg(not(debug_assertions))]
-fn get_wanted_layers() -> Vec<&'static CStr> {
-    vec![]
-}
-
 #[cfg(target_os = "linux")]
 fn get_wanted_extensions() -> Vec<&'static CStr> {
-    vec![khr::Surface::name(), khr::XcbSurface::name()]
-}
-
-fn intersection<T: Hash + Clone + Eq>(a: &Vec<T>, b: &Vec<T>) -> Vec<T> {
-    let a_unique: HashSet<T> = HashSet::from_iter(a.iter().cloned());
-    let b_unique: HashSet<T> = HashSet::from_iter(b.iter().cloned());
-    a_unique
-        .intersection(&b_unique)
-        .cloned()
-        .into_iter()
-        .collect()
+    vec![khr::Surface::name(), khr::XlibSurface::name()]
 }

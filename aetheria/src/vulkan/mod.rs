@@ -3,3 +3,29 @@ pub use instance::Instance;
 
 pub mod device;
 pub use device::Device;
+
+pub mod surface;
+pub use surface::Surface;
+
+use cstr::cstr;
+use std::{clone::Clone, cmp::Eq, collections::HashSet, ffi::CStr, hash::Hash};
+
+#[cfg(debug_assertions)]
+fn get_wanted_layers() -> Vec<&'static CStr> {
+    vec![cstr!("VK_LAYER_KHRONOS_validation")]
+}
+
+#[cfg(not(debug_assertions))]
+fn get_wanted_layers() -> Vec<&'static CStr> {
+    vec![]
+}
+
+fn intersection<T: Hash + Clone + Eq>(a: &Vec<T>, b: &Vec<T>) -> Vec<T> {
+    let a_unique: HashSet<T> = HashSet::from_iter(a.iter().cloned());
+    let b_unique: HashSet<T> = HashSet::from_iter(b.iter().cloned());
+    a_unique
+        .intersection(&b_unique)
+        .cloned()
+        .into_iter()
+        .collect()
+}
