@@ -23,6 +23,8 @@ fn main() {
     let surface = vulkan::Surface::new(&instance, &window).expect("Vulkan surface creation failed");
     let device =
         unsafe { vulkan::Device::new(&instance, &surface).expect("Vulkan device creation failed") };
+    let swapchain = vulkan::Swapchain::new(&instance, &surface, &device, &window)
+        .expect("Vulkan swapchain creation failed");
 
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();

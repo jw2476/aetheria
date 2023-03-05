@@ -1,12 +1,12 @@
 use super::{Instance, Surface};
-use ash::{prelude::*, vk};
+use ash::{extensions::khr, prelude::*, vk};
 use bytemuck::cast_slice;
 use std::{collections::HashSet, ffi::CStr, ops::Deref, result::Result};
 use tracing::info;
 
 pub struct Queue {
-    queue: vk::Queue,
-    index: u32,
+    pub(crate) queue: vk::Queue,
+    pub index: u32,
 }
 
 impl Queue {
@@ -28,10 +28,26 @@ pub struct Queues {
     pub present: Queue,
 }
 
+pub struct DeviceExtensions {
+    pub swapchain: Option<khr::Swapchain>,
+}
+
+impl DeviceExtensions {
+    fn load(instance: &ash::Instance, device: &ash::Device, available: &[&CStr]) -> Self {
+        Self {
+            swapchain: available
+                .iter()
+                .find(|ext| **ext == khr::Swapchain::name())
+                .map(|_| khr::Swapchain::new(instance, device)),
+        }
+    }
+}
+
 pub struct Device {
-    device: ash::Device,
-    physical: super::instance::PhysicalDevice,
-    queues: Queues,
+    pub(crate) device: ash::Device,
+    pub physical: super::instance::PhysicalDevice,
+    pub queues: Queues,
+    pub extensions: DeviceExtensions,
 }
 
 impl Device {
@@ -134,6 +150,7 @@ impl Device {
         let present = Queue::new(present, present_family_index.try_into().unwrap());
 
         Ok(Self {
+            extensions: DeviceExtensions::load(instance, &device, &available_extension_names),
             device,
             physical,
             queues: Queues { graphics, present },

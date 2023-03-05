@@ -7,6 +7,9 @@ pub use device::Device;
 pub mod surface;
 pub use surface::Surface;
 
+pub mod swapchain;
+pub use swapchain::Swapchain;
+
 use cstr::cstr;
 use std::{clone::Clone, cmp::Eq, collections::HashSet, ffi::CStr, hash::Hash};
 
