@@ -1,6 +1,9 @@
 pub mod instance;
 pub use instance::Instance;
 
+pub mod command;
+pub use command::{CommandBuffer, CommandPool};
+
 pub mod device;
 pub use device::Device;
 
