@@ -1,7 +1,7 @@
 #![feature(cstr_from_bytes_until_nul)]
 #![feature(let_chains)]
 
-use ash::Entry;
+use ash::{vk::ShaderStageFlags, Entry};
 
 pub mod vulkan;
 
@@ -25,6 +25,27 @@ fn main() {
         unsafe { vulkan::Device::new(&instance, &surface).expect("Vulkan device creation failed") };
     let swapchain = vulkan::Swapchain::new(&instance, &surface, &device, &window)
         .expect("Vulkan swapchain creation failed");
+
+    let vertex_shader = vulkan::graphics::Shader::new(
+        &device,
+        include_bytes!("../../assets/shaders/compiled/vertex.spv").to_vec(),
+        ShaderStageFlags::VERTEX,
+    )
+    .unwrap();
+    let fragment_shader = vulkan::graphics::Shader::new(
+        &device,
+        include_bytes!("../../assets/shaders/compiled/fragment.spv").to_vec(),
+        ShaderStageFlags::FRAGMENT,
+    )
+    .unwrap();
+    let renderpass = vulkan::Renderpass::new(&device, swapchain.format)
+        .expect("Vulkan renderpass creation failed");
+    let shaders = vulkan::graphics::Shaders {
+        vertex: Some(vertex_shader),
+        fragment: Some(fragment_shader),
+    };
+    let pipeline = vulkan::GraphicsPipeline::new(&device, &renderpass, shaders, swapchain.extent)
+        .expect("Vulkan pipleine creation failed");
 
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();

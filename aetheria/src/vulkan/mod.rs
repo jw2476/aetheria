@@ -4,6 +4,12 @@ pub use instance::Instance;
 pub mod device;
 pub use device::Device;
 
+pub mod graphics;
+pub use graphics::GraphicsPipeline;
+
+pub mod renderpass;
+pub use renderpass::Renderpass;
+
 pub mod surface;
 pub use surface::Surface;
 

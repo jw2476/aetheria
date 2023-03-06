@@ -7,6 +7,8 @@ pub struct Swapchain {
     pub(crate) swapchain: vk::SwapchainKHR,
     pub format: vk::Format,
     pub extent: vk::Extent2D,
+    pub images: Vec<vk::Image>,
+    pub image_views: Vec<vk::ImageView>,
 }
 
 impl Swapchain {
@@ -17,6 +19,7 @@ impl Swapchain {
         window: &Window,
     ) -> Result<Self, vk::Result> {
         let surface_khr = instance.extensions.surface.as_ref().unwrap();
+        let swapchain_khr = device.extensions.swapchain.as_ref().unwrap();
 
         let capabilities = unsafe {
             surface_khr
@@ -95,20 +98,37 @@ impl Swapchain {
             .present_mode(present_mode)
             .clipped(true);
 
-        let swapchain = unsafe {
-            device
-                .extensions
-                .swapchain
-                .as_ref()
-                .unwrap()
-                .create_swapchain(&create_info, None)
-                .unwrap()
-        };
+        let swapchain = unsafe { swapchain_khr.create_swapchain(&create_info, None).unwrap() };
+
+        let images = unsafe { swapchain_khr.get_swapchain_images(swapchain).unwrap() };
+
+        let image_views = images
+            .iter()
+            .copied()
+            .map(|image| {
+                let create_info = vk::ImageViewCreateInfo::builder()
+                    .image(image)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(format.format)
+                    .components(vk::ComponentMapping::default())
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    });
+
+                unsafe { device.create_image_view(&create_info, None).unwrap() }
+            })
+            .collect();
 
         Ok(Self {
             swapchain,
             format: format.format,
             extent,
+            images,
+            image_views,
         })
     }
 }
