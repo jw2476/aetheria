@@ -1,9 +1,86 @@
-use super::Device;
+use super::{Device, GraphicsPipeline, Renderpass};
 use ash::{prelude::*, vk};
 use std::{ops::Deref, result::Result};
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DrawOptions {
+    pub vertex_count: u32,
+    pub instance_count: u32,
+    pub first_vertex: u32,
+    pub first_instance: u32,
+}
+
 pub struct CommandBuffer {
     pub(crate) buffer: vk::CommandBuffer,
+}
+
+impl CommandBuffer {
+    pub fn begin(self, device: &Device) -> Result<Self, vk::Result> {
+        let begin_info = vk::CommandBufferBeginInfo::builder();
+        unsafe { device.begin_command_buffer(*self, &begin_info)? };
+        Ok(self)
+    }
+
+    pub fn begin_renderpass(
+        self,
+        device: &Device,
+        renderpass: &Renderpass,
+        framebuffer: &vk::Framebuffer,
+        extent: vk::Extent2D,
+    ) -> Self {
+        let render_area = vk::Rect2D::builder()
+            .offset(vk::Offset2D::default())
+            .extent(extent);
+
+        let color_clear_value = vk::ClearValue {
+            color: vk::ClearColorValue {
+                float32: [0.0, 0.0, 0.0, 1.0],
+            },
+        };
+
+        let clear_values = &[color_clear_value];
+        let begin_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(**renderpass)
+            .framebuffer(*framebuffer)
+            .render_area(*render_area)
+            .clear_values(clear_values);
+
+        unsafe { device.cmd_begin_render_pass(*self, &begin_info, vk::SubpassContents::INLINE) };
+
+        self
+    }
+
+    pub fn bind_pipeline(self, device: &Device, pipeline: &GraphicsPipeline) -> Self {
+        unsafe { device.cmd_bind_pipeline(*self, vk::PipelineBindPoint::GRAPHICS, **pipeline) };
+
+        self
+    }
+
+    pub fn draw(self, device: &Device, options: DrawOptions) -> Self {
+        unsafe {
+            device.cmd_draw(
+                *self,
+                options.vertex_count,
+                options.instance_count,
+                options.first_vertex,
+                options.first_instance,
+            )
+        };
+
+        self
+    }
+
+    pub fn end_renderpass(self, device: &Device) -> Self {
+        unsafe { device.cmd_end_render_pass(*self) };
+
+        self
+    }
+
+    pub fn end(self, device: &Device) -> Result<Self, vk::Result> {
+        unsafe { device.end_command_buffer(*self)? };
+
+        Ok(self)
+    }
 }
 
 impl Deref for CommandBuffer {

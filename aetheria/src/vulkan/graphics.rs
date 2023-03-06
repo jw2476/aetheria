@@ -3,6 +3,7 @@ use ash::{prelude::*, vk};
 use cstr::cstr;
 use std::{ops::Deref, result::Result};
 
+#[derive(Clone)]
 pub struct Shader {
     code: Vec<u8>,
     module: vk::ShaderModule,
@@ -36,6 +37,7 @@ impl Shader {
     }
 }
 
+#[derive(Clone)]
 pub struct Shaders {
     pub vertex: Option<Shader>,
     pub fragment: Option<Shader>,

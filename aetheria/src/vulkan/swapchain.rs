@@ -3,6 +3,7 @@ use ash::{prelude::*, vk};
 use std::ops::Deref;
 use winit::window::Window;
 
+#[derive(Clone, Debug)]
 pub struct Swapchain {
     pub(crate) swapchain: vk::SwapchainKHR,
     pub format: vk::Format,

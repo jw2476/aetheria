@@ -2,7 +2,7 @@ use super::Device;
 use ash::{prelude::*, vk};
 use std::ops::Deref;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Image {
     pub(crate) image: vk::Image,
     pub width: u32,
