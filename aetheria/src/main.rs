@@ -47,6 +47,15 @@ fn main() {
     let pipeline = vulkan::GraphicsPipeline::new(&device, &renderpass, shaders, swapchain.extent)
         .expect("Vulkan pipleine creation failed");
 
+    let framebuffers: Vec<ash::vk::Framebuffer> =
+        std::iter::zip(swapchain.images, swapchain.image_views)
+            .map(|(image, view)| {
+                renderpass
+                    .create_framebuffer(&device, &image, &view)
+                    .unwrap()
+            })
+            .collect();
+
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();
 

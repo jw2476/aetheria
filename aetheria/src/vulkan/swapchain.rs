@@ -1,4 +1,4 @@
-use super::{Device, Instance, Surface};
+use super::{Device, Image, Instance, Surface};
 use ash::{prelude::*, vk};
 use std::ops::Deref;
 use winit::window::Window;
@@ -7,7 +7,7 @@ pub struct Swapchain {
     pub(crate) swapchain: vk::SwapchainKHR,
     pub format: vk::Format,
     pub extent: vk::Extent2D,
-    pub images: Vec<vk::Image>,
+    pub images: Vec<Image>,
     pub image_views: Vec<vk::ImageView>,
 }
 
@@ -101,13 +101,18 @@ impl Swapchain {
         let swapchain = unsafe { swapchain_khr.create_swapchain(&create_info, None).unwrap() };
 
         let images = unsafe { swapchain_khr.get_swapchain_images(swapchain).unwrap() };
+        let images: Vec<Image> = images
+            .iter()
+            .copied()
+            .map(|image| Image::from_image(image, extent.width, extent.height))
+            .collect();
 
         let image_views = images
             .iter()
             .copied()
             .map(|image| {
                 let create_info = vk::ImageViewCreateInfo::builder()
-                    .image(image)
+                    .image(*image)
                     .view_type(vk::ImageViewType::TYPE_2D)
                     .format(format.format)
                     .components(vk::ComponentMapping::default())

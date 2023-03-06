@@ -1,4 +1,4 @@
-use super::Device;
+use super::{Device, Image};
 use ash::{prelude::*, vk};
 use std::ops::Deref;
 
@@ -36,6 +36,23 @@ impl Renderpass {
         let renderpass = unsafe { device.create_render_pass(&create_info, None)? };
 
         Ok(Self { renderpass })
+    }
+
+    pub fn create_framebuffer(
+        &self,
+        device: &Device,
+        image: &Image,
+        view: &vk::ImageView,
+    ) -> Result<vk::Framebuffer, vk::Result> {
+        let attachments = &[*view];
+        let create_info = vk::FramebufferCreateInfo::builder()
+            .render_pass(**self)
+            .attachments(attachments)
+            .width(image.width)
+            .height(image.height)
+            .layers(1);
+
+        unsafe { device.create_framebuffer(&create_info, None) }
     }
 }
 

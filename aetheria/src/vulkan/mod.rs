@@ -4,6 +4,9 @@ pub use instance::Instance;
 pub mod device;
 pub use device::Device;
 
+pub mod image;
+pub use image::Image;
+
 pub mod graphics;
 pub use graphics::GraphicsPipeline;
 
