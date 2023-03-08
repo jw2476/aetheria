@@ -4,6 +4,9 @@ pub use instance::Instance;
 pub mod command;
 pub use command::{CommandBuffer, CommandPool};
 
+pub mod context;
+pub use context::VulkanContext;
+
 pub mod device;
 pub use device::Device;
 
@@ -11,7 +14,7 @@ pub mod image;
 pub use image::Image;
 
 pub mod graphics;
-pub use graphics::GraphicsPipeline;
+pub use graphics::{GraphicsPipeline, Shader};
 
 pub mod renderpass;
 pub use renderpass::Renderpass;
