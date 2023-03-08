@@ -1,10 +1,6 @@
-#![feature(cstr_from_bytes_until_nul)]
 #![feature(let_chains)]
-
-use ash::{
-    vk::{self, ShaderStageFlags},
-    Entry,
-};
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
 
 pub mod vulkan;
 use vulkan::VulkanContext;
