@@ -1,4 +1,4 @@
-use super::{Device, GraphicsPipeline, Renderpass};
+use super::{Buffer, Device, GraphicsPipeline, Renderpass};
 use ash::{prelude::*, vk};
 use std::{ops::Deref, result::Result};
 
@@ -52,6 +52,12 @@ impl CommandBuffer {
 
     pub fn bind_pipeline(self, device: &Device, pipeline: &GraphicsPipeline) -> Self {
         unsafe { device.cmd_bind_pipeline(*self, vk::PipelineBindPoint::GRAPHICS, **pipeline) };
+
+        self
+    }
+
+    pub fn bind_vertex_buffer(self, device: &Device, vertex_buffer: &Buffer) -> Self {
+        unsafe { device.cmd_bind_vertex_buffers(self.buffer, 0, &[**vertex_buffer], &[0]) };
 
         self
     }

@@ -1,10 +1,15 @@
 use super::{
-    command::DrawOptions, graphics::Shaders, CommandPool, Device, GraphicsPipeline, Instance,
-    Renderpass, Shader, Surface, Swapchain,
+    command::DrawOptions, graphics::Shaders, Buffer, CommandPool, Device, GraphicsPipeline,
+    Instance, Renderpass, Shader, Surface, Swapchain,
 };
 use ash::{prelude::*, vk, Entry};
+use bytemuck::cast_slice;
 use gpu_allocator::vulkan::*;
-use std::ops::Deref;
+use nalgebra::{Vector2, Vector3};
+use std::{
+    collections::HashMap,
+    ops::{Deref, Drop},
+};
 
 pub struct VulkanContext {
     pub(crate) instance: Instance,
@@ -17,6 +22,7 @@ pub struct VulkanContext {
     shaders: Shaders,
     framebuffers: Vec<vk::Framebuffer>,
     command_pool: CommandPool,
+    buffers: HashMap<String, Buffer>,
 
     image_available: vk::Semaphore,
     render_finished: vk::Semaphore,
@@ -35,7 +41,7 @@ impl VulkanContext {
             device: (*device).clone(),
             physical_device: *device.physical,
             debug_settings: Default::default(),
-            buffer_device_address: true,
+            buffer_device_address: false,
         })
         .expect("Vulkan allocator creation failed");
 
@@ -82,7 +88,7 @@ impl VulkanContext {
         let render_finished = unsafe { device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { device.create_fence(&fence_info, None).unwrap() };
 
-        Ok(Self {
+        let mut ctx = Self {
             instance,
             surface,
             device,
@@ -96,7 +102,38 @@ impl VulkanContext {
             image_available,
             render_finished,
             in_flight,
-        })
+            buffers: HashMap::new(),
+        };
+
+        let positions = [
+            Vector2::new(0.0, -0.5),
+            Vector2::new(0.5, 0.5),
+            Vector2::new(-0.5, 0.5),
+        ];
+        let colors = [
+            Vector3::new(1.0, 0.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+        ];
+
+        let vertices: Vec<u8> = std::iter::zip(positions, colors)
+            .map(|(position, color)| {
+                let mut vertex: Vec<u8> = cast_slice::<f32, u8>(position.as_ref()).to_vec();
+                vertex.extend_from_slice(cast_slice::<f32, u8>(color.as_ref()));
+                vertex
+            })
+            .flatten()
+            .collect();
+
+        let mut vertex_buffer = Buffer::new(
+            &mut ctx,
+            vertices.len(),
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+        )?;
+        vertex_buffer.upload(&vertices);
+        ctx.buffers.insert("vertex".to_owned(), vertex_buffer);
+
+        Ok(ctx)
     }
 
     unsafe fn destroy_swapchain(&mut self) {
@@ -188,6 +225,7 @@ impl VulkanContext {
                         self.swapchain.extent,
                     )
                     .bind_pipeline(&self.device, &self.pipeline)
+                    .bind_vertex_buffer(&self.device, &self.buffers.get("vertex").unwrap())
                     .draw(
                         &self.device,
                         DrawOptions {
@@ -238,5 +276,13 @@ impl VulkanContext {
                 frame_rendered = true;
             }
         }
+    }
+}
+
+impl Drop for VulkanContext {
+    fn drop(&mut self) {
+        self.buffers
+            .into_iter()
+            .for_each(|(_, buffer)| self.allocator.free(buffer.allocation).unwrap());
     }
 }

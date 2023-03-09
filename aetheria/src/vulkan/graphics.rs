@@ -67,7 +67,28 @@ impl GraphicsPipeline {
             .expect("All graphics pipleine need a fragment shader")
             .get_stage();
 
-        let vertex_input = vk::PipelineVertexInputStateCreateInfo::builder();
+        let bindings = [vk::VertexInputBindingDescription::builder()
+            .binding(0)
+            .stride(5 * 4)
+            .input_rate(vk::VertexInputRate::VERTEX)
+            .build()];
+        let attributes = [
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(0)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(0)
+                .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(1)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(2 * 4)
+                .build(),
+        ];
+        let vertex_input = vk::PipelineVertexInputStateCreateInfo::builder()
+            .vertex_binding_descriptions(&bindings)
+            .vertex_attribute_descriptions(&attributes);
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false);

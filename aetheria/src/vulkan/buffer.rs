@@ -45,6 +45,13 @@ impl Buffer {
             size,
         })
     }
+
+    pub fn upload(&mut self, data: &[u8]) {
+        self.allocation
+            .mapped_slice_mut()
+            .unwrap()
+            .copy_from_slice(data);
+    }
 }
 
 impl Deref for Buffer {
