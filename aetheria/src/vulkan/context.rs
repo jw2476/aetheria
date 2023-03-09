@@ -3,11 +3,14 @@ use super::{
     Renderpass, Shader, Surface, Swapchain,
 };
 use ash::{prelude::*, vk, Entry};
+use gpu_allocator::vulkan::*;
+use std::ops::Deref;
 
 pub struct VulkanContext {
-    instance: Instance,
+    pub(crate) instance: Instance,
     surface: Surface,
-    device: Device,
+    pub(crate) device: Device,
+    pub(crate) allocator: Allocator,
     swapchain: Swapchain,
     renderpass: Renderpass,
     pipeline: GraphicsPipeline,
@@ -27,7 +30,16 @@ impl VulkanContext {
         let surface = Surface::new(&instance, &window).expect("Vulkan surface creation failed");
         let device =
             unsafe { Device::new(&instance, &surface).expect("Vulkan device creation failed") };
-        let mut swapchain = Swapchain::new(&instance, &surface, &device, &window)
+        let allocator = Allocator::new(&AllocatorCreateDesc {
+            instance: (*instance).clone(),
+            device: (*device).clone(),
+            physical_device: *device.physical,
+            debug_settings: Default::default(),
+            buffer_device_address: true,
+        })
+        .expect("Vulkan allocator creation failed");
+
+        let swapchain = Swapchain::new(&instance, &surface, &device, &window)
             .expect("Vulkan swapchain creation failed");
 
         let vertex_shader = Shader::new(
@@ -42,17 +54,17 @@ impl VulkanContext {
             vk::ShaderStageFlags::FRAGMENT,
         )
         .unwrap();
-        let mut renderpass =
+        let renderpass =
             Renderpass::new(&device, swapchain.format).expect("Vulkan renderpass creation failed");
         let shaders = Shaders {
             vertex: Some(vertex_shader),
             fragment: Some(fragment_shader),
         };
-        let mut pipeline =
+        let pipeline =
             GraphicsPipeline::new(&device, &renderpass, shaders.clone(), swapchain.extent)
                 .expect("Vulkan pipleine creation failed");
 
-        let mut framebuffers: Vec<ash::vk::Framebuffer> =
+        let framebuffers: Vec<ash::vk::Framebuffer> =
             std::iter::zip(swapchain.images.clone(), swapchain.image_views.clone())
                 .map(|(image, view)| {
                     renderpass
@@ -74,6 +86,7 @@ impl VulkanContext {
             instance,
             surface,
             device,
+            allocator,
             swapchain,
             renderpass,
             shaders,
@@ -108,7 +121,7 @@ impl VulkanContext {
             .destroy_swapchain(*self.swapchain, None);
     }
 
-    fn recreate_swapchain(&mut self, window: &winit::window::Window) {
+    pub fn recreate_swapchain(&mut self, window: &winit::window::Window) {
         unsafe { self.destroy_swapchain() };
 
         self.swapchain = Swapchain::new(&self.instance, &self.surface, &self.device, window)
@@ -136,7 +149,7 @@ impl VulkanContext {
 
     pub fn render(&mut self, window: &winit::window::Window) {
         let mut frame_rendered = false;
-        while (!frame_rendered) {
+        while !frame_rendered {
             unsafe {
                 self.device
                     .wait_for_fences(&[self.in_flight], true, u64::MAX)

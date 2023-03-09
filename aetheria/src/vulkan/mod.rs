@@ -1,6 +1,9 @@
 pub mod instance;
 pub use instance::Instance;
 
+pub mod buffer;
+pub use buffer::Buffer;
+
 pub mod command;
 pub use command::{CommandBuffer, CommandPool};
 

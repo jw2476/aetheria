@@ -54,6 +54,14 @@ impl PhysicalDevice {
     }
 }
 
+impl Deref for PhysicalDevice {
+    type Target = vk::PhysicalDevice;
+
+    fn deref(&self) -> &Self::Target {
+        &self.physical
+    }
+}
+
 #[derive(Clone)]
 pub struct InstanceExtensions {
     pub surface: Option<khr::Surface>,

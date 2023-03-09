@@ -28,6 +28,12 @@ fn main() {
             } => {
                 control_flow.set_exit();
             }
+            winit::event::Event::WindowEvent {
+                event: winit::event::WindowEvent::Resized(_),
+                ..
+            } => {
+                context.recreate_swapchain(&window);
+            }
             winit::event::Event::DeviceEvent { event: winit::event::DeviceEvent::Key(input), .. } => {
                 if let Some(key) = input.virtual_keycode && key == winit::event::VirtualKeyCode::Escape {
                     control_flow.set_exit();

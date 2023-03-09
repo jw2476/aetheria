@@ -3,3 +3,6 @@ members = [
   "assets",
   "aetheria",
 ]
+
+[profile.release]
+strip = true
