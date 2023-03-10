@@ -6,6 +6,7 @@ use std::{
     result::Result,
 };
 
+#[derive(Clone)]
 pub struct Buffer {
     pub(crate) buffer: vk::Buffer,
     pub(crate) allocation: Allocation,
@@ -14,14 +15,14 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new(
-        ctx: &mut VulkanContext,
+        ctx: &VulkanContext,
+        allocator: &mut Allocator,
         size: usize,
         usage: vk::BufferUsageFlags,
     ) -> Result<Self, vk::Result> {
         let create_info = vk::BufferCreateInfo::builder()
             .size(size.try_into().unwrap())
             .usage(usage);
-
         let buffer = unsafe { ctx.device.create_buffer(&create_info, None)? };
         let requirements = unsafe { ctx.device.get_buffer_memory_requirements(buffer) };
 
@@ -33,7 +34,7 @@ impl Buffer {
             allocation_scheme: AllocationScheme::GpuAllocatorManaged,
         };
 
-        let allocation = ctx.allocator.allocate(&allocation_info).unwrap();
+        let allocation = allocator.allocate(&allocation_info).unwrap();
         unsafe {
             ctx.device
                 .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?
@@ -51,11 +52,6 @@ impl Buffer {
             .mapped_slice_mut()
             .unwrap()
             .copy_from_slice(data);
-    }
-
-    pub fn free(self, ctx: &mut VulkanContext) {
-        ctx.allocator.free(self.allocation).unwrap();
-        unsafe { ctx.device.destroy_buffer(self.buffer, None) };
     }
 }
 

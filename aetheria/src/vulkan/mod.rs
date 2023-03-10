@@ -22,6 +22,9 @@ pub use graphics::{GraphicsPipeline, Shader};
 pub mod renderpass;
 pub use renderpass::Renderpass;
 
+pub mod resources;
+pub use resources::Resources;
+
 pub mod surface;
 pub use surface::Surface;
 

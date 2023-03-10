@@ -1,6 +1,6 @@
 use super::{
     command::DrawOptions, graphics::Shaders, Buffer, CommandPool, Device, GraphicsPipeline,
-    Instance, Renderpass, Shader, Surface, Swapchain,
+    Instance, Renderpass, Resources, Shader, Surface, Swapchain,
 };
 use ash::{prelude::*, vk, Entry};
 use bytemuck::cast_slice;
@@ -15,18 +15,18 @@ pub struct VulkanContext {
     pub(crate) instance: Instance,
     surface: Surface,
     pub(crate) device: Device,
-    pub(crate) allocator: Allocator,
     swapchain: Swapchain,
     renderpass: Renderpass,
     pipeline: GraphicsPipeline,
     shaders: Shaders,
     framebuffers: Vec<vk::Framebuffer>,
     command_pool: CommandPool,
-    buffers: HashMap<String, Buffer>,
 
     image_available: vk::Semaphore,
     render_finished: vk::Semaphore,
     in_flight: vk::Fence,
+
+    pub(crate) resources: Resources,
 }
 
 impl VulkanContext {
@@ -36,14 +36,6 @@ impl VulkanContext {
         let surface = Surface::new(&instance, &window).expect("Vulkan surface creation failed");
         let device =
             unsafe { Device::new(&instance, &surface).expect("Vulkan device creation failed") };
-        let allocator = Allocator::new(&AllocatorCreateDesc {
-            instance: (*instance).clone(),
-            device: (*device).clone(),
-            physical_device: *device.physical,
-            debug_settings: Default::default(),
-            buffer_device_address: false,
-        })
-        .expect("Vulkan allocator creation failed");
 
         let swapchain = Swapchain::new(&instance, &surface, &device, &window)
             .expect("Vulkan swapchain creation failed");
@@ -88,11 +80,12 @@ impl VulkanContext {
         let render_finished = unsafe { device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { device.create_fence(&fence_info, None).unwrap() };
 
+        let mut resources = Resources::new(&instance, &device);
+
         let mut ctx = Self {
             instance,
             surface,
             device,
-            allocator,
             swapchain,
             renderpass,
             shaders,
@@ -102,7 +95,7 @@ impl VulkanContext {
             image_available,
             render_finished,
             in_flight,
-            buffers: HashMap::new(),
+            resources: resources.clone(),
         };
 
         let positions = [
@@ -125,13 +118,12 @@ impl VulkanContext {
             .flatten()
             .collect();
 
-        let mut vertex_buffer = Buffer::new(
-            &mut ctx,
-            vertices.len(),
+        ctx.resources.new_buffer(
+            &ctx,
+            &vertices,
             vk::BufferUsageFlags::VERTEX_BUFFER,
+            "vertex_buffer",
         )?;
-        vertex_buffer.upload(&vertices);
-        ctx.buffers.insert("vertex".to_owned(), vertex_buffer);
 
         Ok(ctx)
     }
@@ -226,7 +218,10 @@ impl VulkanContext {
                         self.swapchain.extent,
                     )
                     .bind_pipeline(&self.device, &self.pipeline)
-                    .bind_vertex_buffer(&self.device, &self.buffers.get("vertex").unwrap())
+                    .bind_vertex_buffer(
+                        &self.device,
+                        &self.resources.get_buffer("vertex_buffer").unwrap(),
+                    )
                     .draw(
                         &self.device,
                         DrawOptions {
@@ -276,17 +271,6 @@ impl VulkanContext {
 
                 frame_rendered = true;
             }
-        }
-    }
-}
-
-impl Drop for VulkanContext {
-    fn drop(&mut self) {
-        unsafe { self.device.device_wait_idle().unwrap() };
-
-        let buffers: Vec<(String, Buffer)> = self.buffers.drain().collect();
-        for (_name, buffer) in buffers {
-            buffer.free(self)
         }
     }
 }
