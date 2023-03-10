@@ -212,6 +212,7 @@ impl VulkanContext {
 
                 self.device.reset_fences(&[self.in_flight]).unwrap();
 
+                self.command_pool.clear(&self.device);
                 let cmd = self
                     .command_pool
                     .allocate(&self.device)
@@ -276,13 +277,5 @@ impl VulkanContext {
                 frame_rendered = true;
             }
         }
-    }
-}
-
-impl Drop for VulkanContext {
-    fn drop(&mut self) {
-        self.buffers
-            .into_iter()
-            .for_each(|(_, buffer)| self.allocator.free(buffer.allocation).unwrap());
     }
 }

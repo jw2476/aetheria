@@ -1,6 +1,9 @@
 use super::{Buffer, Device, GraphicsPipeline, Renderpass};
 use ash::{prelude::*, vk};
-use std::{ops::Deref, result::Result};
+use std::{
+    ops::{Deref, Drop},
+    result::Result,
+};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DrawOptions {
@@ -10,6 +13,7 @@ pub struct DrawOptions {
     pub first_instance: u32,
 }
 
+#[derive(Clone, Debug)]
 pub struct CommandBuffer {
     pub(crate) buffer: vk::CommandBuffer,
 }
@@ -99,6 +103,7 @@ impl Deref for CommandBuffer {
 
 pub struct CommandPool {
     pub(crate) pool: vk::CommandPool,
+    buffers: Vec<CommandBuffer>,
 }
 
 impl CommandPool {
@@ -108,18 +113,43 @@ impl CommandPool {
 
         let pool = unsafe { device.create_command_pool(&create_info, None)? };
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            buffers: Vec::new(),
+        })
     }
 
-    pub fn allocate(&self, device: &Device) -> Result<CommandBuffer, vk::Result> {
+    pub fn allocate(&mut self, device: &Device) -> Result<CommandBuffer, vk::Result> {
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.pool)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
         let buffer = unsafe { device.allocate_command_buffers(&allocate_info)?[0] };
+        let buffer = CommandBuffer { buffer };
 
-        Ok(CommandBuffer { buffer })
+        self.buffers.push(buffer.clone());
+
+        Ok(buffer)
+    }
+
+    pub fn clear(&mut self, device: &Device) {
+        if self.buffers.len() == 0 {
+            return;
+        }
+
+        unsafe {
+            device.free_command_buffers(
+                **self,
+                &self
+                    .buffers
+                    .iter()
+                    .map(|buffer| **buffer)
+                    .collect::<Vec<vk::CommandBuffer>>(),
+            )
+        }
+
+        self.buffers = Vec::new();
     }
 }
 
