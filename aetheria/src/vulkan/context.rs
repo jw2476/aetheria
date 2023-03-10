@@ -279,3 +279,14 @@ impl VulkanContext {
         }
     }
 }
+
+impl Drop for VulkanContext {
+    fn drop(&mut self) {
+        unsafe { self.device.device_wait_idle().unwrap() };
+
+        let buffers: Vec<(String, Buffer)> = self.buffers.drain().collect();
+        for (_name, buffer) in buffers {
+            buffer.free(self)
+        }
+    }
+}

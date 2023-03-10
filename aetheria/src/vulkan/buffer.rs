@@ -52,6 +52,11 @@ impl Buffer {
             .unwrap()
             .copy_from_slice(data);
     }
+
+    pub fn free(self, ctx: &mut VulkanContext) {
+        ctx.allocator.free(self.allocation).unwrap();
+        unsafe { ctx.device.destroy_buffer(self.buffer, None) };
+    }
 }
 
 impl Deref for Buffer {
