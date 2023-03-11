@@ -47,6 +47,10 @@ fn main() {
         Buffer::new(&ctx, &vertices, vk::BufferUsageFlags::VERTEX_BUFFER).unwrap();
 
     event_loop.run(move |event, _, control_flow| {
+        if let ControlFlow::ExitWithCode(_) = *control_flow {
+            return;
+        }
+        
         control_flow.set_poll();
 
         match event {
@@ -73,9 +77,10 @@ fn main() {
             _ => {}
         }
 
-        if *control_flow == ControlFlow::Exit {
+        if let ControlFlow::ExitWithCode(_) = *control_flow {
+            println!("Waiting for GPU to finish jobs");
             unsafe { ctx.device.device_wait_idle().unwrap() };
+            println!("GPU finished");
         }
-        
     });
 }
