@@ -1,15 +1,12 @@
 use super::{
     command::DrawOptions, graphics::Shaders, Buffer, CommandPool, Device, GraphicsPipeline,
-    Instance, Renderpass, Resources, Shader, Surface, Swapchain,
+    Instance, Renderpass, Shader, Surface, Swapchain,
 };
-use ash::{prelude::*, vk, Entry};
+use ash::{vk, Entry};
 use bytemuck::cast_slice;
-use gpu_allocator::vulkan::*;
+use gpu_allocator::{vulkan::*, AllocatorDebugSettings};
 use nalgebra::{Vector2, Vector3};
-use std::{
-    collections::HashMap,
-    ops::{Deref, Drop},
-};
+use std::{cell::RefCell, rc::Rc};
 
 pub struct VulkanContext {
     pub(crate) instance: Instance,
@@ -26,7 +23,7 @@ pub struct VulkanContext {
     render_finished: vk::Semaphore,
     in_flight: vk::Fence,
 
-    pub(crate) resources: Resources,
+    pub(crate) allocator: Rc<RefCell<Allocator>>,
 }
 
 impl VulkanContext {
@@ -80,7 +77,14 @@ impl VulkanContext {
         let render_finished = unsafe { device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { device.create_fence(&fence_info, None).unwrap() };
 
-        let mut resources = Resources::new(&instance, &device);
+        let allocator = Allocator::new(&AllocatorCreateDesc {
+            instance: (*instance).clone(),
+            device: (*device).clone(),
+            physical_device: *device.physical,
+            debug_settings: AllocatorDebugSettings::default(),
+            buffer_device_address: false,
+        })
+        .unwrap();
 
         let mut ctx = Self {
             instance,
@@ -95,35 +99,8 @@ impl VulkanContext {
             image_available,
             render_finished,
             in_flight,
-            resources: resources.clone(),
+            allocator: Rc::new(RefCell::new(allocator)),
         };
-
-        let positions = [
-            Vector2::new(0.0, -0.5),
-            Vector2::new(0.5, 0.5),
-            Vector2::new(-0.5, 0.5),
-        ];
-        let colors = [
-            Vector3::new(1.0, 0.0, 0.0),
-            Vector3::new(0.0, 1.0, 0.0),
-            Vector3::new(0.0, 0.0, 1.0),
-        ];
-
-        let vertices: Vec<u8> = std::iter::zip(positions, colors)
-            .map(|(position, color)| {
-                let mut vertex: Vec<u8> = cast_slice::<f32, u8>(position.as_ref()).to_vec();
-                vertex.extend_from_slice(cast_slice::<f32, u8>(color.as_ref()));
-                vertex
-            })
-            .flatten()
-            .collect();
-
-        ctx.resources.new_buffer(
-            &ctx,
-            &vertices,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            "vertex_buffer",
-        )?;
 
         Ok(ctx)
     }
@@ -176,7 +153,7 @@ impl VulkanContext {
         .collect();
     }
 
-    pub fn render(&mut self, window: &winit::window::Window) {
+    pub fn render(&mut self, window: &winit::window::Window, vertex_buffer: &Buffer) {
         let mut frame_rendered = false;
         while !frame_rendered {
             unsafe {
@@ -218,10 +195,7 @@ impl VulkanContext {
                         self.swapchain.extent,
                     )
                     .bind_pipeline(&self.device, &self.pipeline)
-                    .bind_vertex_buffer(
-                        &self.device,
-                        &self.resources.get_buffer("vertex_buffer").unwrap(),
-                    )
+                    .bind_vertex_buffer(&self.device, vertex_buffer)
                     .draw(
                         &self.device,
                         DrawOptions {
