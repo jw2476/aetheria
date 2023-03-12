@@ -2,6 +2,7 @@ use super::{Buffer, Device};
 use ash::vk;
 use std::{collections::HashMap, ops::Deref, rc::Rc, result::Result};
 
+#[derive(Clone)]
 pub struct DescriptorBinding {
     pub(crate) binding: vk::DescriptorSetLayoutBinding,
 }

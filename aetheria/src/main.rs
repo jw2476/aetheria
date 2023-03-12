@@ -2,11 +2,14 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-pub mod vulkan;
+mod vulkan;
+mod renderer;
+
 use ash::vk;
 use bytemuck::cast_slice;
 use nalgebra::{Vector2, Vector3};
 use vulkan::{Buffer, VulkanContext};
+use renderer::Renderer;
 use winit::event_loop::ControlFlow;
 
 fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) {
@@ -21,7 +24,8 @@ fn main() {
     tracing_subscriber::fmt::init();
 
     let (event_loop, window) = create_window();
-    let mut ctx = VulkanContext::new(&window).unwrap();
+    let ctx = VulkanContext::new(&window).unwrap();
+    let mut renderer = Renderer::new(ctx).unwrap();
 
     let positions = [
         Vector2::new(-0.5, -0.5),
@@ -45,11 +49,11 @@ fn main() {
         .flatten()
         .collect();
 
-    let mut vertex_buffer =
-        Buffer::new(&ctx, &vertices, vk::BufferUsageFlags::VERTEX_BUFFER).unwrap();
+    let vertex_buffer =
+        Buffer::new(&renderer, &vertices, vk::BufferUsageFlags::VERTEX_BUFFER).unwrap();
 
     let indices: Vec<u8> = cast_slice::<u32, u8>(&[0, 1, 2, 2, 1, 3]).to_vec();
-    let index_buffer = Buffer::new(&ctx, &indices, vk::BufferUsageFlags::INDEX_BUFFER).expect("Index buffer creation failed");
+    let index_buffer = Buffer::new(&renderer, &indices, vk::BufferUsageFlags::INDEX_BUFFER).expect("Index buffer creation failed");
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -69,7 +73,7 @@ fn main() {
                 event: winit::event::WindowEvent::Resized(_),
                 ..
             } => {
-                ctx.recreate_swapchain(&window);
+                renderer.recreate_swapchain(&window);
             }
             winit::event::Event::DeviceEvent { event: winit::event::DeviceEvent::Key(input), .. } => {
                 if let Some(key) = input.virtual_keycode && key == winit::event::VirtualKeyCode::Escape {
@@ -77,14 +81,14 @@ fn main() {
                 }
             }
             winit::event::Event::MainEventsCleared => {
-                ctx.render(&window, &vertex_buffer, &index_buffer);
+                renderer.render(&window, &vertex_buffer, &index_buffer);
             }
             _ => {}
         }
 
         if let ControlFlow::ExitWithCode(_) = *control_flow {
             println!("Waiting for GPU to finish jobs");
-            unsafe { ctx.device.device_wait_idle().unwrap() };
+            unsafe { renderer.device.device_wait_idle().unwrap() };
             println!("GPU finished");
         }
     });
