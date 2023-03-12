@@ -166,7 +166,6 @@ impl Deref for Device {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn get_wanted_extensions() -> Vec<&'static CStr> {
     vec![ash::extensions::khr::Swapchain::name()]
 }

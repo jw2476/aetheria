@@ -66,6 +66,7 @@ impl Deref for PhysicalDevice {
 pub struct InstanceExtensions {
     pub surface: Option<khr::Surface>,
     pub xlib_surface: Option<khr::XlibSurface>,
+    pub win32_surface: Option<khr::Win32Surface>
 }
 
 impl InstanceExtensions {
@@ -79,6 +80,10 @@ impl InstanceExtensions {
                 .iter()
                 .find(|ext| **ext == khr::XlibSurface::name())
                 .map(|_| khr::XlibSurface::new(entry, instance)),
+            win32_surface: available
+                .iter()
+                .find(|ext| **ext == khr::Win32Surface::name())
+                .map(|_| khr::Win32Surface::new(entry, instance)),
         }
     }
 }
@@ -162,4 +167,9 @@ impl Deref for Instance {
 #[cfg(target_os = "linux")]
 fn get_wanted_extensions() -> Vec<&'static CStr> {
     vec![khr::Surface::name(), khr::XlibSurface::name()]
+}
+
+#[cfg(target_os = "windows")]
+fn get_wanted_extensions() -> Vec<&'static CStr> {
+    vec![khr::Surface::name(), khr::Win32Surface::name()]
 }
