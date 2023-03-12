@@ -65,6 +65,7 @@ impl<'a> DescriptorSetLayoutBuilder<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct DescriptorSetLayout {
     pub(crate) layout: vk::DescriptorSetLayout,
     pub bindings: Vec<DescriptorBinding>,

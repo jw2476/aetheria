@@ -5,7 +5,6 @@ use super::{
 use ash::{vk, Entry};
 use bytemuck::cast_slice;
 use gpu_allocator::{vulkan::*, AllocatorDebugSettings};
-use nalgebra::{Vector2, Vector3};
 use std::{cell::RefCell, rc::Rc};
 
 pub struct VulkanContext {

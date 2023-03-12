@@ -15,7 +15,7 @@ bytemuck = "1.13"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 gpu-allocator = "0.22"
-nalgebra = "0.32"
+glam = { version = "0.23", features = ["bytemuck"] }
 
 [build-dependencies]
 spirv-builder = "0.5"

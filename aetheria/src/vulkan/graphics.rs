@@ -1,4 +1,4 @@
-use super::{Device, Renderpass};
+use super::{DescriptorSetLayout, Device, Renderpass};
 use ash::{prelude::*, vk};
 use cstr::cstr;
 use std::{ops::Deref, result::Result};
@@ -55,6 +55,7 @@ impl GraphicsPipeline {
         renderpass: &Renderpass,
         shaders: Shaders,
         extent: vk::Extent2D,
+        descriptor_layouts: &[DescriptorSetLayout],
     ) -> Result<Self, vk::Result> {
         let vertex_stage = shaders
             .vertex
@@ -133,7 +134,9 @@ impl GraphicsPipeline {
             .attachments(attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
-        let layout_info = vk::PipelineLayoutCreateInfo::builder();
+        let set_layouts: Vec<vk::DescriptorSetLayout> =
+            descriptor_layouts.iter().map(|layout| **layout).collect();
+        let layout_info = vk::PipelineLayoutCreateInfo::builder().set_layouts(&set_layouts);
         let layout = unsafe { device.create_pipeline_layout(&layout_info, None)? };
 
         let stages = &[*vertex_stage, *fragment_stage];

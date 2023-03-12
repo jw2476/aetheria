@@ -11,7 +11,7 @@ pub mod context;
 pub use context::VulkanContext;
 
 pub mod descriptor;
-pub use descriptor::DescriptorSetLayoutBuilder;
+pub use descriptor::*;
 
 pub mod device;
 pub use device::Device;

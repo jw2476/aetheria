@@ -1,4 +1,4 @@
-use super::{Buffer, Device, GraphicsPipeline, Renderpass};
+use super::{Buffer, DescriptorSet, Device, GraphicsPipeline, Renderpass};
 use ash::{prelude::*, vk};
 use std::{
     ops::{Deref, Drop},
@@ -56,6 +56,27 @@ impl CommandBuffer {
 
     pub fn bind_pipeline(self, device: &Device, pipeline: &GraphicsPipeline) -> Self {
         unsafe { device.cmd_bind_pipeline(*self, vk::PipelineBindPoint::GRAPHICS, **pipeline) };
+
+        self
+    }
+
+    pub fn bind_descriptor_set(
+        self,
+        device: &Device,
+        pipeline: &GraphicsPipeline,
+        descriptor_set: &DescriptorSet,
+    ) -> Self {
+        let descriptor_sets = &[**descriptor_set];
+        unsafe {
+            device.cmd_bind_descriptor_sets(
+                *self,
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline.layout,
+                0,
+                descriptor_sets,
+                &[],
+            );
+        }
 
         self
     }

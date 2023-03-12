@@ -1,5 +1,6 @@
 use super::VulkanContext;
 use ash::vk;
+use bytemuck::{cast_slice, NoUninit};
 use gpu_allocator::{vulkan::*, MemoryLocation};
 use std::{
     cell::RefCell,
@@ -16,13 +17,15 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new(
+    pub fn new<T: Into<Vec<u8>>>(
         ctx: &VulkanContext,
-        data: &[u8],
+        data: T,
         usage: vk::BufferUsageFlags,
     ) -> Result<Self, vk::Result> {
+        let bytes: Vec<u8> = data.into();
+
         let create_info = vk::BufferCreateInfo::builder()
-            .size(data.len().try_into().unwrap())
+            .size(bytes.len().try_into().unwrap())
             .usage(usage);
         let buffer = unsafe { ctx.device.create_buffer(&create_info, None)? };
         let requirements = unsafe { ctx.device.get_buffer_memory_requirements(buffer) };
@@ -48,22 +51,33 @@ impl Buffer {
         let mut buffer = Self {
             buffer,
             allocation: Some(allocation),
-            size: data.len(),
+            size: bytes.len(),
             allocator: ctx.allocator.clone(),
         };
 
-        buffer.upload(data);
+        buffer.upload_bytes(&bytes);
 
         Ok(buffer)
     }
 
-    pub fn upload(&mut self, data: &[u8]) {
+    pub fn upload<T: Into<Vec<u8>>>(&mut self, data: T) {
+        let bytes: Vec<u8> = data.into();
+
         self.allocation
             .as_mut()
             .unwrap()
             .mapped_slice_mut()
-            .unwrap()[..data.len()]
-            .copy_from_slice(data);
+            .unwrap()[..bytes.len()]
+            .copy_from_slice(&bytes);
+    }
+
+    fn upload_bytes(&mut self, bytes: &[u8]) {
+        self.allocation
+            .as_mut()
+            .unwrap()
+            .mapped_slice_mut()
+            .unwrap()[..bytes.len()]
+            .copy_from_slice(bytes);
     }
 }
 
