@@ -101,18 +101,9 @@ impl Renderer {
             .as_millis() as f64;
 
         let transform = Transform {
-            model: Mat4::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), (rotation / 1000.0) as f32),
-            view: Mat4::look_at_rh(
-                Vec3::new(2.0, 2.0, 2.0),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(0.0, 0.0, 1.0),
-            ),
-            projection: Mat4::perspective_rh(
-                45.0_f32.to_radians(),
-                ctx.swapchain.extent.width as f32 / ctx.swapchain.extent.height as f32,
-                0.01,
-                10.0,
-            ),
+            model: Mat4::IDENTITY,
+            view: Mat4::IDENTITY,
+            projection: Mat4::IDENTITY,
         };
 
         let mut transform_pool = DescriptorPool::new(&ctx.device, transform_layout.clone(), 1)?;
@@ -209,7 +200,7 @@ impl Renderer {
         let mut rotation = rotation as f32;
         rotation /= 1000.0;
 
-        let transform = Transform {
+        let mut transform = Transform {
             model: Mat4::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), rotation as f32),
             view: Mat4::look_at_rh(
                 Vec3::new(2.0, 2.0, 2.0),
@@ -223,6 +214,8 @@ impl Renderer {
                 10.0,
             ),
         };
+
+        transform.projection.col_mut(1)[1] *= -1.0;
 
         self.transform_buffer.upload::<Vec<u8>>(transform.into());
 
