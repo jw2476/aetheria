@@ -10,6 +10,9 @@ pub use command::{CommandBuffer, CommandPool};
 pub mod context;
 pub use context::VulkanContext;
 
+pub mod descriptor;
+pub use descriptor::DescriptorSetLayoutBuilder;
+
 pub mod device;
 pub use device::Device;
 
