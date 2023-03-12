@@ -9,7 +9,7 @@ use std::{
 pub struct DrawOptions {
     pub vertex_count: u32,
     pub instance_count: u32,
-    pub first_vertex: u32,
+    pub first_vertex: i32,
     pub first_instance: u32,
 }
 
@@ -60,18 +60,25 @@ impl CommandBuffer {
         self
     }
 
+    pub fn bind_index_buffer(self, device: &Device, index_buffer: &Buffer) -> Self {
+        unsafe { device.cmd_bind_index_buffer(*self, **index_buffer, 0, vk::IndexType::UINT32) };
+
+        self
+    }
+
     pub fn bind_vertex_buffer(self, device: &Device, vertex_buffer: &Buffer) -> Self {
-        unsafe { device.cmd_bind_vertex_buffers(self.buffer, 0, &[**vertex_buffer], &[0]) };
+        unsafe { device.cmd_bind_vertex_buffers(*self, 0, &[**vertex_buffer], &[0]) };
 
         self
     }
 
     pub fn draw(self, device: &Device, options: DrawOptions) -> Self {
         unsafe {
-            device.cmd_draw(
+            device.cmd_draw_indexed(
                 *self,
                 options.vertex_count,
                 options.instance_count,
+                0,
                 options.first_vertex,
                 options.first_instance,
             )

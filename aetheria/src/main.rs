@@ -24,14 +24,16 @@ fn main() {
     let mut ctx = VulkanContext::new(&window).unwrap();
 
     let positions = [
-        Vector2::new(0.0, -0.5),
-        Vector2::new(0.5, 0.5),
+        Vector2::new(-0.5, -0.5),
+        Vector2::new(0.5, -0.5),
         Vector2::new(-0.5, 0.5),
+        Vector2::new(0.5, 0.5)
     ];
     let colors = [
         Vector3::new(1.0, 0.0, 0.0),
         Vector3::new(0.0, 1.0, 0.0),
         Vector3::new(0.0, 0.0, 1.0),
+        Vector3::new(1.0, 1.0, 1.0)
     ];
 
     let vertices: Vec<u8> = std::iter::zip(positions, colors)
@@ -45,6 +47,9 @@ fn main() {
 
     let mut vertex_buffer =
         Buffer::new(&ctx, &vertices, vk::BufferUsageFlags::VERTEX_BUFFER).unwrap();
+
+    let indices: Vec<u8> = cast_slice::<u32, u8>(&[0, 1, 2, 2, 1, 3]).to_vec();
+    let index_buffer = Buffer::new(&ctx, &indices, vk::BufferUsageFlags::INDEX_BUFFER).expect("Index buffer creation failed");
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -72,7 +77,7 @@ fn main() {
                 }
             }
             winit::event::Event::MainEventsCleared => {
-                ctx.render(&window, &vertex_buffer);
+                ctx.render(&window, &vertex_buffer, &index_buffer);
             }
             _ => {}
         }

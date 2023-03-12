@@ -153,7 +153,12 @@ impl VulkanContext {
         .collect();
     }
 
-    pub fn render(&mut self, window: &winit::window::Window, vertex_buffer: &Buffer) {
+    pub fn render(
+        &mut self,
+        window: &winit::window::Window,
+        vertex_buffer: &Buffer,
+        index_buffer: &Buffer,
+    ) {
         let mut frame_rendered = false;
         while !frame_rendered {
             unsafe {
@@ -195,11 +200,12 @@ impl VulkanContext {
                         self.swapchain.extent,
                     )
                     .bind_pipeline(&self.device, &self.pipeline)
+                    .bind_index_buffer(&self.device, index_buffer)
                     .bind_vertex_buffer(&self.device, vertex_buffer)
                     .draw(
                         &self.device,
                         DrawOptions {
-                            vertex_count: 3,
+                            vertex_count: (index_buffer.size / 4).try_into().unwrap(),
                             instance_count: 1,
                             ..Default::default()
                         },
