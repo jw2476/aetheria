@@ -1,10 +1,12 @@
-use crate::vulkan::*;
+use crate::vulkan::{
+    Buffer, DescriptorPool, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBuilder,
+    DrawOptions, GraphicsPipeline, Renderpass, Shader, Shaders, Swapchain, VulkanContext,
+};
 use ash::vk;
-use bytemuck::cast_slice;
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec3};
 use std::{
     ops::Deref,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 pub struct Transform {
@@ -14,19 +16,14 @@ pub struct Transform {
 }
 
 impl From<Transform> for Vec<u8> {
-    fn from(transform: Transform) -> Vec<u8> {
-        let mut buffer: Vec<u8> = Vec::new();
+    fn from(transform: Transform) -> Self {
+        let mut buffer = Self::new();
         buffer.extend_from_slice(bytemuck::bytes_of(&transform.model));
         buffer.extend_from_slice(bytemuck::bytes_of(&transform.view));
         buffer.extend_from_slice(bytemuck::bytes_of(&transform.projection));
 
         buffer
     }
-}
-
-pub struct Vertex {
-    position: Vec2,
-    color: Vec3,
 }
 
 pub struct Renderer {
@@ -94,11 +91,6 @@ impl Renderer {
         let render_finished =
             unsafe { ctx.device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { ctx.device.create_fence(&fence_info, None).unwrap() };
-
-        let rotation = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as f64;
 
         let transform = Transform {
             model: Mat4::IDENTITY,
@@ -197,11 +189,14 @@ impl Renderer {
             .unwrap()
             .as_millis()
             % 1000000;
+
+        #[allow(clippy::cast_precision_loss)]
         let mut rotation = rotation as f32;
         rotation /= 1000.0;
 
+        #[allow(clippy::cast_precision_loss)]
         let mut transform = Transform {
-            model: Mat4::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), rotation as f32),
+            model: Mat4::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), rotation),
             view: Mat4::look_at_rh(
                 Vec3::new(2.0, 2.0, 2.0),
                 Vec3::new(0.0, 0.0, 0.0),

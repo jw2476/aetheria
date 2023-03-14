@@ -44,12 +44,8 @@ fn get_wanted_layers() -> Vec<&'static CStr> {
     vec![]
 }
 
-fn intersection<T: Hash + Clone + Eq>(a: &Vec<T>, b: &Vec<T>) -> Vec<T> {
-    let a_unique: HashSet<T> = HashSet::from_iter(a.iter().cloned());
-    let b_unique: HashSet<T> = HashSet::from_iter(b.iter().cloned());
-    a_unique
-        .intersection(&b_unique)
-        .cloned()
-        .into_iter()
-        .collect()
+fn intersection<T: Hash + Clone + Eq>(a: &[T], b: &[T]) -> Vec<T> {
+    let a_unique: HashSet<T> = a.iter().cloned().collect();
+    let b_unique: HashSet<T> = b.iter().cloned().collect();
+    a_unique.intersection(&b_unique).cloned().collect()
 }

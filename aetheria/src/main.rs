@@ -14,7 +14,7 @@ use glam::{Vec2, Vec3};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
-    fn from(indices: Indices) -> Vec<u8> {
+    fn from(indices: Indices) -> Self {
         cast_slice::<u32, u8>(&indices.0).to_vec()
     }
 }
@@ -48,12 +48,11 @@ fn main() {
     ];
 
     let vertices: Vec<u8> = std::iter::zip(positions, colors)
-        .map(|(position, color)| {
+        .flat_map(|(position, color)| {
             let mut vertex: Vec<u8> = cast_slice::<f32, u8>(position.as_ref()).to_vec();
             vertex.extend_from_slice(cast_slice::<f32, u8>(color.as_ref()));
             vertex
         })
-        .flatten()
         .collect();
 
     let vertex_buffer =

@@ -1,6 +1,5 @@
 use super::VulkanContext;
 use ash::vk;
-use bytemuck::{cast_slice, NoUninit};
 use gpu_allocator::{vulkan::*, MemoryLocation};
 use std::{
     cell::RefCell,
@@ -93,6 +92,7 @@ impl Drop for Buffer {
     fn drop(&mut self) {
         self.allocator
             .borrow_mut()
-            .free(self.allocation.take().unwrap());
+            .free(self.allocation.take().expect("Vulkan buffer double free"))
+            .expect("Failed to free vulkan buffer");
     }
 }

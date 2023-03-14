@@ -23,24 +23,22 @@ impl Swapchain {
         let swapchain_khr = device.extensions.swapchain.as_ref().unwrap();
 
         let capabilities = unsafe {
-            surface_khr
-                .get_physical_device_surface_capabilities(device.physical.physical, surface.surface)
-                .unwrap()
+            surface_khr.get_physical_device_surface_capabilities(
+                device.physical.physical,
+                surface.surface,
+            )?
         };
 
         let formats = unsafe {
             surface_khr
-                .get_physical_device_surface_formats(device.physical.physical, surface.surface)
-                .unwrap()
+                .get_physical_device_surface_formats(device.physical.physical, surface.surface)?
         };
 
         let present_modes = unsafe {
-            surface_khr
-                .get_physical_device_surface_present_modes(
-                    device.physical.physical,
-                    surface.surface,
-                )
-                .unwrap()
+            surface_khr.get_physical_device_surface_present_modes(
+                device.physical.physical,
+                surface.surface,
+            )?
         };
 
         let format = formats
@@ -49,7 +47,7 @@ impl Swapchain {
                 format.format == vk::Format::B8G8R8A8_SRGB
                     && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
             })
-            .unwrap_or(formats.first().unwrap());
+            .unwrap_or_else(|| formats.first().unwrap());
 
         let present_mode = present_modes
             .iter()
@@ -57,13 +55,13 @@ impl Swapchain {
             .find(|present_mode| *present_mode == vk::PresentModeKHR::MAILBOX)
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
-        let extent = if capabilities.current_extent.width != u32::MAX {
-            capabilities.current_extent
-        } else {
+        let extent = if capabilities.current_extent.width == u32::MAX {
             vk::Extent2D {
                 width: window.inner_size().width,
                 height: window.inner_size().height,
             }
+        } else {
+            capabilities.current_extent
         };
 
         let image_count = if capabilities.max_image_count == 0
@@ -99,9 +97,9 @@ impl Swapchain {
             .present_mode(present_mode)
             .clipped(true);
 
-        let swapchain = unsafe { swapchain_khr.create_swapchain(&create_info, None).unwrap() };
+        let swapchain = unsafe { swapchain_khr.create_swapchain(&create_info, None)? };
 
-        let images = unsafe { swapchain_khr.get_swapchain_images(swapchain).unwrap() };
+        let images = unsafe { swapchain_khr.get_swapchain_images(swapchain)? };
         let images: Vec<Image> = images
             .iter()
             .copied()
