@@ -1,6 +1,6 @@
 use super::{
-    graphics::Shaders, Buffer, Device, Pipeline,
-    Instance, Renderpass, Shader, Surface, Swapchain, command
+    Device,
+    Instance, Surface, Swapchain, command
 };
 use ash::{vk, Entry};
 use gpu_allocator::{vulkan::{Allocator, AllocatorCreateDesc}, AllocatorDebugSettings};
@@ -43,7 +43,9 @@ impl Context {
         })
         .unwrap();
 
-        let ctx = Self {
+        
+
+        Self {
             instance,
             surface,
             device,
@@ -51,9 +53,7 @@ impl Context {
             command_pool,
             image_available,
             allocator: Rc::new(RefCell::new(allocator)),
-        };
-
-        ctx
+        }
     }
 
     pub unsafe fn render<F>(&mut self, in_flight: vk::Fence, callback: F) -> Result<(), vk::Result>

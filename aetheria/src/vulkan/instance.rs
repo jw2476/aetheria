@@ -17,7 +17,7 @@ impl PhysicalDeviceProperties {
         let device_name = device_name_raw.to_str().unwrap().to_owned();
 
         Self {
-            properties: properties.clone(),
+            properties: *properties,
             device_name,
         }
     }
