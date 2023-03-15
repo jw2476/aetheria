@@ -5,10 +5,10 @@ pub mod buffer;
 pub use buffer::Buffer;
 
 pub mod command;
-pub use command::{CommandBuffer, CommandPool, DrawOptions};
+pub use command::DrawOptions;
 
 pub mod context;
-pub use context::VulkanContext;
+pub use context::Context;
 
 pub mod descriptor;
 pub use descriptor::*;
@@ -20,7 +20,7 @@ pub mod image;
 pub use image::Image;
 
 pub mod graphics;
-pub use graphics::{GraphicsPipeline, Shader, Shaders};
+pub use graphics::{Pipeline, Shader, Shaders};
 
 pub mod renderpass;
 pub use renderpass::Renderpass;

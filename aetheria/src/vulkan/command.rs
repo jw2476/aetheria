@@ -1,7 +1,7 @@
-use super::{Buffer, DescriptorSet, Device, GraphicsPipeline, Renderpass};
-use ash::{prelude::*, vk};
+use super::{Set, Device, Pipeline, Renderpass};
+use ash::vk;
 use std::{
-    ops::{Deref, Drop},
+    ops::Deref,
     result::Result,
 };
 
@@ -14,11 +14,11 @@ pub struct DrawOptions {
 }
 
 #[derive(Clone, Debug)]
-pub struct CommandBuffer {
+pub struct Buffer {
     pub(crate) buffer: vk::CommandBuffer,
 }
 
-impl CommandBuffer {
+impl Buffer {
     pub fn begin(self, device: &Device) -> Result<Self, vk::Result> {
         let begin_info = vk::CommandBufferBeginInfo::builder();
         unsafe { device.begin_command_buffer(*self, &begin_info)? };
@@ -29,7 +29,7 @@ impl CommandBuffer {
         self,
         device: &Device,
         renderpass: &Renderpass,
-        framebuffer: &vk::Framebuffer,
+        framebuffer: vk::Framebuffer,
         extent: vk::Extent2D,
     ) -> Self {
         let render_area = vk::Rect2D::builder()
@@ -45,7 +45,7 @@ impl CommandBuffer {
         let clear_values = &[color_clear_value];
         let begin_info = vk::RenderPassBeginInfo::builder()
             .render_pass(**renderpass)
-            .framebuffer(*framebuffer)
+            .framebuffer(framebuffer)
             .render_area(*render_area)
             .clear_values(clear_values);
 
@@ -54,7 +54,7 @@ impl CommandBuffer {
         self
     }
 
-    pub fn bind_pipeline(self, device: &Device, pipeline: &GraphicsPipeline) -> Self {
+    pub fn bind_pipeline(self, device: &Device, pipeline: &Pipeline) -> Self {
         unsafe { device.cmd_bind_pipeline(*self, vk::PipelineBindPoint::GRAPHICS, **pipeline) };
 
         self
@@ -63,8 +63,8 @@ impl CommandBuffer {
     pub fn bind_descriptor_set(
         self,
         device: &Device,
-        pipeline: &GraphicsPipeline,
-        descriptor_set: &DescriptorSet,
+        pipeline: &Pipeline,
+        descriptor_set: &Set,
     ) -> Self {
         let descriptor_sets = &[**descriptor_set];
         unsafe {
@@ -81,13 +81,13 @@ impl CommandBuffer {
         self
     }
 
-    pub fn bind_index_buffer(self, device: &Device, index_buffer: &Buffer) -> Self {
+    pub fn bind_index_buffer(self, device: &Device, index_buffer: &super::Buffer) -> Self {
         unsafe { device.cmd_bind_index_buffer(*self, **index_buffer, 0, vk::IndexType::UINT32) };
 
         self
     }
 
-    pub fn bind_vertex_buffer(self, device: &Device, vertex_buffer: &Buffer) -> Self {
+    pub fn bind_vertex_buffer(self, device: &Device, vertex_buffer: &super::Buffer) -> Self {
         unsafe { device.cmd_bind_vertex_buffers(*self, 0, &[**vertex_buffer], &[0]) };
 
         self
@@ -102,7 +102,7 @@ impl CommandBuffer {
                 0,
                 options.first_vertex,
                 options.first_instance,
-            )
+            );
         };
 
         self
@@ -121,7 +121,7 @@ impl CommandBuffer {
     }
 }
 
-impl Deref for CommandBuffer {
+impl Deref for Buffer {
     type Target = vk::CommandBuffer;
 
     fn deref(&self) -> &Self::Target {
@@ -129,12 +129,12 @@ impl Deref for CommandBuffer {
     }
 }
 
-pub struct CommandPool {
+pub struct Pool {
     pub(crate) pool: vk::CommandPool,
-    buffers: Vec<CommandBuffer>,
+    buffers: Vec<Buffer>,
 }
 
-impl CommandPool {
+impl Pool {
     pub fn new(device: &Device) -> Result<Self, vk::Result> {
         let create_info =
             vk::CommandPoolCreateInfo::builder().queue_family_index(device.queues.graphics.index);
@@ -147,14 +147,14 @@ impl CommandPool {
         })
     }
 
-    pub fn allocate(&mut self, device: &Device) -> Result<CommandBuffer, vk::Result> {
+    pub fn allocate(&mut self, device: &Device) -> Result<Buffer, vk::Result> {
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.pool)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
         let buffer = unsafe { device.allocate_command_buffers(&allocate_info)?[0] };
-        let buffer = CommandBuffer { buffer };
+        let buffer = Buffer { buffer };
 
         self.buffers.push(buffer.clone());
 
@@ -162,7 +162,7 @@ impl CommandPool {
     }
 
     pub fn clear(&mut self, device: &Device) {
-        if self.buffers.len() == 0 {
+        if self.buffers.is_empty() {
             return;
         }
 
@@ -174,14 +174,14 @@ impl CommandPool {
                     .iter()
                     .map(|buffer| **buffer)
                     .collect::<Vec<vk::CommandBuffer>>(),
-            )
+            );
         }
 
         self.buffers = Vec::new();
     }
 }
 
-impl Deref for CommandPool {
+impl Deref for Pool {
     type Target = vk::CommandPool;
 
     fn deref(&self) -> &Self::Target {

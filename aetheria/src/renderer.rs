@@ -1,6 +1,6 @@
 use crate::vulkan::{
-    Buffer, DescriptorPool, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBuilder,
-    DrawOptions, GraphicsPipeline, Renderpass, Shader, Shaders, Swapchain, VulkanContext,
+    Buffer, Pool, Set, SetLayout, SetLayoutBuilder,
+    DrawOptions, Pipeline, Renderpass, Shader, Shaders, Swapchain, Context,
 };
 use ash::vk;
 use glam::{Mat4, Vec3};
@@ -27,25 +27,25 @@ impl From<Transform> for Vec<u8> {
 }
 
 pub struct Renderer {
-    ctx: VulkanContext,
+    ctx: Context,
 
-    transform_layout: DescriptorSetLayout,
+    transform_layout: SetLayout,
     renderpass: Renderpass,
-    pipeline: GraphicsPipeline,
+    pipeline: Pipeline,
     shaders: Shaders,
     framebuffers: Vec<vk::Framebuffer>,
 
     render_finished: vk::Semaphore,
     in_flight: vk::Fence,
 
-    transform_pool: DescriptorPool,
+    transform_pool: Pool,
     transform_buffer: Buffer,
-    transform_set: DescriptorSet,
+    transform_set: Set,
 }
 
 impl Renderer {
-    pub fn new(ctx: VulkanContext) -> Result<Self, vk::Result> {
-        let transform_layout = DescriptorSetLayoutBuilder::new(&ctx.device)
+    pub fn new(ctx: Context) -> Result<Self, vk::Result> {
+        let transform_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
 
@@ -53,12 +53,12 @@ impl Renderer {
 
         let vertex_shader = Shader::new(
             &ctx.device,
-            include_bytes!("../../assets/shaders/compiled/vertex.spv").to_vec(),
+            include_bytes!("../../assets/shaders/compiled/vertex.spv"),
             vk::ShaderStageFlags::VERTEX,
         )?;
         let fragment_shader = Shader::new(
             &ctx.device,
-            include_bytes!("../../assets/shaders/compiled/fragment.spv").to_vec(),
+            include_bytes!("../../assets/shaders/compiled/fragment.spv"),
             vk::ShaderStageFlags::FRAGMENT,
         )?;
         let shaders = Shaders {
@@ -67,7 +67,7 @@ impl Renderer {
         };
 
         let descriptor_layouts = &[transform_layout.clone()];
-        let pipeline = GraphicsPipeline::new(
+        let pipeline = Pipeline::new(
             &ctx.device,
             &renderpass,
             shaders.clone(),
@@ -81,7 +81,7 @@ impl Renderer {
         )
         .map(|(image, view)| {
             renderpass
-                .create_framebuffer(&ctx.device, &image, &view)
+                .create_framebuffer(&ctx.device, &image, view)
                 .unwrap()
         })
         .collect();
@@ -98,7 +98,7 @@ impl Renderer {
             projection: Mat4::IDENTITY,
         };
 
-        let mut transform_pool = DescriptorPool::new(&ctx.device, transform_layout.clone(), 1)?;
+        let mut transform_pool = Pool::new(&ctx.device, transform_layout.clone(), 1)?;
         let transform_buffer =
             Buffer::new::<Vec<u8>>(&ctx, transform.into(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
         let transform_set = transform_pool.allocate(&ctx.device)?;
@@ -158,7 +158,7 @@ impl Renderer {
             .expect("Swapchain recreation failed");
 
         let descriptor_layouts = &[self.transform_layout.clone()];
-        self.pipeline = GraphicsPipeline::new(
+        self.pipeline = Pipeline::new(
             &self.ctx.device,
             &self.renderpass,
             self.shaders.clone(),
@@ -172,7 +172,7 @@ impl Renderer {
         )
         .map(|(image, view)| {
             self.renderpass
-                .create_framebuffer(&self.ctx.device, &image, &view)
+                .create_framebuffer(&self.ctx.device, &image, view)
                 .unwrap()
         })
         .collect();
@@ -188,7 +188,7 @@ impl Renderer {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_millis()
-            % 1000000;
+            % 1_000_000;
 
         #[allow(clippy::cast_precision_loss)]
         let mut rotation = rotation as f32;
@@ -228,7 +228,7 @@ impl Renderer {
                             .begin_renderpass(
                                 &ctx.device,
                                 &self.renderpass,
-                                &self.framebuffers[image_index as usize],
+                                self.framebuffers[image_index as usize],
                                 ctx.swapchain.extent,
                             )
                             .bind_pipeline(&ctx.device, &self.pipeline)
@@ -277,7 +277,7 @@ impl Renderer {
 }
 
 impl Deref for Renderer {
-    type Target = VulkanContext;
+    type Target = Context;
 
     fn deref(&self) -> &Self::Target {
         &self.ctx

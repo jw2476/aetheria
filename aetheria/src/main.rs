@@ -7,7 +7,7 @@ mod renderer;
 
 use ash::vk;
 use bytemuck::cast_slice;
-use vulkan::{Buffer, VulkanContext};
+use vulkan::{Buffer, Context};
 use renderer::Renderer;
 use winit::event_loop::ControlFlow;
 use glam::{Vec2, Vec3};
@@ -31,7 +31,7 @@ fn main() {
     tracing_subscriber::fmt::init();
 
     let (event_loop, window) = create_window();
-    let ctx = VulkanContext::new(&window).unwrap();
+    let ctx = Context::new(&window);
     let mut renderer = Renderer::new(ctx).unwrap();
 
     let positions = [
@@ -44,7 +44,7 @@ fn main() {
         Vec3::new(1.0, 0.0, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
         Vec3::new(0.0, 0.0, 1.0),
-        Vec3::new(1.0, 1.0, 1.0)
+        Vec3::new(1.0, 0.0, 0.0)
     ];
 
     let vertices: Vec<u8> = std::iter::zip(positions, colors)

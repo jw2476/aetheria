@@ -1,7 +1,7 @@
-use ash::{extensions::khr, prelude::*, vk};
+use ash::{extensions::khr, vk};
 use bytemuck::cast_slice;
 use cstr::cstr;
-use std::{clone::Clone, collections::HashSet, ffi::CStr, hash::Hash, ops::Deref, result::Result};
+use std::{clone::Clone, ffi::CStr, ops::Deref, result::Result};
 use tracing::info;
 
 #[derive(Debug, Clone)]
@@ -11,13 +11,13 @@ pub struct PhysicalDeviceProperties {
 }
 
 impl PhysicalDeviceProperties {
-    fn new(properties: vk::PhysicalDeviceProperties) -> Self {
+    fn new(properties: &vk::PhysicalDeviceProperties) -> Self {
         let device_name_raw: &CStr =
             CStr::from_bytes_until_nul(cast_slice(&properties.device_name)).unwrap();
         let device_name = device_name_raw.to_str().unwrap().to_owned();
 
         Self {
-            properties,
+            properties: properties.clone(),
             device_name,
         }
     }
@@ -41,7 +41,7 @@ pub struct PhysicalDevice {
 impl PhysicalDevice {
     unsafe fn new(instance: &Instance, physical: vk::PhysicalDevice) -> Self {
         let properties = instance.get_physical_device_properties(physical);
-        let properties = PhysicalDeviceProperties::new(properties);
+        let properties = PhysicalDeviceProperties::new(&properties);
         let queue_families = instance.get_physical_device_queue_family_properties(physical);
         let features = instance.get_physical_device_features(physical);
 
@@ -63,13 +63,13 @@ impl Deref for PhysicalDevice {
 }
 
 #[derive(Clone)]
-pub struct InstanceExtensions {
+pub struct Extensions {
     pub surface: Option<khr::Surface>,
     pub xlib_surface: Option<khr::XlibSurface>,
     pub win32_surface: Option<khr::Win32Surface>
 }
 
-impl InstanceExtensions {
+impl Extensions {
     pub fn load(entry: &ash::Entry, instance: &ash::Instance, available: &[&CStr]) -> Self {
         Self {
             surface: available
@@ -91,7 +91,7 @@ impl InstanceExtensions {
 #[derive(Clone)]
 pub struct Instance {
     instance: ash::Instance,
-    pub extensions: InstanceExtensions,
+    pub extensions: Extensions,
 }
 
 impl Instance {
@@ -140,7 +140,7 @@ impl Instance {
         let instance = unsafe { entry.create_instance(&instance_info, None)? };
 
         Ok(Self {
-            extensions: InstanceExtensions::load(entry, &instance, &available_extension_names),
+            extensions: Extensions::load(entry, &instance, &available_extension_names),
             instance,
         })
     }
@@ -150,7 +150,7 @@ impl Instance {
         unsafe {
             Ok(physicals
                 .iter()
-                .cloned()
+                .copied()
                 .map(|physical| PhysicalDevice::new(self, physical))
                 .collect())
         }

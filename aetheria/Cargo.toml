@@ -18,4 +18,4 @@ gpu-allocator = "0.22"
 glam = { version = "0.23", features = ["bytemuck"] }
 
 [build-dependencies]
-spirv-builder = "0.5"
+spirv-builder = "0.6"

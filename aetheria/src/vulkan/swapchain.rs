@@ -1,5 +1,5 @@
 use super::{Device, Image, Instance, Surface};
-use ash::{prelude::*, vk};
+use ash::vk;
 use std::ops::Deref;
 use winit::window::Window;
 
@@ -103,28 +103,13 @@ impl Swapchain {
         let images: Vec<Image> = images
             .iter()
             .copied()
-            .map(|image| Image::from_image(image, extent.width, extent.height))
+            .map(|image| Image::from_image(image, format.format, extent.width, extent.height))
             .collect();
 
         let image_views = images
             .iter()
             .copied()
-            .map(|image| {
-                let create_info = vk::ImageViewCreateInfo::builder()
-                    .image(*image)
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(format.format)
-                    .components(vk::ComponentMapping::default())
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    });
-
-                unsafe { device.create_image_view(&create_info, None).unwrap() }
-            })
+            .map(|image| image.create_view_without_context(device).unwrap())
             .collect();
 
         Ok(Self {

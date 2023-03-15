@@ -1,6 +1,6 @@
-use super::VulkanContext;
+use super::Context;
 use ash::vk;
-use gpu_allocator::{vulkan::*, MemoryLocation};
+use gpu_allocator::{vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator}, MemoryLocation};
 use std::{
     cell::RefCell,
     ops::{Deref, Drop},
@@ -17,7 +17,7 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new<T: Into<Vec<u8>>>(
-        ctx: &VulkanContext,
+        ctx: &Context,
         data: T,
         usage: vk::BufferUsageFlags,
     ) -> Result<Self, vk::Result> {
@@ -44,7 +44,7 @@ impl Buffer {
             .unwrap();
         unsafe {
             ctx.device
-                .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?
+                .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
         };
 
         let mut buffer = Self {

@@ -1,36 +1,35 @@
 use super::{
-    command::DrawOptions, graphics::Shaders, Buffer, CommandPool, Device, GraphicsPipeline,
-    Instance, Renderpass, Shader, Surface, Swapchain,
+    graphics::Shaders, Buffer, Device, Pipeline,
+    Instance, Renderpass, Shader, Surface, Swapchain, command
 };
 use ash::{vk, Entry};
-use bytemuck::cast_slice;
-use gpu_allocator::{vulkan::*, AllocatorDebugSettings};
+use gpu_allocator::{vulkan::{Allocator, AllocatorCreateDesc}, AllocatorDebugSettings};
 use std::{cell::RefCell, rc::Rc};
 
-pub struct VulkanContext {
+pub struct Context {
     pub instance: Instance,
     pub surface: Surface,
     pub device: Device,
     pub swapchain: Swapchain,
-    pub command_pool: CommandPool,
+    pub command_pool: command::Pool,
 
     image_available: vk::Semaphore,
 
     pub(crate) allocator: Rc<RefCell<Allocator>>,
 }
 
-impl VulkanContext {
-    pub fn new(window: &winit::window::Window) -> Result<Self, vk::Result> {
+impl Context {
+    pub fn new(window: &winit::window::Window) -> Self {
         let entry = Entry::linked();
         let instance = Instance::new(&entry).expect("Vulkan instance creation failed");
-        let surface = Surface::new(&instance, &window).expect("Vulkan surface creation failed");
+        let surface = Surface::new(&instance, window).expect("Vulkan surface creation failed");
         let device =
             unsafe { Device::new(&instance, &surface).expect("Vulkan device creation failed") };
 
-        let swapchain = Swapchain::new(&instance, &surface, &device, &window)
+        let swapchain = Swapchain::new(&instance, &surface, &device, window)
             .expect("Vulkan swapchain creation failed");
 
-        let command_pool = CommandPool::new(&device).unwrap();
+        let command_pool = command::Pool::new(&device).unwrap();
 
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
         let image_available = unsafe { device.create_semaphore(&semaphore_info, None).unwrap() };
@@ -44,7 +43,7 @@ impl VulkanContext {
         })
         .unwrap();
 
-        let mut ctx = Self {
+        let ctx = Self {
             instance,
             surface,
             device,
@@ -54,7 +53,7 @@ impl VulkanContext {
             allocator: Rc::new(RefCell::new(allocator)),
         };
 
-        Ok(ctx)
+        ctx
     }
 
     pub unsafe fn render<F>(&mut self, in_flight: vk::Fence, callback: F) -> Result<(), vk::Result>

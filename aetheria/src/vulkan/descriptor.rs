@@ -1,13 +1,13 @@
 use super::{Buffer, Device};
 use ash::vk;
-use std::{collections::HashMap, ops::Deref, rc::Rc, result::Result};
+use std::{collections::HashMap, ops::Deref, result::Result};
 
 #[derive(Clone)]
-pub struct DescriptorBinding {
+pub struct Binding {
     pub(crate) binding: vk::DescriptorSetLayoutBinding,
 }
 
-impl DescriptorBinding {
+impl Binding {
     fn new(index: usize, descriptor_type: vk::DescriptorType) -> Self {
         let binding = vk::DescriptorSetLayoutBinding::builder()
             .binding(index.try_into().unwrap())
@@ -20,7 +20,7 @@ impl DescriptorBinding {
     }
 }
 
-impl Deref for DescriptorBinding {
+impl Deref for Binding {
     type Target = vk::DescriptorSetLayoutBinding;
 
     fn deref(&self) -> &Self::Target {
@@ -28,13 +28,13 @@ impl Deref for DescriptorBinding {
     }
 }
 
-pub struct DescriptorSetLayoutBuilder<'a> {
+pub struct SetLayoutBuilder<'a> {
     device: &'a Device,
-    bindings: Vec<DescriptorBinding>,
+    bindings: Vec<Binding>,
 }
 
-impl<'a> DescriptorSetLayoutBuilder<'a> {
-    pub fn new(device: &'a Device) -> Self {
+impl<'a> SetLayoutBuilder<'a> {
+    pub const fn new(device: &'a Device) -> Self {
         Self {
             device,
             bindings: Vec::new(),
@@ -43,12 +43,12 @@ impl<'a> DescriptorSetLayoutBuilder<'a> {
 
     pub fn add(mut self, descriptor_type: vk::DescriptorType) -> Self {
         self.bindings
-            .push(DescriptorBinding::new(self.bindings.len(), descriptor_type));
+            .push(Binding::new(self.bindings.len(), descriptor_type));
 
         self
     }
 
-    pub fn build(self) -> Result<DescriptorSetLayout, vk::Result> {
+    pub fn build(self) -> Result<SetLayout, vk::Result> {
         let bindings: Vec<vk::DescriptorSetLayoutBinding> =
             self.bindings.iter().map(|binding| **binding).collect();
         let create_info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
@@ -58,7 +58,7 @@ impl<'a> DescriptorSetLayoutBuilder<'a> {
                 .create_descriptor_set_layout(&create_info, None)?
         };
 
-        Ok(DescriptorSetLayout {
+        Ok(SetLayout {
             layout,
             bindings: self.bindings,
         })
@@ -66,12 +66,12 @@ impl<'a> DescriptorSetLayoutBuilder<'a> {
 }
 
 #[derive(Clone)]
-pub struct DescriptorSetLayout {
+pub struct SetLayout {
     pub(crate) layout: vk::DescriptorSetLayout,
-    pub bindings: Vec<DescriptorBinding>,
+    pub bindings: Vec<Binding>,
 }
 
-impl Deref for DescriptorSetLayout {
+impl Deref for SetLayout {
     type Target = vk::DescriptorSetLayout;
 
     fn deref(&self) -> &Self::Target {
@@ -79,12 +79,12 @@ impl Deref for DescriptorSetLayout {
     }
 }
 
-pub struct DescriptorSet {
+pub struct Set {
     pub(crate) set: vk::DescriptorSet,
-    pub bindings: Vec<DescriptorBinding>,
+    pub bindings: Vec<Binding>,
 }
 
-impl DescriptorSet {
+impl Set {
     pub fn update_buffer(&self, device: &Device, binding: u32, buffer: &Buffer) {
         let buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(**buffer)
@@ -105,7 +105,7 @@ impl DescriptorSet {
     }
 }
 
-impl Deref for DescriptorSet {
+impl Deref for Set {
     type Target = vk::DescriptorSet;
 
     fn deref(&self) -> &Self::Target {
@@ -113,16 +113,16 @@ impl Deref for DescriptorSet {
     }
 }
 
-pub struct DescriptorPool {
+pub struct Pool {
     pub(crate) pool: vk::DescriptorPool,
-    layout: DescriptorSetLayout,
-    sets: Vec<DescriptorSet>,
+    layout: SetLayout,
+    sets: Vec<Set>,
 }
 
-impl DescriptorPool {
+impl Pool {
     pub fn new(
         device: &Device,
-        layout: DescriptorSetLayout,
+        layout: SetLayout,
         capacity: usize,
     ) -> Result<Self, vk::Result> {
         let descriptor_types: Vec<vk::DescriptorType> = layout
@@ -132,7 +132,7 @@ impl DescriptorPool {
             .collect();
 
         let mut descriptor_type_amounts: HashMap<vk::DescriptorType, usize> = HashMap::new();
-        descriptor_types.iter().for_each(|descriptor_type| {
+        for descriptor_type in &descriptor_types {
             match descriptor_type_amounts.get_mut(descriptor_type) {
                 Some(amount) => {
                     *amount += 1;
@@ -141,7 +141,7 @@ impl DescriptorPool {
                     descriptor_type_amounts.insert(*descriptor_type, 1);
                 }
             }
-        });
+        }
 
         let pool_sizes: Vec<vk::DescriptorPoolSize> = descriptor_type_amounts
             .into_iter()
@@ -166,7 +166,7 @@ impl DescriptorPool {
         })
     }
 
-    pub fn allocate(&mut self, device: &Device) -> Result<DescriptorSet, vk::Result> {
+    pub fn allocate(&mut self, device: &Device) -> Result<Set, vk::Result> {
         let set_layouts = &[*self.layout];
         let allocate_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(**self)
@@ -174,14 +174,14 @@ impl DescriptorPool {
 
         let set = unsafe { device.allocate_descriptor_sets(&allocate_info)?[0] };
 
-        Ok(DescriptorSet {
+        Ok(Set {
             set,
             bindings: self.layout.bindings.clone(),
         })
     }
 }
 
-impl Deref for DescriptorPool {
+impl Deref for Pool {
     type Target = vk::DescriptorPool;
 
     fn deref(&self) -> &Self::Target {

@@ -1,5 +1,5 @@
 use super::{Instance, Surface};
-use ash::{extensions::khr, prelude::*, vk};
+use ash::{extensions::khr, vk};
 use bytemuck::cast_slice;
 use std::{collections::HashSet, ffi::CStr, ops::Deref, result::Result};
 use tracing::info;
@@ -10,7 +10,7 @@ pub struct Queue {
 }
 
 impl Queue {
-    fn new(queue: vk::Queue, index: u32) -> Self {
+    const fn new(queue: vk::Queue, index: u32) -> Self {
         Self { queue, index }
     }
 }
@@ -28,11 +28,11 @@ pub struct Queues {
     pub present: Queue,
 }
 
-pub struct DeviceExtensions {
+pub struct Extensions {
     pub swapchain: Option<khr::Swapchain>,
 }
 
-impl DeviceExtensions {
+impl Extensions {
     fn load(instance: &ash::Instance, device: &ash::Device, available: &[&CStr]) -> Self {
         Self {
             swapchain: available
@@ -47,7 +47,7 @@ pub struct Device {
     pub(crate) device: ash::Device,
     pub physical: super::instance::PhysicalDevice,
     pub queues: Queues,
-    pub extensions: DeviceExtensions,
+    pub extensions: Extensions,
 }
 
 impl Device {
@@ -60,14 +60,14 @@ impl Device {
 
         let features = vk::PhysicalDeviceFeatures::default();
 
-        let (graphics_family_index, graphics_family) = physical
+        let (graphics_family_index, _graphics_family) = physical
             .queue_families
             .iter()
             .enumerate()
             .find(|(_, family)| family.queue_flags.intersects(vk::QueueFlags::GRAPHICS))
             .expect("No graphics queue family");
 
-        let (present_family_index, present_family) = physical
+        let (present_family_index, _present_family) = physical
             .queue_families
             .iter()
             .enumerate()
@@ -150,7 +150,7 @@ impl Device {
         let present = Queue::new(present, present_family_index.try_into().unwrap());
 
         Ok(Self {
-            extensions: DeviceExtensions::load(instance, &device, &available_extension_names),
+            extensions: Extensions::load(instance, &device, &available_extension_names),
             device,
             physical,
             queues: Queues { graphics, present },
@@ -167,5 +167,5 @@ impl Deref for Device {
 }
 
 fn get_wanted_extensions() -> Vec<&'static CStr> {
-    vec![ash::extensions::khr::Swapchain::name()]
+    vec![khr::Swapchain::name()]
 }

@@ -1,11 +1,10 @@
-use super::{DescriptorSetLayout, Device, Renderpass};
-use ash::{prelude::*, vk};
+use super::{SetLayout, Device, Renderpass};
+use ash::vk;
 use cstr::cstr;
 use std::{ops::Deref, result::Result};
 
 #[derive(Clone)]
 pub struct Shader {
-    code: Vec<u8>,
     module: vk::ShaderModule,
     pub stage: vk::ShaderStageFlags,
 }
@@ -13,7 +12,7 @@ pub struct Shader {
 impl Shader {
     pub fn new(
         device: &Device,
-        code: Vec<u8>,
+        code: &[u8],
         stage: vk::ShaderStageFlags,
     ) -> Result<Self, vk::Result> {
         let (_, aligned, _) = unsafe { code.align_to::<u32>() };
@@ -22,11 +21,7 @@ impl Shader {
 
         let module = unsafe { device.create_shader_module(&create_info, None)? };
 
-        Ok(Self {
-            code,
-            module,
-            stage,
-        })
+        Ok(Self { module, stage })
     }
 
     fn get_stage(&self) -> vk::PipelineShaderStageCreateInfoBuilder {
@@ -43,19 +38,19 @@ pub struct Shaders {
     pub fragment: Option<Shader>,
 }
 
-pub struct GraphicsPipeline {
+pub struct Pipeline {
     pub(crate) pipeline: vk::Pipeline,
     pub(crate) layout: vk::PipelineLayout,
     pub shaders: Shaders,
 }
 
-impl GraphicsPipeline {
+impl Pipeline {
     pub fn new(
         device: &Device,
         renderpass: &Renderpass,
         shaders: Shaders,
         extent: vk::Extent2D,
-        descriptor_layouts: &[DescriptorSetLayout],
+        descriptor_layouts: &[SetLayout],
     ) -> Result<Self, vk::Result> {
         let vertex_stage = shaders
             .vertex
@@ -94,6 +89,7 @@ impl GraphicsPipeline {
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false);
 
+        #[allow(clippy::cast_precision_loss)]
         let viewport = vk::Viewport::builder()
             .x(0.0)
             .y(0.0)
@@ -167,7 +163,7 @@ impl GraphicsPipeline {
     }
 }
 
-impl Deref for GraphicsPipeline {
+impl Deref for Pipeline {
     type Target = vk::Pipeline;
 
     fn deref(&self) -> &Self::Target {
