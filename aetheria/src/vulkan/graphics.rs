@@ -1,5 +1,6 @@
-use super::{SetLayout, Device, Renderpass};
+use super::{Device, Renderpass, SetLayout};
 use ash::vk;
+use bytemuck::cast_slice;
 use cstr::cstr;
 use std::{ops::Deref, result::Result};
 
@@ -15,9 +16,7 @@ impl Shader {
         code: &[u8],
         stage: vk::ShaderStageFlags,
     ) -> Result<Self, vk::Result> {
-        let (_, aligned, _) = unsafe { code.align_to::<u32>() };
-
-        let create_info = vk::ShaderModuleCreateInfo::builder().code(aligned);
+        let create_info = vk::ShaderModuleCreateInfo::builder().code(cast_slice(code));
 
         let module = unsafe { device.create_shader_module(&create_info, None)? };
 

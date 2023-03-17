@@ -4,6 +4,7 @@
 
 mod vulkan;
 mod renderer;
+mod macros;
 
 use ash::vk;
 use bytemuck::cast_slice;

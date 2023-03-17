@@ -1,6 +1,6 @@
 use crate::vulkan::{
-    Buffer, Pool, Set, SetLayout, SetLayoutBuilder,
-    DrawOptions, Pipeline, Renderpass, Shader, Shaders, Swapchain, Context,
+    Buffer, Context, DrawOptions, Pipeline, Pool, Renderpass, Set, SetLayout, SetLayoutBuilder,
+    Shader, Shaders, Swapchain,
 };
 use ash::vk;
 use glam::{Mat4, Vec3};
@@ -8,6 +8,8 @@ use std::{
     ops::Deref,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use crate::include_bytes_align_as;
 
 pub struct Transform {
     model: Mat4,
@@ -53,12 +55,12 @@ impl Renderer {
 
         let vertex_shader = Shader::new(
             &ctx.device,
-            include_bytes!("../../assets/shaders/compiled/vertex.spv"),
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/vertex.spv"),
             vk::ShaderStageFlags::VERTEX,
         )?;
         let fragment_shader = Shader::new(
             &ctx.device,
-            include_bytes!("../../assets/shaders/compiled/fragment.spv"),
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/fragment.spv"),
             vk::ShaderStageFlags::FRAGMENT,
         )?;
         let shaders = Shaders {
