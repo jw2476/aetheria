@@ -80,6 +80,7 @@ impl BufferBuilder<'_> {
     pub fn bind_descriptor_set(
         self,
         pipeline: &Pipeline,
+        binding: u32,
         descriptor_set: &Set,
     ) -> Self {
         let descriptor_sets = &[**descriptor_set];
@@ -88,7 +89,7 @@ impl BufferBuilder<'_> {
                 **self,
                 vk::PipelineBindPoint::GRAPHICS,
                 pipeline.layout,
-                0,
+                binding,
                 descriptor_sets,
                 &[],
             );

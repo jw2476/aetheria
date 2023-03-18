@@ -91,6 +91,47 @@ impl Image {
 
         unsafe { device.create_image_view(&create_info, None) }
     }
+
+    pub fn create_view(
+        &self,
+        ctx: &Context,
+    ) -> Result<vk::ImageView, vk::Result> {
+        let create_info = vk::ImageViewCreateInfo::builder()
+            .image(**self)
+            .view_type(vk::ImageViewType::TYPE_2D)
+            .format(self.format)
+            .components(vk::ComponentMapping::default())
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            });
+
+        unsafe { ctx.device.create_image_view(&create_info, None) }
+    }
+
+    pub fn create_sampler(&self, ctx: &Context, mag_filter: vk::Filter, min_filter: vk::Filter) -> Result<vk::Sampler, vk::Result> {
+        let create_info = vk::SamplerCreateInfo::builder()
+            .mag_filter(mag_filter)
+            .min_filter(min_filter)
+            .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+            .address_mode_u(vk::SamplerAddressMode::REPEAT)
+            .address_mode_v(vk::SamplerAddressMode::REPEAT)
+            .address_mode_w(vk::SamplerAddressMode::REPEAT)
+            .mip_lod_bias(0.0)
+            .anisotropy_enable(true)
+            .max_anisotropy(ctx.device.physical.properties.limits.max_sampler_anisotropy)
+            .compare_enable(false)
+            .compare_op(vk::CompareOp::ALWAYS)
+            .min_lod(0.0)
+            .max_lod(0.0)
+            .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+            .unnormalized_coordinates(false);
+
+        unsafe { ctx.device.create_sampler(&create_info, None) }
+    }
 }
 
 impl Deref for Image {

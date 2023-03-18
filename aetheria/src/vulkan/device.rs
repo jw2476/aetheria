@@ -58,7 +58,8 @@ impl Device {
             .cloned()
             .expect("No device supporting vulkan found");
 
-        let features = vk::PhysicalDeviceFeatures::default();
+        let mut features = vk::PhysicalDeviceFeatures::default();
+        features.sampler_anisotropy = physical.features.sampler_anisotropy;
 
         let (graphics_family_index, _graphics_family) = physical
             .queue_families

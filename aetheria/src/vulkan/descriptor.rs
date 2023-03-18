@@ -103,6 +103,25 @@ impl Set {
 
         unsafe { device.update_descriptor_sets(descriptor_writes, &[]) };
     }
+
+    pub fn update_image(&self, device: &Device, binding: u32, view: vk::ImageView, sampler: vk::Sampler, layout: vk::ImageLayout) {
+        let image_info = vk::DescriptorImageInfo::builder()
+            .sampler(sampler)
+            .image_view(view)
+            .image_layout(layout);
+
+        let image_infos = &[*image_info];
+        let write_info = vk::WriteDescriptorSet::builder()
+            .dst_set(**self)
+            .dst_binding(binding)
+            .dst_array_element(0)
+            .descriptor_type(self.bindings[binding as usize].descriptor_type)
+            .image_info(image_infos);
+
+        let descriptor_writes = &[*write_info];
+
+        unsafe { device.update_descriptor_sets(descriptor_writes, &[]) };
+    }
 }
 
 impl Deref for Set {

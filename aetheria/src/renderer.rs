@@ -30,7 +30,6 @@ impl From<Transform> for Vec<u8> {
 pub struct Renderer {
     ctx: Context,
 
-    transform_layout: SetLayout,
     renderpass: Renderpass,
     pipeline: Pipeline,
     shaders: Shaders,
@@ -39,17 +38,27 @@ pub struct Renderer {
     render_finished: vk::Semaphore,
     in_flight: vk::Fence,
 
+    transform_layout: SetLayout,
     transform_pool: Pool,
     transform_buffer: Option<Buffer>,
     transform_set: Set,
 
-    texture: Option<Image>
+    texture: Option<Image>,
+    texture_view: Option<vk::ImageView>,
+    texture_sampler: Option<vk::Sampler>,
+    texture_layout: SetLayout,
+    texture_pool: Pool,
+    texture_set: Set
 }
 
 impl Renderer {
     pub fn new(ctx: Context) -> Result<Self, vk::Result> {
         let transform_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
+            .build()?;
+
+        let texture_layout = SetLayoutBuilder::new(&ctx.device)
+            .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .build()?;
 
         let renderpass = Renderpass::new(&ctx.device, ctx.swapchain.format)?;
@@ -69,7 +78,7 @@ impl Renderer {
             fragment: Some(fragment_shader),
         };
 
-        let descriptor_layouts = &[transform_layout.clone()];
+        let descriptor_layouts = &[transform_layout.clone(), texture_layout.clone()];
         let pipeline = Pipeline::new(
             &ctx.device,
             &renderpass,
@@ -104,6 +113,9 @@ impl Renderer {
         let mut transform_pool = Pool::new(&ctx.device, transform_layout.clone(), 1)?;
         let transform_set = transform_pool.allocate(&ctx.device)?;
 
+        let mut texture_pool = Pool::new(&ctx.device, texture_layout.clone(), 1)?;
+        let texture_set = texture_pool.allocate(&ctx.device)?;
+
         let mut renderer = Self {
             ctx,
             transform_layout,
@@ -116,7 +128,12 @@ impl Renderer {
             transform_pool,
             transform_buffer: None,
             transform_set,
-            texture: None
+            texture: None,
+            texture_view: None,
+            texture_sampler: None,
+            texture_layout,
+            texture_pool,
+            texture_set
         };
 
         renderer.transform_buffer =
@@ -149,6 +166,9 @@ impl Renderer {
             })
             .submit()
             .unwrap();
+        renderer.texture_view = Some(renderer.texture.as_ref().unwrap().create_view(&renderer.ctx)?);
+        renderer.texture_sampler = Some(renderer.texture.as_ref().unwrap().create_sampler(&renderer.ctx, vk::Filter::LINEAR, vk::Filter::LINEAR)?);
+        renderer.texture_set.update_image(&renderer.ctx.device, 0, renderer.texture_view.unwrap(), renderer.texture_sampler.unwrap(), vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
 
         Ok(renderer)
     }
@@ -191,7 +211,7 @@ impl Renderer {
         self.renderpass = Renderpass::new(&self.ctx.device, self.ctx.swapchain.format)
             .expect("Swapchain recreation failed");
 
-        let descriptor_layouts = &[self.transform_layout.clone()];
+        let descriptor_layouts = &[self.transform_layout.clone(), self.texture_layout.clone()];
         self.pipeline = Pipeline::new(
             &self.ctx.device,
             &self.renderpass,
@@ -265,7 +285,8 @@ impl Renderer {
                                 ctx.swapchain.extent,
                             )
                             .bind_pipeline(&self.pipeline)
-                            .bind_descriptor_set(&self.pipeline, &self.transform_set)
+                            .bind_descriptor_set(&self.pipeline, 0, &self.transform_set)
+                            .bind_descriptor_set(&self.pipeline, 1, &self.texture_set)
                             .bind_index_buffer(index_buffer)
                             .bind_vertex_buffer(vertex_buffer)
                             .draw(
