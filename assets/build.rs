@@ -1,18 +1,30 @@
+#![feature(let_chains)]
+
 use std::{
-    fs::File,
+    fs::{self, File},
     io::{Read, Write},
     path::PathBuf,
 };
+use std::ffi::OsStr;
 
 fn main() {
-    println!("cargo:rerun-if-changed=shaders");
-
     let compiler = shaderc::Compiler::new().unwrap();
     let options = shaderc::CompileOptions::new().unwrap();
-    let shader_source_paths = vec![
-        PathBuf::from("shaders/vertex.glsl"),
-        PathBuf::from("shaders/fragment.glsl"),
-    ];
+    let shader_source_paths: Vec<PathBuf> = fs::read_dir("shaders")
+        .unwrap()
+        .filter_map(|entry| {
+            if let Ok(entry) = entry.as_ref() && let Some(extension) = entry.path().extension() && extension == "glsl" {
+                Some(entry.path())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for shader_source_path in &shader_source_paths {
+        println!("cargo:rerun-if-changed={}", shader_source_path.display());
+    }
+
     let shader_output_paths: Vec<PathBuf> = shader_source_paths
         .iter()
         .map(|path| {
