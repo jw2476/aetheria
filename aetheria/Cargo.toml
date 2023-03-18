@@ -16,6 +16,4 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 gpu-allocator = "0.22"
 glam = { version = "0.23", features = ["bytemuck"] }
-
-[build-dependencies]
-spirv-builder = "0.6"
+qoi = "0.4"

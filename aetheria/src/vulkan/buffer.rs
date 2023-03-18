@@ -27,8 +27,8 @@ impl Buffer {
             .size(bytes.len().try_into().unwrap())
             .usage(usage);
         let buffer = unsafe { ctx.device.create_buffer(&create_info, None)? };
-        let requirements = unsafe { ctx.device.get_buffer_memory_requirements(buffer) };
 
+        let requirements = unsafe { ctx.device.get_buffer_memory_requirements(buffer) };
         let allocation_info = AllocationCreateDesc {
             name: "buffer",
             requirements,
@@ -36,7 +36,6 @@ impl Buffer {
             linear: true,
             allocation_scheme: AllocationScheme::GpuAllocatorManaged,
         };
-
         let allocation = ctx
             .allocator
             .borrow_mut()

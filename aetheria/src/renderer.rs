@@ -1,15 +1,14 @@
-use crate::vulkan::{
-    Buffer, Context, DrawOptions, Pipeline, Pool, Renderpass, Set, SetLayout, SetLayoutBuilder,
-    Shader, Shaders, Swapchain,
-};
+use crate::vulkan::{Buffer, Context, DrawOptions, Image, Pipeline, Pool, Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain};
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::{
     ops::Deref,
     time::{SystemTime, UNIX_EPOCH},
 };
+use std::fs::File;
 
 use crate::include_bytes_align_as;
+use crate::vulkan::command::TransitionLayoutOptions;
 
 pub struct Transform {
     model: Mat4,
@@ -41,8 +40,10 @@ pub struct Renderer {
     in_flight: vk::Fence,
 
     transform_pool: Pool,
-    transform_buffer: Buffer,
+    transform_buffer: Option<Buffer>,
     transform_set: Set,
+
+    texture: Option<Image>
 }
 
 impl Renderer {
@@ -78,8 +79,8 @@ impl Renderer {
         )?;
 
         let framebuffers: Vec<vk::Framebuffer> = std::iter::zip(
-            ctx.swapchain.images.clone(),
-            ctx.swapchain.image_views.clone(),
+            &ctx.swapchain.images,
+            &ctx.swapchain.image_views,
         )
         .map(|(image, view)| {
             renderpass
@@ -101,12 +102,9 @@ impl Renderer {
         };
 
         let mut transform_pool = Pool::new(&ctx.device, transform_layout.clone(), 1)?;
-        let transform_buffer =
-            Buffer::new::<Vec<u8>>(&ctx, transform.into(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
         let transform_set = transform_pool.allocate(&ctx.device)?;
-        transform_set.update_buffer(&ctx.device, 0, &transform_buffer);
 
-        Ok(Self {
+        let mut renderer = Self {
             ctx,
             transform_layout,
             renderpass,
@@ -116,9 +114,43 @@ impl Renderer {
             render_finished,
             in_flight,
             transform_pool,
-            transform_buffer,
+            transform_buffer: None,
             transform_set,
-        })
+            texture: None
+        };
+
+        renderer.transform_buffer =
+            Some(Buffer::new::<Vec<u8>>(&renderer.ctx, transform.into(), vk::BufferUsageFlags::UNIFORM_BUFFER)?);
+        renderer.transform_set.update_buffer(&renderer.ctx.device, 0, renderer.transform_buffer.as_ref().unwrap());
+
+        let (header, data) = qoi::decode_to_vec(include_bytes!("../../assets/textures/compiled/texture.qoi")).unwrap();
+        let texture_buffer = Buffer::new::<Vec<u8>>(&renderer.ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
+        renderer.texture = Some(Image::new(&renderer.ctx, header.width, header.height, vk::Format::R8G8B8A8_SRGB, vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)?);
+        renderer.ctx.command_pool.allocate(&renderer.ctx.device)
+            .unwrap()
+            .begin()
+            .unwrap()
+            .transition_image_layout(renderer.texture.as_ref().unwrap(), &TransitionLayoutOptions {
+                old: vk::ImageLayout::UNDEFINED,
+                new: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                source_access: vk::AccessFlags::empty(),
+                destination_access: vk::AccessFlags::TRANSFER_WRITE,
+                source_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                destination_stage: vk::PipelineStageFlags::TRANSFER,
+            })
+            .copy_buffer_to_image(&texture_buffer, renderer.texture.as_ref().unwrap())
+            .transition_image_layout(renderer.texture.as_ref().unwrap(), &TransitionLayoutOptions {
+                old: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                new: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                source_access: vk::AccessFlags::TRANSFER_WRITE,
+                destination_access: vk::AccessFlags::SHADER_READ,
+                source_stage: vk::PipelineStageFlags::TRANSFER,
+                destination_stage: vk::PipelineStageFlags::FRAGMENT_SHADER,
+            })
+            .submit()
+            .unwrap();
+
+        Ok(renderer)
     }
 
     unsafe fn destroy_swapchain(&mut self) {
@@ -169,12 +201,12 @@ impl Renderer {
         )
         .expect("Swapchain recreation failed");
         self.framebuffers = std::iter::zip(
-            self.ctx.swapchain.images.clone(),
-            self.ctx.swapchain.image_views.clone(),
+            &self.ctx.swapchain.images,
+            &self.ctx.swapchain.image_views,
         )
         .map(|(image, view)| {
             self.renderpass
-                .create_framebuffer(&self.ctx.device, &image, view)
+                .create_framebuffer(&self.ctx.device, image, view)
                 .unwrap()
         })
         .collect();
@@ -214,7 +246,7 @@ impl Renderer {
 
         transform.projection.col_mut(1)[1] *= -1.0;
 
-        self.transform_buffer.upload::<Vec<u8>>(transform.into());
+        self.transform_buffer.as_mut().unwrap().upload::<Vec<u8>>(transform.into());
 
         unsafe {
             let presentation_result =
@@ -225,28 +257,26 @@ impl Renderer {
                             .command_pool
                             .allocate(&ctx.device)
                             .unwrap()
-                            .begin(&ctx.device)
+                            .begin()
                             .unwrap()
                             .begin_renderpass(
-                                &ctx.device,
                                 &self.renderpass,
                                 self.framebuffers[image_index as usize],
                                 ctx.swapchain.extent,
                             )
-                            .bind_pipeline(&ctx.device, &self.pipeline)
-                            .bind_descriptor_set(&ctx.device, &self.pipeline, &self.transform_set)
-                            .bind_index_buffer(&ctx.device, index_buffer)
-                            .bind_vertex_buffer(&ctx.device, vertex_buffer)
+                            .bind_pipeline(&self.pipeline)
+                            .bind_descriptor_set(&self.pipeline, &self.transform_set)
+                            .bind_index_buffer(index_buffer)
+                            .bind_vertex_buffer(vertex_buffer)
                             .draw(
-                                &ctx.device,
                                 DrawOptions {
                                     vertex_count: (index_buffer.size / 4).try_into().unwrap(),
                                     instance_count: 1,
                                     ..Default::default()
                                 },
                             )
-                            .end_renderpass(&ctx.device)
-                            .end(&ctx.device)
+                            .end_renderpass()
+                            .end()
                             .unwrap();
 
                         let wait_semaphores = &[image_available];

@@ -5,9 +5,12 @@ use std::{
     io::{Read, Write},
     path::PathBuf,
 };
-use std::ffi::OsStr;
+use image::io::Reader as ImageReader;
+
 
 fn main() {
+    // SHADERS
+
     let compiler = shaderc::Compiler::new().unwrap();
     let options = shaderc::CompileOptions::new().unwrap();
     let shader_source_paths: Vec<PathBuf> = fs::read_dir("shaders")
@@ -64,5 +67,41 @@ fn main() {
 
         let mut output_file = File::create(output).unwrap();
         output_file.write_all(spirv.as_binary_u8()).unwrap();
+    });
+
+    // TEXTURES
+
+    let texture_source_paths: Vec<PathBuf> = fs::read_dir("textures")
+        .unwrap()
+        .filter_map(|entry| {
+            if let Ok(entry) = entry.as_ref() && let Some(extension) = entry.path().extension() && (extension == "png" || extension == "jpg")  {
+                Some(entry.path())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for texture_source_path in &texture_source_paths {
+        println!("cargo:rerun-if-changed={}", texture_source_path.display());
+    }
+
+    let texture_output_paths: Vec<PathBuf> = texture_source_paths
+        .iter()
+        .map(|path| {
+            PathBuf::from(format!(
+                "textures/compiled/{}.qoi",
+                path.file_stem().unwrap().to_str().unwrap()
+            ))
+        })
+        .collect();
+
+    std::iter::zip(texture_source_paths, texture_output_paths).for_each(|(input, output)| {
+        let image = ImageReader::open(input).unwrap().decode().unwrap();
+        let bytes = image.to_rgba8().to_vec();
+        let encoded = qoi::encode_to_vec(bytes, image.width(), image.height()).unwrap();
+
+        let mut output_file = File::create(output).unwrap();
+        output_file.write_all(&encoded).unwrap();
     });
 }

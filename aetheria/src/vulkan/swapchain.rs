@@ -3,7 +3,7 @@ use ash::vk;
 use std::ops::Deref;
 use winit::window::Window;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Swapchain {
     pub(crate) swapchain: vk::SwapchainKHR,
     pub format: vk::Format,
@@ -108,7 +108,6 @@ impl Swapchain {
 
         let image_views = images
             .iter()
-            .copied()
             .map(|image| image.create_view_without_context(device).unwrap())
             .collect();
 

@@ -5,3 +5,5 @@ edition = "2021"
 
 [build-dependencies]
 shaderc = "0.8"
+image = "0.24"
+qoi = "0.4"
