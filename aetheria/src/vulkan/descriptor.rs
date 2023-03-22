@@ -1,6 +1,7 @@
 use super::{Buffer, Device};
 use ash::vk;
 use std::{collections::HashMap, ops::Deref, result::Result};
+use crate::vulkan::Texture;
 
 #[derive(Clone)]
 pub struct Binding {
@@ -104,10 +105,10 @@ impl Set {
         unsafe { device.update_descriptor_sets(descriptor_writes, &[]) };
     }
 
-    pub fn update_image(&self, device: &Device, binding: u32, view: vk::ImageView, sampler: vk::Sampler, layout: vk::ImageLayout) {
+    pub fn update_texture(&self, device: &Device, binding: u32, texture: &Texture, layout: vk::ImageLayout) {
         let image_info = vk::DescriptorImageInfo::builder()
-            .sampler(sampler)
-            .image_view(view)
+            .sampler(texture.sampler)
+            .image_view(texture.view)
             .image_layout(layout);
 
         let image_infos = &[*image_info];

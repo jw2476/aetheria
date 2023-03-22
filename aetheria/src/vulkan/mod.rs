@@ -17,7 +17,7 @@ pub mod device;
 pub use device::Device;
 
 pub mod image;
-pub use image::Image;
+pub use image::{Image, Texture};
 
 pub mod graphics;
 pub use graphics::{Pipeline, Shader, Shaders};

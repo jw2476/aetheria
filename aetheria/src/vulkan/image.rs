@@ -138,6 +138,16 @@ impl Image {
 
         unsafe { ctx.device.create_sampler(&create_info, None) }
     }
+
+    pub fn into_texture(self, ctx: &Context) -> Result<Texture, vk::Result> {
+        let view = self.create_view(ctx)?;
+        let sampler = self.create_sampler(ctx, vk::Filter::LINEAR, vk::Filter::LINEAR)?;
+        Ok(Texture {
+            image: self,
+            view,
+            sampler
+        })
+    }
 }
 
 impl Deref for Image {
@@ -158,5 +168,19 @@ impl Drop for Image {
             .borrow_mut()
             .free(self.allocation.take().expect("Vulkan buffer double free"))
             .expect("Failed to free vulkan buffer");
+    }
+}
+
+pub struct Texture {
+    pub image: Image,
+    pub view: vk::ImageView,
+    pub sampler: vk::Sampler
+}
+
+impl Deref for Texture {
+    type Target = Image;
+
+    fn deref(&self) -> &Self::Target {
+        &self.image
     }
 }

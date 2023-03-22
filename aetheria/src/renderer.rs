@@ -1,7 +1,4 @@
-use crate::vulkan::{
-    Buffer, Context, DrawOptions, Image, Pipeline, Pool, Renderpass, Set, SetLayout,
-    SetLayoutBuilder, Shader, Shaders, Swapchain,
-};
+use crate::vulkan::{Buffer, Context, DrawOptions, Image, Pipeline, Pool, Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain, Texture};
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::fs::File;
@@ -46,9 +43,7 @@ pub struct Renderer {
     transform_buffer: Option<Buffer>,
     transform_set: Set,
 
-    texture: Option<Image>,
-    texture_view: Option<vk::ImageView>,
-    texture_sampler: Option<vk::Sampler>,
+    texture: Option<Texture>,
     texture_layout: SetLayout,
     texture_pool: Pool,
     texture_set: Set,
@@ -142,8 +137,6 @@ impl Renderer {
             transform_buffer: None,
             transform_set,
             texture: None,
-            texture_view: None,
-            texture_sampler: None,
             texture_layout,
             texture_pool,
             texture_set,
@@ -162,27 +155,35 @@ impl Renderer {
             renderer.transform_buffer.as_ref().unwrap(),
         );
 
+        renderer.write_texture()?;
+
+        Ok(renderer)
+    }
+
+    fn write_texture(&mut self) -> Result<(), vk::Result> {
         let (header, data) =
             qoi::decode_to_vec(include_bytes!("../../assets/textures/compiled/texture.qoi"))
                 .unwrap();
         let texture_buffer =
-            Buffer::new::<Vec<u8>>(&renderer.ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
-        renderer.texture = Some(Image::new(
-            &renderer.ctx,
+            Buffer::new::<Vec<u8>>(&self.ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
+
+        self.texture = Some(Image::new(
+            &self.ctx,
             header.width,
             header.height,
             vk::Format::R8G8B8A8_SRGB,
             vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-        )?);
-        renderer
+        )?.into_texture(&self.ctx)?);
+
+        self
             .ctx
             .command_pool
-            .allocate(&renderer.ctx.device)
+            .allocate(&self.ctx.device)
             .unwrap()
             .begin()
             .unwrap()
             .transition_image_layout(
-                renderer.texture.as_ref().unwrap(),
+                self.texture.as_ref().unwrap(),
                 &TransitionLayoutOptions {
                     old: vk::ImageLayout::UNDEFINED,
                     new: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -192,9 +193,9 @@ impl Renderer {
                     destination_stage: vk::PipelineStageFlags::TRANSFER,
                 },
             )
-            .copy_buffer_to_image(&texture_buffer, renderer.texture.as_ref().unwrap())
+            .copy_buffer_to_image(&texture_buffer, self.texture.as_ref().unwrap())
             .transition_image_layout(
-                renderer.texture.as_ref().unwrap(),
+                self.texture.as_ref().unwrap(),
                 &TransitionLayoutOptions {
                     old: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     new: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -206,27 +207,15 @@ impl Renderer {
             )
             .submit()
             .unwrap();
-        renderer.texture_view = Some(
-            renderer
-                .texture
-                .as_ref()
-                .unwrap()
-                .create_view(&renderer.ctx)?,
-        );
-        renderer.texture_sampler = Some(renderer.texture.as_ref().unwrap().create_sampler(
-            &renderer.ctx,
-            vk::Filter::LINEAR,
-            vk::Filter::LINEAR,
-        )?);
-        renderer.texture_set.update_image(
-            &renderer.ctx.device,
+
+        self.texture_set.update_texture(
+            &self.ctx.device,
             0,
-            renderer.texture_view.unwrap(),
-            renderer.texture_sampler.unwrap(),
+            self.texture.as_ref().unwrap(),
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         );
 
-        Ok(renderer)
+        Ok(())
     }
 
     unsafe fn destroy_swapchain(&mut self) {
