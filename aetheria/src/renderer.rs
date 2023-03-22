@@ -1,11 +1,14 @@
-use crate::vulkan::{Buffer, Context, DrawOptions, Image, Pipeline, Pool, Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain};
+use crate::vulkan::{
+    Buffer, Context, DrawOptions, Image, Pipeline, Pool, Renderpass, Set, SetLayout,
+    SetLayoutBuilder, Shader, Shaders, Swapchain,
+};
 use ash::vk;
 use glam::{Mat4, Vec3};
+use std::fs::File;
 use std::{
     ops::Deref,
     time::{SystemTime, UNIX_EPOCH},
 };
-use std::fs::File;
 
 use crate::include_bytes_align_as;
 use crate::vulkan::command::TransitionLayoutOptions;
@@ -48,7 +51,10 @@ pub struct Renderer {
     texture_sampler: Option<vk::Sampler>,
     texture_layout: SetLayout,
     texture_pool: Pool,
-    texture_set: Set
+    texture_set: Set,
+
+    depth_image: Image,
+    depth_view: vk::ImageView,
 }
 
 impl Renderer {
@@ -61,7 +67,16 @@ impl Renderer {
             .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .build()?;
 
-        let renderpass = Renderpass::new(&ctx.device, ctx.swapchain.format)?;
+        let depth_image = Image::new(
+            &ctx,
+            ctx.swapchain.extent.width,
+            ctx.swapchain.extent.height,
+            vk::Format::D32_SFLOAT,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        )?;
+        let depth_view = depth_image.create_view(&ctx)?;
+
+        let renderpass = Renderpass::new(&ctx.device, ctx.swapchain.format, vk::Format::D32_SFLOAT)?;
 
         let vertex_shader = Shader::new(
             &ctx.device,
@@ -87,16 +102,14 @@ impl Renderer {
             descriptor_layouts,
         )?;
 
-        let framebuffers: Vec<vk::Framebuffer> = std::iter::zip(
-            &ctx.swapchain.images,
-            &ctx.swapchain.image_views,
-        )
-        .map(|(image, view)| {
-            renderpass
-                .create_framebuffer(&ctx.device, &image, view)
-                .unwrap()
-        })
-        .collect();
+        let framebuffers: Vec<vk::Framebuffer> =
+            std::iter::zip(&ctx.swapchain.images, &ctx.swapchain.image_views)
+                .map(|(image, &view)| {
+                    renderpass
+                        .create_framebuffer(&ctx.device, image.width, image.height, &[view, depth_view])
+                        .unwrap()
+                })
+                .collect();
 
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
         let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
@@ -133,42 +146,85 @@ impl Renderer {
             texture_sampler: None,
             texture_layout,
             texture_pool,
-            texture_set
+            texture_set,
+            depth_image,
+            depth_view,
         };
 
-        renderer.transform_buffer =
-            Some(Buffer::new::<Vec<u8>>(&renderer.ctx, transform.into(), vk::BufferUsageFlags::UNIFORM_BUFFER)?);
-        renderer.transform_set.update_buffer(&renderer.ctx.device, 0, renderer.transform_buffer.as_ref().unwrap());
+        renderer.transform_buffer = Some(Buffer::new::<Vec<u8>>(
+            &renderer.ctx,
+            transform.into(),
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+        )?);
+        renderer.transform_set.update_buffer(
+            &renderer.ctx.device,
+            0,
+            renderer.transform_buffer.as_ref().unwrap(),
+        );
 
-        let (header, data) = qoi::decode_to_vec(include_bytes!("../../assets/textures/compiled/texture.qoi")).unwrap();
-        let texture_buffer = Buffer::new::<Vec<u8>>(&renderer.ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
-        renderer.texture = Some(Image::new(&renderer.ctx, header.width, header.height, vk::Format::R8G8B8A8_SRGB, vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)?);
-        renderer.ctx.command_pool.allocate(&renderer.ctx.device)
+        let (header, data) =
+            qoi::decode_to_vec(include_bytes!("../../assets/textures/compiled/texture.qoi"))
+                .unwrap();
+        let texture_buffer =
+            Buffer::new::<Vec<u8>>(&renderer.ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
+        renderer.texture = Some(Image::new(
+            &renderer.ctx,
+            header.width,
+            header.height,
+            vk::Format::R8G8B8A8_SRGB,
+            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+        )?);
+        renderer
+            .ctx
+            .command_pool
+            .allocate(&renderer.ctx.device)
             .unwrap()
             .begin()
             .unwrap()
-            .transition_image_layout(renderer.texture.as_ref().unwrap(), &TransitionLayoutOptions {
-                old: vk::ImageLayout::UNDEFINED,
-                new: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                source_access: vk::AccessFlags::empty(),
-                destination_access: vk::AccessFlags::TRANSFER_WRITE,
-                source_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
-                destination_stage: vk::PipelineStageFlags::TRANSFER,
-            })
+            .transition_image_layout(
+                renderer.texture.as_ref().unwrap(),
+                &TransitionLayoutOptions {
+                    old: vk::ImageLayout::UNDEFINED,
+                    new: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    source_access: vk::AccessFlags::empty(),
+                    destination_access: vk::AccessFlags::TRANSFER_WRITE,
+                    source_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                    destination_stage: vk::PipelineStageFlags::TRANSFER,
+                },
+            )
             .copy_buffer_to_image(&texture_buffer, renderer.texture.as_ref().unwrap())
-            .transition_image_layout(renderer.texture.as_ref().unwrap(), &TransitionLayoutOptions {
-                old: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                new: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                source_access: vk::AccessFlags::TRANSFER_WRITE,
-                destination_access: vk::AccessFlags::SHADER_READ,
-                source_stage: vk::PipelineStageFlags::TRANSFER,
-                destination_stage: vk::PipelineStageFlags::FRAGMENT_SHADER,
-            })
+            .transition_image_layout(
+                renderer.texture.as_ref().unwrap(),
+                &TransitionLayoutOptions {
+                    old: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    new: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    source_access: vk::AccessFlags::TRANSFER_WRITE,
+                    destination_access: vk::AccessFlags::SHADER_READ,
+                    source_stage: vk::PipelineStageFlags::TRANSFER,
+                    destination_stage: vk::PipelineStageFlags::FRAGMENT_SHADER,
+                },
+            )
             .submit()
             .unwrap();
-        renderer.texture_view = Some(renderer.texture.as_ref().unwrap().create_view(&renderer.ctx)?);
-        renderer.texture_sampler = Some(renderer.texture.as_ref().unwrap().create_sampler(&renderer.ctx, vk::Filter::LINEAR, vk::Filter::LINEAR)?);
-        renderer.texture_set.update_image(&renderer.ctx.device, 0, renderer.texture_view.unwrap(), renderer.texture_sampler.unwrap(), vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+        renderer.texture_view = Some(
+            renderer
+                .texture
+                .as_ref()
+                .unwrap()
+                .create_view(&renderer.ctx)?,
+        );
+        renderer.texture_sampler = Some(renderer.texture.as_ref().unwrap().create_sampler(
+            &renderer.ctx,
+            vk::Filter::LINEAR,
+            vk::Filter::LINEAR,
+        )?);
+        renderer.texture_set.update_image(
+            &renderer.ctx.device,
+            0,
+            renderer.texture_view.unwrap(),
+            renderer.texture_sampler.unwrap(),
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        );
 
         Ok(renderer)
     }
@@ -198,7 +254,7 @@ impl Renderer {
             .destroy_swapchain(*self.ctx.swapchain, None);
     }
 
-    pub fn recreate_swapchain(&mut self, window: &winit::window::Window) {
+    pub fn recreate_swapchain(&mut self, window: &winit::window::Window) -> Result<(), vk::Result> {
         unsafe { self.destroy_swapchain() };
 
         self.ctx.swapchain = Swapchain::new(
@@ -206,10 +262,18 @@ impl Renderer {
             &self.ctx.surface,
             &self.ctx.device,
             window,
-        )
-        .expect("Swapchain recreation failed");
-        self.renderpass = Renderpass::new(&self.ctx.device, self.ctx.swapchain.format)
-            .expect("Swapchain recreation failed");
+        )?;
+
+        self.depth_image = Image::new(
+            &self.ctx,
+            self.ctx.swapchain.extent.width,
+            self.ctx.swapchain.extent.height,
+            vk::Format::D32_SFLOAT,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        )?;
+        self.depth_view = self.depth_image.create_view(&self.ctx)?;
+
+        self.renderpass = Renderpass::new(&self.ctx.device, self.ctx.swapchain.format, vk::Format::D32_SFLOAT)?;
 
         let descriptor_layouts = &[self.transform_layout.clone(), self.texture_layout.clone()];
         self.pipeline = Pipeline::new(
@@ -218,18 +282,18 @@ impl Renderer {
             self.shaders.clone(),
             self.ctx.swapchain.extent,
             descriptor_layouts,
-        )
-        .expect("Swapchain recreation failed");
-        self.framebuffers = std::iter::zip(
-            &self.ctx.swapchain.images,
-            &self.ctx.swapchain.image_views,
-        )
-        .map(|(image, view)| {
-            self.renderpass
-                .create_framebuffer(&self.ctx.device, image, view)
-                .unwrap()
-        })
-        .collect();
+        )?;
+
+        self.framebuffers =
+            std::iter::zip(&self.ctx.swapchain.images, &self.ctx.swapchain.image_views)
+                .map(|(image, &view)| {
+                    self.renderpass
+                        .create_framebuffer(&self.ctx.device, image.width, image.height, &[view, self.depth_view])
+                        .unwrap()
+                })
+                .collect();
+
+        Ok(())
     }
 
     pub fn render(
@@ -266,7 +330,10 @@ impl Renderer {
 
         transform.projection.col_mut(1)[1] *= -1.0;
 
-        self.transform_buffer.as_mut().unwrap().upload::<Vec<u8>>(transform.into());
+        self.transform_buffer
+            .as_mut()
+            .unwrap()
+            .upload::<Vec<u8>>(transform.into());
 
         unsafe {
             let presentation_result =
@@ -289,13 +356,11 @@ impl Renderer {
                             .bind_descriptor_set(&self.pipeline, 1, &self.texture_set)
                             .bind_index_buffer(index_buffer)
                             .bind_vertex_buffer(vertex_buffer)
-                            .draw(
-                                DrawOptions {
-                                    vertex_count: (index_buffer.size / 4).try_into().unwrap(),
-                                    instance_count: 1,
-                                    ..Default::default()
-                                },
-                            )
+                            .draw(DrawOptions {
+                                vertex_count: (index_buffer.size / 4).try_into().unwrap(),
+                                instance_count: 1,
+                                ..Default::default()
+                            })
                             .end_renderpass()
                             .end()
                             .unwrap();
@@ -321,7 +386,7 @@ impl Renderer {
                     });
 
             match presentation_result {
-                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.recreate_swapchain(window),
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.recreate_swapchain(window).expect("Swapchain recreation failed"),
                 Err(e) => panic!("{}", e),
                 Ok(_) => (),
             }

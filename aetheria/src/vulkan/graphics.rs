@@ -44,6 +44,37 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
+    fn get_vertex_bindings<'a>() -> (Vec<vk::VertexInputBindingDescription>, Vec<vk::VertexInputAttributeDescription>) {
+        let bindings = vec![vk::VertexInputBindingDescription::builder()
+            .binding(0)
+            .stride(8 * 4)
+            .input_rate(vk::VertexInputRate::VERTEX)
+            .build()];
+
+        let attributes = vec![
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(0)
+                .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(1)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(3 * 4)
+                .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(2)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(6 * 4)
+                .build(),
+        ];
+
+        (bindings, attributes)
+    }
+
     pub fn new(
         device: &Device,
         renderpass: &Renderpass,
@@ -54,39 +85,15 @@ impl Pipeline {
         let vertex_stage = shaders
             .vertex
             .as_ref()
-            .expect("All graphics pipleines need a vertex shader")
+            .expect("All graphics pipelines need a vertex shader")
             .get_stage();
         let fragment_stage = shaders
             .fragment
             .as_ref()
-            .expect("All graphics pipleine need a fragment shader")
+            .expect("All graphics pipelines need a fragment shader")
             .get_stage();
 
-        let bindings = [vk::VertexInputBindingDescription::builder()
-            .binding(0)
-            .stride(7 * 4)
-            .input_rate(vk::VertexInputRate::VERTEX)
-            .build()];
-        let attributes = [
-            vk::VertexInputAttributeDescription::builder()
-                .binding(0)
-                .location(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(0)
-                .build(),
-            vk::VertexInputAttributeDescription::builder()
-                .binding(0)
-                .location(1)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(2 * 4)
-                .build(),
-            vk::VertexInputAttributeDescription::builder()
-                .binding(0)
-                .location(2)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(5 * 4)
-                .build(),
-        ];
+        let (bindings, attributes) = Self::get_vertex_bindings();
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::builder()
             .vertex_binding_descriptions(&bindings)
             .vertex_attribute_descriptions(&attributes);
@@ -124,6 +131,13 @@ impl Pipeline {
             .sample_shading_enable(false)
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
+        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::builder()
+            .depth_test_enable(true)
+            .depth_write_enable(true)
+            .depth_compare_op(vk::CompareOp::LESS)
+            .depth_bounds_test_enable(false)
+            .stencil_test_enable(false);
+
         let attachment = vk::PipelineColorBlendAttachmentState::builder()
             .color_write_mask(vk::ColorComponentFlags::RGBA)
             .blend_enable(false)
@@ -149,6 +163,7 @@ impl Pipeline {
             .viewport_state(&viewport_state)
             .rasterization_state(&rasterization_state)
             .multisample_state(&multisampling)
+            .depth_stencil_state(&depth_stencil)
             .color_blend_state(&color_blending)
             .layout(layout)
             .render_pass(**renderpass)

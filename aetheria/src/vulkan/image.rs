@@ -96,13 +96,19 @@ impl Image {
         &self,
         ctx: &Context,
     ) -> Result<vk::ImageView, vk::Result> {
+        let aspect_mask = if self.format == vk::Format::D32_SFLOAT {
+            vk::ImageAspectFlags::DEPTH
+        } else {
+            vk::ImageAspectFlags::COLOR
+        };
+
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(**self)
             .view_type(vk::ImageViewType::TYPE_2D)
             .format(self.format)
             .components(vk::ComponentMapping::default())
             .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
+                aspect_mask,
                 base_mip_level: 0,
                 level_count: 1,
                 base_array_layer: 0,

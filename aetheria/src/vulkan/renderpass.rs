@@ -7,7 +7,11 @@ pub struct Renderpass {
 }
 
 impl Renderpass {
-    pub fn new(device: &Device, color_format: vk::Format) -> Result<Self, vk::Result> {
+    pub fn new(
+        device: &Device,
+        color_format: vk::Format,
+        depth_format: vk::Format,
+    ) -> Result<Self, vk::Result> {
         let color_attachment = vk::AttachmentDescription::builder()
             .format(color_format)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -18,16 +22,31 @@ impl Renderpass {
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .final_layout(vk::ImageLayout::PRESENT_SRC_KHR);
 
+        let depth_attachment = vk::AttachmentDescription::builder()
+            .format(vk::Format::D32_SFLOAT)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
         let color_attachment_ref = vk::AttachmentReference::builder()
             .attachment(0)
             .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
 
+        let depth_attachment_ref = vk::AttachmentReference::builder()
+            .attachment(1)
+            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
         let color_attachments = &[*color_attachment_ref];
         let subpass = vk::SubpassDescription::builder()
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-            .color_attachments(color_attachments);
+            .color_attachments(color_attachments)
+            .depth_stencil_attachment(&depth_attachment_ref);
 
-        let attachments = &[*color_attachment];
+        let attachments = &[*color_attachment, *depth_attachment];
         let subpasses = &[*subpass];
         let create_info = vk::RenderPassCreateInfo::builder()
             .attachments(attachments)
@@ -41,15 +60,15 @@ impl Renderpass {
     pub fn create_framebuffer(
         &self,
         device: &Device,
-        image: &Image,
-        view: &vk::ImageView,
+        width: u32,
+        height: u32,
+        attachments: &[vk::ImageView]
     ) -> Result<vk::Framebuffer, vk::Result> {
-        let attachments = &[*view];
         let create_info = vk::FramebufferCreateInfo::builder()
             .render_pass(**self)
             .attachments(attachments)
-            .width(image.width)
-            .height(image.height)
+            .width(width)
+            .height(height)
             .layers(1);
 
         unsafe { device.create_framebuffer(&create_info, None) }

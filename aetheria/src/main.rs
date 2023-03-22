@@ -36,18 +36,33 @@ fn main() {
     let mut renderer = Renderer::new(ctx).unwrap();
 
     let positions = [
-        Vec2::new(-0.5, -0.5),
-        Vec2::new(0.5, -0.5),
-        Vec2::new(0.5, 0.5),
-        Vec2::new(-0.5, 0.5),
+        Vec3::new(-0.5, -0.5, 0.0),
+        Vec3::new(0.5, -0.5, 0.0),
+        Vec3::new(0.5, 0.5, 0.0),
+        Vec3::new(-0.5, 0.5, 0.0),
+
+        Vec3::new(-0.5, -0.5, -0.5),
+        Vec3::new(0.5, -0.5, -0.5),
+        Vec3::new(0.5, 0.5, -0.5),
+        Vec3::new(-0.5, 0.5, -0.5),
     ];
     let colors = [
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec3::new(1.0, 1.0, 1.0),
+
         Vec3::new(1.0, 0.0, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
         Vec3::new(0.0, 0.0, 1.0),
         Vec3::new(1.0, 1.0, 1.0)
     ];
     let uvs = [
+        Vec2::new(1.0, 0.0),
+        Vec2::new(0.0, 0.0),
+        Vec2::new(0.0, 1.0),
+        Vec2::new(1.0, 1.0),
+
         Vec2::new(1.0, 0.0),
         Vec2::new(0.0, 0.0),
         Vec2::new(0.0, 1.0),
@@ -67,7 +82,7 @@ fn main() {
     let vertex_buffer =
         Buffer::new(&renderer, vertices, vk::BufferUsageFlags::VERTEX_BUFFER).unwrap();
 
-    let indices = Indices(vec![0, 1, 2, 2, 3, 0]);
+    let indices = Indices(vec![0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4]);
     let index_buffer = Buffer::new(&renderer, indices, vk::BufferUsageFlags::INDEX_BUFFER).expect("Index buffer creation failed");
 
     event_loop.run(move |event, _, control_flow| {
