@@ -1,10 +1,6 @@
-use super::{Set, Device, Pipeline, Renderpass};
+use super::{Device, Image, Pipeline, Renderpass, Set};
 use ash::vk;
-use std::{
-    ops::Deref,
-    result::Result,
-};
-use crate::vulkan::Image;
+use std::{ops::Deref, result::Result};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DrawOptions {
@@ -22,7 +18,7 @@ pub struct Buffer {
 #[derive(Clone)]
 pub struct BufferBuilder<'a> {
     buffer: Buffer,
-    device: &'a Device
+    device: &'a Device,
 }
 
 #[derive(Clone, Debug)]
@@ -32,9 +28,8 @@ pub struct TransitionLayoutOptions {
     pub source_access: vk::AccessFlags,
     pub destination_access: vk::AccessFlags,
     pub source_stage: vk::PipelineStageFlags,
-    pub destination_stage: vk::PipelineStageFlags
+    pub destination_stage: vk::PipelineStageFlags,
 }
-
 
 impl BufferBuilder<'_> {
     pub fn begin(self) -> Result<Self, vk::Result> {
@@ -62,8 +57,8 @@ impl BufferBuilder<'_> {
         let depth_clear_value = vk::ClearValue {
             depth_stencil: vk::ClearDepthStencilValue {
                 depth: 1.0,
-                stencil: 0
-            }
+                stencil: 0,
+            },
         };
 
         let clear_values = &[color_clear_value, depth_clear_value];
@@ -73,13 +68,19 @@ impl BufferBuilder<'_> {
             .render_area(*render_area)
             .clear_values(clear_values);
 
-        unsafe { self.device.cmd_begin_render_pass(**self, &begin_info, vk::SubpassContents::INLINE) };
+        unsafe {
+            self.device
+                .cmd_begin_render_pass(**self, &begin_info, vk::SubpassContents::INLINE)
+        };
 
         self
     }
 
     pub fn bind_pipeline(self, pipeline: &Pipeline) -> Self {
-        unsafe { self.device.cmd_bind_pipeline(**self, vk::PipelineBindPoint::GRAPHICS, **pipeline) };
+        unsafe {
+            self.device
+                .cmd_bind_pipeline(**self, vk::PipelineBindPoint::GRAPHICS, **pipeline)
+        };
 
         self
     }
@@ -106,13 +107,19 @@ impl BufferBuilder<'_> {
     }
 
     pub fn bind_index_buffer(self, index_buffer: &super::Buffer) -> Self {
-        unsafe { self.device.cmd_bind_index_buffer(**self, **index_buffer, 0, vk::IndexType::UINT32) };
+        unsafe {
+            self.device
+                .cmd_bind_index_buffer(**self, **index_buffer, 0, vk::IndexType::UINT32)
+        };
 
         self
     }
 
     pub fn bind_vertex_buffer(self, vertex_buffer: &super::Buffer) -> Self {
-        unsafe { self.device.cmd_bind_vertex_buffers(**self, 0, &[**vertex_buffer], &[0]) };
+        unsafe {
+            self.device
+                .cmd_bind_vertex_buffers(**self, 0, &[**vertex_buffer], &[0])
+        };
 
         self
     }
@@ -147,13 +154,25 @@ impl BufferBuilder<'_> {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 mip_level: 0,
                 base_array_layer: 0,
-                layer_count: 1
+                layer_count: 1,
             })
             .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-            .image_extent(vk::Extent3D { width: image.width, height: image.height, depth: 1 });
+            .image_extent(vk::Extent3D {
+                width: image.width,
+                height: image.height,
+                depth: 1,
+            });
 
         let regions = &[*region];
-        unsafe { self.device.cmd_copy_buffer_to_image(**self, **buffer, **image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, regions) };
+        unsafe {
+            self.device.cmd_copy_buffer_to_image(
+                **self,
+                **buffer,
+                **image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                regions,
+            )
+        };
 
         self
     }
@@ -172,11 +191,21 @@ impl BufferBuilder<'_> {
                 base_mip_level: 0,
                 level_count: 1,
                 base_array_layer: 0,
-                layer_count: 1
+                layer_count: 1,
             });
 
         let image_memory_barriers = &[*barrier];
-        unsafe { self.device.cmd_pipeline_barrier(**self, options.source_stage, options.destination_stage, vk::DependencyFlags::empty(), &[], &[], image_memory_barriers) };
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                **self,
+                options.source_stage,
+                options.destination_stage,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                image_memory_barriers,
+            )
+        };
 
         self
     }
@@ -191,11 +220,13 @@ impl BufferBuilder<'_> {
         unsafe { self.device.end_command_buffer(**self)? };
 
         let command_buffers = &[**self];
-        let submit_info = vk::SubmitInfo::builder()
-            .command_buffers(command_buffers);
+        let submit_info = vk::SubmitInfo::builder().command_buffers(command_buffers);
 
         let submits = &[*submit_info];
-        unsafe { self.device.queue_submit(*self.device.queues.graphics, submits, vk::Fence::null())? };
+        unsafe {
+            self.device
+                .queue_submit(*self.device.queues.graphics, submits, vk::Fence::null())?
+        };
         unsafe { self.device.queue_wait_idle(*self.device.queues.graphics)? };
 
         Ok(())

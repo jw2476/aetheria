@@ -62,7 +62,7 @@ impl Renderpass {
         device: &Device,
         width: u32,
         height: u32,
-        attachments: &[vk::ImageView]
+        attachments: &[vk::ImageView],
     ) -> Result<vk::Framebuffer, vk::Result> {
         let create_info = vk::FramebufferCreateInfo::builder()
             .render_pass(**self)

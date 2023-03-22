@@ -5,7 +5,7 @@ use std::{collections::HashSet, ffi::CStr, ops::Deref, result::Result};
 use tracing::info;
 
 pub struct Queue {
-    pub(crate) queue: vk::Queue,
+    pub queue: vk::Queue,
     pub index: u32,
 }
 

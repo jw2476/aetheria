@@ -1,7 +1,6 @@
-use super::{Buffer, Device};
+use super::{Buffer, Device, Texture};
 use ash::vk;
 use std::{collections::HashMap, ops::Deref, result::Result};
-use crate::vulkan::Texture;
 
 #[derive(Clone)]
 pub struct Binding {
@@ -105,7 +104,13 @@ impl Set {
         unsafe { device.update_descriptor_sets(descriptor_writes, &[]) };
     }
 
-    pub fn update_texture(&self, device: &Device, binding: u32, texture: &Texture, layout: vk::ImageLayout) {
+    pub fn update_texture(
+        &self,
+        device: &Device,
+        binding: u32,
+        texture: &Texture,
+        layout: vk::ImageLayout,
+    ) {
         let image_info = vk::DescriptorImageInfo::builder()
             .sampler(texture.sampler)
             .image_view(texture.view)
@@ -140,11 +145,7 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub fn new(
-        device: &Device,
-        layout: SetLayout,
-        capacity: usize,
-    ) -> Result<Self, vk::Result> {
+    pub fn new(device: &Device, layout: SetLayout, capacity: usize) -> Result<Self, vk::Result> {
         let descriptor_types: Vec<vk::DescriptorType> = layout
             .bindings
             .iter()

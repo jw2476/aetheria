@@ -39,12 +39,15 @@ pub struct Shaders {
 
 pub struct Pipeline {
     pub(crate) pipeline: vk::Pipeline,
-    pub(crate) layout: vk::PipelineLayout,
+    pub layout: vk::PipelineLayout,
     pub shaders: Shaders,
 }
 
 impl Pipeline {
-    fn get_vertex_bindings<'a>() -> (Vec<vk::VertexInputBindingDescription>, Vec<vk::VertexInputAttributeDescription>) {
+    fn get_vertex_bindings<'a>() -> (
+        Vec<vk::VertexInputBindingDescription>,
+        Vec<vk::VertexInputAttributeDescription>,
+    ) {
         let bindings = vec![vk::VertexInputBindingDescription::builder()
             .binding(0)
             .stride(8 * 4)

@@ -2,6 +2,7 @@
 members = [
   "assets",
   "aetheria",
+  "vulkan"
 ]
 
 [profile.release]

@@ -2,7 +2,6 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-mod vulkan;
 mod renderer;
 mod macros;
 

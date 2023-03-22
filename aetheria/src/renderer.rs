@@ -1,4 +1,3 @@
-use crate::vulkan::{Buffer, Context, DrawOptions, Image, Pipeline, Pool, Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain, Texture};
 use ash::vk;
 use glam::{Mat4, Vec3};
 use std::fs::File;
@@ -6,9 +5,12 @@ use std::{
     ops::Deref,
     time::{SystemTime, UNIX_EPOCH},
 };
+use vulkan::{
+    command::TransitionLayoutOptions, Buffer, Context, DrawOptions, Image, Pipeline, Pool,
+    Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain, Texture,
+};
 
 use crate::include_bytes_align_as;
-use crate::vulkan::command::TransitionLayoutOptions;
 
 pub struct Transform {
     model: Mat4,
@@ -71,7 +73,8 @@ impl Renderer {
         )?;
         let depth_view = depth_image.create_view(&ctx)?;
 
-        let renderpass = Renderpass::new(&ctx.device, ctx.swapchain.format, vk::Format::D32_SFLOAT)?;
+        let renderpass =
+            Renderpass::new(&ctx.device, ctx.swapchain.format, vk::Format::D32_SFLOAT)?;
 
         let vertex_shader = Shader::new(
             &ctx.device,
@@ -101,7 +104,12 @@ impl Renderer {
             std::iter::zip(&ctx.swapchain.images, &ctx.swapchain.image_views)
                 .map(|(image, &view)| {
                     renderpass
-                        .create_framebuffer(&ctx.device, image.width, image.height, &[view, depth_view])
+                        .create_framebuffer(
+                            &ctx.device,
+                            image.width,
+                            image.height,
+                            &[view, depth_view],
+                        )
                         .unwrap()
                 })
                 .collect();
@@ -167,16 +175,18 @@ impl Renderer {
         let texture_buffer =
             Buffer::new::<Vec<u8>>(&self.ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
 
-        self.texture = Some(Image::new(
-            &self.ctx,
-            header.width,
-            header.height,
-            vk::Format::R8G8B8A8_SRGB,
-            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-        )?.into_texture(&self.ctx)?);
+        self.texture = Some(
+            Image::new(
+                &self.ctx,
+                header.width,
+                header.height,
+                vk::Format::R8G8B8A8_SRGB,
+                vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+            )?
+            .into_texture(&self.ctx)?,
+        );
 
-        self
-            .ctx
+        self.ctx
             .command_pool
             .allocate(&self.ctx.device)
             .unwrap()
@@ -262,7 +272,11 @@ impl Renderer {
         )?;
         self.depth_view = self.depth_image.create_view(&self.ctx)?;
 
-        self.renderpass = Renderpass::new(&self.ctx.device, self.ctx.swapchain.format, vk::Format::D32_SFLOAT)?;
+        self.renderpass = Renderpass::new(
+            &self.ctx.device,
+            self.ctx.swapchain.format,
+            vk::Format::D32_SFLOAT,
+        )?;
 
         let descriptor_layouts = &[self.transform_layout.clone(), self.texture_layout.clone()];
         self.pipeline = Pipeline::new(
@@ -277,7 +291,12 @@ impl Renderer {
             std::iter::zip(&self.ctx.swapchain.images, &self.ctx.swapchain.image_views)
                 .map(|(image, &view)| {
                     self.renderpass
-                        .create_framebuffer(&self.ctx.device, image.width, image.height, &[view, self.depth_view])
+                        .create_framebuffer(
+                            &self.ctx.device,
+                            image.width,
+                            image.height,
+                            &[view, self.depth_view],
+                        )
                         .unwrap()
                 })
                 .collect();
@@ -375,7 +394,9 @@ impl Renderer {
                     });
 
             match presentation_result {
-                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.recreate_swapchain(window).expect("Swapchain recreation failed"),
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self
+                    .recreate_swapchain(window)
+                    .expect("Swapchain recreation failed"),
                 Err(e) => panic!("{}", e),
                 Ok(_) => (),
             }
