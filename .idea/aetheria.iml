@@ -4,6 +4,9 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/aetheria/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/assets/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ecs/macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ecs/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vulkan/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

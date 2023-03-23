@@ -1,6 +1,9 @@
 use ash::vk;
+use ecs::{Component, Entity, Event, System};
+use ecs_macros::Component;
 use glam::{Mat4, Vec3};
 use std::fs::File;
+use std::rc::Rc;
 use std::{
     ops::Deref,
     time::{SystemTime, UNIX_EPOCH},
@@ -9,6 +12,7 @@ use vulkan::{
     command::TransitionLayoutOptions, Buffer, Context, DrawOptions, Image, Pipeline, Pool,
     Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain, Texture,
 };
+use winit::window::Window;
 
 use crate::include_bytes_align_as;
 
@@ -29,8 +33,15 @@ impl From<Transform> for Vec<u8> {
     }
 }
 
+#[derive(Component)]
+pub struct Mesh {
+    pub vertex_buffer: Buffer,
+    pub index_buffer: Buffer,
+}
+
 pub struct Renderer {
     ctx: Context,
+    window: Rc<Window>,
 
     renderpass: Renderpass,
     pipeline: Pipeline,
@@ -55,7 +66,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(ctx: Context) -> Result<Self, vk::Result> {
+    pub fn new(ctx: Context, window: Rc<Window>) -> Result<Self, vk::Result> {
         let transform_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
@@ -134,6 +145,7 @@ impl Renderer {
 
         let mut renderer = Self {
             ctx,
+            window,
             transform_layout,
             renderpass,
             pipeline,
@@ -253,14 +265,14 @@ impl Renderer {
             .destroy_swapchain(*self.ctx.swapchain, None);
     }
 
-    pub fn recreate_swapchain(&mut self, window: &winit::window::Window) -> Result<(), vk::Result> {
+    pub fn recreate_swapchain(&mut self) -> Result<(), vk::Result> {
         unsafe { self.destroy_swapchain() };
 
         self.ctx.swapchain = Swapchain::new(
             &self.ctx.instance,
             &self.ctx.surface,
             &self.ctx.device,
-            window,
+            &self.window,
         )?;
 
         self.depth_image = Image::new(
@@ -304,12 +316,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn render(
-        &mut self,
-        window: &winit::window::Window,
-        vertex_buffer: &Buffer,
-        index_buffer: &Buffer,
-    ) {
+    pub fn render(&mut self, vertex_buffer: &Buffer, index_buffer: &Buffer) {
         let rotation = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -395,7 +402,7 @@ impl Renderer {
 
             match presentation_result {
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self
-                    .recreate_swapchain(window)
+                    .recreate_swapchain()
                     .expect("Swapchain recreation failed"),
                 Err(e) => panic!("{}", e),
                 Ok(_) => (),
@@ -409,5 +416,27 @@ impl Deref for Renderer {
 
     fn deref(&self) -> &Self::Target {
         &self.ctx
+    }
+}
+
+impl System for Renderer {
+    fn get_requirements(&self) -> u128 {
+        Mesh::id()
+    }
+
+    fn run(&mut self, entity: &mut Entity) {
+        let mesh: &Mesh = entity.get().unwrap();
+
+        self.render(&mesh.vertex_buffer, &mesh.index_buffer);
+    }
+
+    fn handle(&mut self, event: Event) {
+        println!("Handling event");
+        match event {
+            Event::WindowResized => self.recreate_swapchain().expect("Failed to recreate swapchain"),
+            Event::CloseRequested => {
+                unsafe { self.ctx.device.device_wait_idle().expect("Failed to wait for device") }
+            }
+        };
     }
 }

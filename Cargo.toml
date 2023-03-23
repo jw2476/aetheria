@@ -2,6 +2,8 @@
 members = [
   "assets",
   "aetheria",
+  "ecs",
+  "ecs/macros",
   "vulkan"
 ]
 

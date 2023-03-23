@@ -2,8 +2,11 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-mod renderer;
+mod components;
 mod macros;
+mod renderer;
+
+use std::rc::Rc;
 
 use ash::vk;
 use bytemuck::cast_slice;
@@ -11,6 +14,10 @@ use vulkan::{Buffer, Context};
 use renderer::Renderer;
 use winit::event_loop::ControlFlow;
 use glam::{Vec2, Vec3};
+
+use ecs::{World, Entity, Component, Event};
+
+use crate::renderer::Mesh;
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -31,8 +38,9 @@ fn main() {
     tracing_subscriber::fmt::init();
 
     let (event_loop, window) = create_window();
+    let window = Rc::new(window);
     let ctx = Context::new(&window);
-    let mut renderer = Renderer::new(ctx).unwrap();
+    let mut renderer = Renderer::new(ctx, window.clone()).unwrap();
 
     let positions = [
         Vec3::new(-0.5, -0.5, 0.0),
@@ -84,6 +92,14 @@ fn main() {
     let indices = Indices(vec![0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4]);
     let index_buffer = Buffer::new(&renderer, indices, vk::BufferUsageFlags::INDEX_BUFFER).expect("Index buffer creation failed");
 
+    let mut world = World::new();
+    world.add_system(Box::new(renderer));
+    let entity = world.spawn();
+    entity.add(Box::new(Mesh {
+        vertex_buffer,
+        index_buffer
+    }));
+
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
             return;
@@ -96,29 +112,25 @@ fn main() {
                 event: winit::event::WindowEvent::CloseRequested,
                 ..
             } => {
+                world.dispatch_event(Event::CloseRequested);
                 control_flow.set_exit();
             }
             winit::event::Event::WindowEvent {
                 event: winit::event::WindowEvent::Resized(_),
                 ..
             } => {
-                renderer.recreate_swapchain(&window);
+                world.dispatch_event(Event::WindowResized);
             }
             winit::event::Event::DeviceEvent { event: winit::event::DeviceEvent::Key(input), .. } => {
                 if let Some(key) = input.virtual_keycode && key == winit::event::VirtualKeyCode::Escape {
+                    world.dispatch_event(Event::CloseRequested);
                     control_flow.set_exit();
                 }
             }
             winit::event::Event::MainEventsCleared => {
-                renderer.render(&window, &vertex_buffer, &index_buffer);
+                world.tick();
             }
             _ => {}
-        }
-
-        if let ControlFlow::ExitWithCode(_) = *control_flow {
-            println!("Waiting for GPU to finish jobs");
-            unsafe { renderer.device.device_wait_idle().unwrap() };
-            println!("GPU finished");
         }
     });
 }

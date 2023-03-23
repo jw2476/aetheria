@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 assets = { path = "../assets" }
+ecs = { path = "../ecs" }
+ecs-macros = { path = "../ecs/macros" }
 vulkan = { path = "../vulkan" }
 
 ash = { version = "0.37.2", features = ["linked"] }
