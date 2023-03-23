@@ -4,15 +4,15 @@ use gpu_allocator::{vulkan::{Allocation, AllocationCreateDesc, AllocationScheme,
 use std::{
     cell::RefCell,
     ops::{Deref, Drop},
-    rc::Rc,
     result::Result,
 };
+use std::sync::{Arc, Mutex};
 
 pub struct Buffer {
     pub(crate) buffer: vk::Buffer,
     pub(crate) allocation: Option<Allocation>,
     pub size: usize,
-    allocator: Rc<RefCell<Allocator>>,
+    allocator: Arc<Mutex<Allocator>>,
 }
 
 impl Buffer {
@@ -38,7 +38,8 @@ impl Buffer {
         };
         let allocation = ctx
             .allocator
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .allocate(&allocation_info)
             .unwrap();
         unsafe {
@@ -90,7 +91,8 @@ impl Deref for Buffer {
 impl Drop for Buffer {
     fn drop(&mut self) {
         self.allocator
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .free(self.allocation.take().expect("Vulkan buffer double free"))
             .expect("Failed to free vulkan buffer");
     }

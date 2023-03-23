@@ -1,4 +1,5 @@
 #![feature(let_chains)]
+#![feature(trivial_bounds)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
@@ -6,18 +7,17 @@ mod components;
 mod macros;
 mod renderer;
 
+use std::path::Path;
 use std::rc::Rc;
 
 use ash::vk;
+use bevy_ecs::world::World;
 use bytemuck::cast_slice;
-use vulkan::{Buffer, Context};
+use vulkan::{Buffer, Context, Texture};
 use renderer::Renderer;
 use winit::event_loop::ControlFlow;
 use glam::{Vec2, Vec3};
-
-use ecs::{World, Entity, Component, Event};
-
-use crate::renderer::Mesh;
+use crate::components::{Mesh, Transform, Vertex};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -47,11 +47,6 @@ fn main() {
         Vec3::new(0.5, -0.5, 0.0),
         Vec3::new(0.5, 0.5, 0.0),
         Vec3::new(-0.5, 0.5, 0.0),
-
-        Vec3::new(-0.5, -0.5, -0.5),
-        Vec3::new(0.5, -0.5, -0.5),
-        Vec3::new(0.5, 0.5, -0.5),
-        Vec3::new(-0.5, 0.5, -0.5),
     ];
     let colors = [
         Vec3::new(1.0, 0.0, 0.0),
@@ -59,46 +54,37 @@ fn main() {
         Vec3::new(0.0, 0.0, 1.0),
         Vec3::new(1.0, 1.0, 1.0),
 
-        Vec3::new(1.0, 0.0, 0.0),
-        Vec3::new(0.0, 1.0, 0.0),
-        Vec3::new(0.0, 0.0, 1.0),
-        Vec3::new(1.0, 1.0, 1.0)
     ];
     let uvs = [
         Vec2::new(1.0, 0.0),
         Vec2::new(0.0, 0.0),
         Vec2::new(0.0, 1.0),
         Vec2::new(1.0, 1.0),
-
-        Vec2::new(1.0, 0.0),
-        Vec2::new(0.0, 0.0),
-        Vec2::new(0.0, 1.0),
-        Vec2::new(1.0, 1.0)
     ];
 
-    let vertices: Vec<u8> = std::iter::zip(positions, colors)
-        .zip(uvs)
-        .flat_map(|((position, color), uv)| {
-            let mut vertex: Vec<u8> = cast_slice::<f32, u8>(position.as_ref()).to_vec();
-            vertex.extend_from_slice(cast_slice::<f32, u8>(color.as_ref()));
-            vertex.extend_from_slice(cast_slice::<f32, u8>(uv.as_ref()));
-            vertex
-        })
-        .collect();
-
-    let vertex_buffer =
-        Buffer::new(&renderer, vertices, vk::BufferUsageFlags::VERTEX_BUFFER).unwrap();
-
-    let indices = Indices(vec![0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4]);
-    let index_buffer = Buffer::new(&renderer, indices, vk::BufferUsageFlags::INDEX_BUFFER).expect("Index buffer creation failed");
+    let vertices = vec![
+        Vertex {
+            pos: Vec3::new(-0.5, -0.5, 0.0),
+            uv: Vec2::new(1.0, 0.0)
+        },
+        Vertex {
+            pos: Vec3::new(0.5, -0.5, 0.0),
+            uv: Vec2::new(0.0, 0.0)
+        },
+        Vertex {
+            pos: Vec3::new(0.5, 0.5, 0.0),
+            uv: Vec2::new(0.0, 1.0)
+        },
+        Vertex {
+            pos: Vec3::new(-0.5, 0.5, 0.0),
+            uv: Vec2::new(1.0, 1.0)
+        }
+    ];
+    let indices = vec![0, 1, 2, 2, 3, 0];
+    let texture = Texture::new(&mut renderer, Path::new("../../assets/textures/compiled/test.qoi")).unwrap();
 
     let mut world = World::new();
-    world.add_system(Box::new(renderer));
-    let entity = world.spawn();
-    entity.add(Box::new(Mesh {
-        vertex_buffer,
-        index_buffer
-    }));
+    world.spawn(Mesh::new(vertices, indices, Some(texture)).unwrap());
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -112,23 +98,19 @@ fn main() {
                 event: winit::event::WindowEvent::CloseRequested,
                 ..
             } => {
-                world.dispatch_event(Event::CloseRequested);
                 control_flow.set_exit();
             }
             winit::event::Event::WindowEvent {
                 event: winit::event::WindowEvent::Resized(_),
                 ..
             } => {
-                world.dispatch_event(Event::WindowResized);
             }
             winit::event::Event::DeviceEvent { event: winit::event::DeviceEvent::Key(input), .. } => {
                 if let Some(key) = input.virtual_keycode && key == winit::event::VirtualKeyCode::Escape {
-                    world.dispatch_event(Event::CloseRequested);
                     control_flow.set_exit();
                 }
             }
             winit::event::Event::MainEventsCleared => {
-                world.tick();
             }
             _ => {}
         }

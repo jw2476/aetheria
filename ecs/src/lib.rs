@@ -5,6 +5,8 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+pub use ecs_macros::Component;
+
 pub struct Entity {
     components: Vec<Box<dyn Component>>,
 }
@@ -42,7 +44,7 @@ pub trait Component: Any {
 }
 
 pub trait System {
-    fn get_requirements(&self) -> u128;
+    fn get_requirements(&self) -> u128 { u128::MAX }
 
     fn _check(&self, entity: &Entity) -> bool {
         let requirements = self.get_requirements();
@@ -54,7 +56,7 @@ pub trait System {
         (hash & requirements) == requirements
     }
 
-    fn run(&mut self, entity: &mut Entity);
+    fn run(&mut self, entity: &mut Entity) {}
     fn handle(&mut self, event: Event) {}
 }
 
@@ -89,7 +91,7 @@ impl World {
     }
 
     pub fn tick(&mut self) {
-        for system in self.systems.iter_mut() {
+        for system in self.systems.iter_mut().filter(|system| system.get_requirements() != u128::MAX) {
             for entity in self.entities.iter_mut() {
                 if system._check(entity) {
                     system.run(entity);
@@ -102,6 +104,17 @@ impl World {
         for system in self.systems.iter_mut() {
             system.handle(event);
         }
+    }
+
+    pub fn for_each<F: Fn(&mut Entity)>(&mut self, requirements: u128, predicate: F) {
+        self.entities.iter_mut().filter(|entity| {
+            let hash = entity
+                .components
+                .iter()
+                .map(|component| component.get_id())
+                .fold(0, |hash, id| hash | id);
+            (hash & requirements) == requirements
+        }).for_each(predicate);
     }
 }
 

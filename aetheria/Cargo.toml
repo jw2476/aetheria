@@ -7,16 +7,15 @@ edition = "2021"
 
 [dependencies]
 assets = { path = "../assets" }
-ecs = { path = "../ecs" }
-ecs-macros = { path = "../ecs/macros" }
 vulkan = { path = "../vulkan" }
 
 ash = { version = "0.37.2", features = ["linked"] }
 winit = "0.28"
 cstr = "0.2.11"
-bytemuck = "1.13"
+bytemuck = { version = "1.13", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 gpu-allocator = "0.22"
 glam = { version = "0.23", features = ["bytemuck"] }
 qoi = "0.4"
+bevy_ecs = "0.10"

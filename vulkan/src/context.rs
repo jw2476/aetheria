@@ -5,6 +5,7 @@ use super::{
 use ash::{vk, Entry};
 use gpu_allocator::{vulkan::{Allocator, AllocatorCreateDesc}, AllocatorDebugSettings};
 use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
 pub struct Context {
     pub instance: Instance,
@@ -15,7 +16,7 @@ pub struct Context {
 
     image_available: vk::Semaphore,
 
-    pub(crate) allocator: Rc<RefCell<Allocator>>,
+    pub(crate) allocator: Arc<Mutex<Allocator>>,
 }
 
 impl Context {
@@ -43,7 +44,6 @@ impl Context {
         })
         .unwrap();
 
-        
 
         Self {
             instance,
@@ -52,7 +52,7 @@ impl Context {
             swapchain,
             command_pool,
             image_available,
-            allocator: Rc::new(RefCell::new(allocator)),
+            allocator: Arc::new(Mutex::new(allocator)),
         }
     }
 

@@ -1,10 +1,11 @@
-use std::cell::RefCell;
-use super::{Context, Device};
+use super::{Context, Device, Buffer};
 use ash::vk;
 use std::ops::Deref;
-use std::rc::Rc;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 use gpu_allocator::MemoryLocation;
 use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator};
+use crate::command::TransitionLayoutOptions;
 
 #[derive(Debug)]
 pub struct Image {
@@ -14,7 +15,7 @@ pub struct Image {
     pub height: u32,
 
     pub(crate) allocation: Option<Allocation>,
-    allocator: Option<Rc<RefCell<Allocator>>>,
+    allocator: Option<Arc<Mutex<Allocator>>>,
 }
 
 impl Image {
@@ -43,7 +44,8 @@ impl Image {
         };
         let allocation = ctx
             .allocator
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .allocate(&allocation_info)
             .unwrap();
         unsafe {
@@ -165,12 +167,14 @@ impl Drop for Image {
         self.allocator
             .take()
             .unwrap()
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .free(self.allocation.take().expect("Vulkan buffer double free"))
             .expect("Failed to free vulkan buffer");
     }
 }
 
+#[derive(Debug)]
 pub struct Texture {
     pub image: Image,
     pub view: vk::ImageView,
@@ -182,5 +186,56 @@ impl Deref for Texture {
 
     fn deref(&self) -> &Self::Target {
         &self.image
+    }
+}
+
+impl Texture {
+    pub fn new(ctx: &mut Context, path: &Path) -> Result<Self, vk::Result> {
+        let (header, data) =
+            qoi::decode_to_vec(include_bytes!("../../assets/textures/compiled/texture.qoi"))
+                .unwrap();
+        let texture_buffer =
+            Buffer::new::<Vec<u8>>(ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
+
+        let texture = Image::new(
+                ctx,
+                header.width,
+                header.height,
+                vk::Format::R8G8B8A8_SRGB,
+                vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+            )?.into_texture(ctx)?;
+
+        ctx.command_pool
+            .allocate(&ctx.device)
+            .unwrap()
+            .begin()
+            .unwrap()
+            .transition_image_layout(
+                &texture,
+                &TransitionLayoutOptions {
+                    old: vk::ImageLayout::UNDEFINED,
+                    new: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    source_access: vk::AccessFlags::empty(),
+                    destination_access: vk::AccessFlags::TRANSFER_WRITE,
+                    source_stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+                    destination_stage: vk::PipelineStageFlags::TRANSFER,
+                },
+            )
+            .copy_buffer_to_image(&texture_buffer, &texture)
+            .transition_image_layout(
+                &texture,
+                &TransitionLayoutOptions {
+                    old: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    new: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    source_access: vk::AccessFlags::TRANSFER_WRITE,
+                    destination_access: vk::AccessFlags::SHADER_READ,
+                    source_stage: vk::PipelineStageFlags::TRANSFER,
+                    destination_stage: vk::PipelineStageFlags::FRAGMENT_SHADER,
+                },
+            )
+            .submit()
+            .unwrap();
+
+        Ok(texture)
     }
 }
