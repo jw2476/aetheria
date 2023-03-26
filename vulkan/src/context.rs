@@ -6,6 +6,7 @@ use ash::{vk, Entry};
 use gpu_allocator::{vulkan::{Allocator, AllocatorCreateDesc}, AllocatorDebugSettings};
 use std::{cell::RefCell, rc::Rc};
 use std::sync::{Arc, Mutex};
+use bevy_ecs::world::World;
 
 pub struct Context {
     pub instance: Instance,
@@ -56,9 +57,9 @@ impl Context {
         }
     }
 
-    pub unsafe fn render<F>(&mut self, in_flight: vk::Fence, callback: F) -> Result<(), vk::Result>
+    pub unsafe fn render<F>(&mut self, world: &mut World, in_flight: vk::Fence, callback: F) -> Result<(), vk::Result>
     where
-        F: Fn(&mut Self, vk::Semaphore, u32) -> vk::Semaphore,
+        F: Fn(&mut Self, &mut World, vk::Semaphore, u32) -> vk::Semaphore,
     {
         unsafe {
             self.device
@@ -81,7 +82,7 @@ impl Context {
 
             self.device.reset_fences(&[in_flight]).unwrap();
 
-            let render_finished = callback(self, self.image_available, image_index);
+            let render_finished = callback(self, world, self.image_available, image_index);
 
             let signal_semaphores = &[render_finished];
             let swapchains = &[self.swapchain.swapchain];

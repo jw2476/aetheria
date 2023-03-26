@@ -2,7 +2,7 @@ use super::{Buffer, Device, Texture};
 use ash::vk;
 use std::{collections::HashMap, ops::Deref, result::Result};
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Binding {
     pub(crate) binding: vk::DescriptorSetLayoutBinding,
 }
@@ -79,9 +79,10 @@ impl Deref for SetLayout {
     }
 }
 
+#[derive(Clone)]
 pub struct Set {
     pub(crate) set: vk::DescriptorSet,
-    pub bindings: Vec<Binding>,
+    binding_types: Vec<vk::DescriptorType>
 }
 
 impl Set {
@@ -96,7 +97,7 @@ impl Set {
             .dst_set(**self)
             .dst_binding(binding)
             .dst_array_element(0)
-            .descriptor_type(self.bindings[binding as usize].descriptor_type)
+            .descriptor_type(self.binding_types[binding as usize])
             .buffer_info(buffer_infos);
 
         let descriptor_writes = &[*write_info];
@@ -121,7 +122,7 @@ impl Set {
             .dst_set(**self)
             .dst_binding(binding)
             .dst_array_element(0)
-            .descriptor_type(self.bindings[binding as usize].descriptor_type)
+            .descriptor_type(self.binding_types[binding as usize])
             .image_info(image_infos);
 
         let descriptor_writes = &[*write_info];
@@ -138,14 +139,15 @@ impl Deref for Set {
     }
 }
 
-pub struct Pool {
+pub struct Pool<'a> {
     pub(crate) pool: vk::DescriptorPool,
+    device: &'a Device,
     layout: SetLayout,
     sets: Vec<Set>,
 }
 
-impl Pool {
-    pub fn new(device: &Device, layout: SetLayout, capacity: usize) -> Result<Self, vk::Result> {
+impl<'a> Pool<'a> {
+    pub fn new(device: &'a Device, layout: SetLayout, capacity: usize) -> Result<Self, vk::Result> {
         let descriptor_types: Vec<vk::DescriptorType> = layout
             .bindings
             .iter()
@@ -182,27 +184,28 @@ impl Pool {
 
         Ok(Self {
             pool,
+            device,
             layout,
             sets: Vec::new(),
         })
     }
 
-    pub fn allocate(&mut self, device: &Device) -> Result<Set, vk::Result> {
+    pub fn allocate(&mut self) -> Result<Set, vk::Result> {
         let set_layouts = &[*self.layout];
         let allocate_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(**self)
             .set_layouts(set_layouts);
 
-        let set = unsafe { device.allocate_descriptor_sets(&allocate_info)?[0] };
+        let set = unsafe { self.device.allocate_descriptor_sets(&allocate_info)?[0] };
 
         Ok(Set {
             set,
-            bindings: self.layout.bindings.clone(),
+            binding_types: self.layout.bindings.iter().map(|binding| binding.descriptor_type).collect(),
         })
     }
 }
 
-impl Deref for Pool {
+impl Deref for Pool<'_> {
     type Target = vk::DescriptorPool;
 
     fn deref(&self) -> &Self::Target {

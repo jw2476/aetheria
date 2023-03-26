@@ -14,3 +14,4 @@ tracing = "0.1"
 gpu-allocator = "0.22"
 glam = { version = "0.23", features = ["bytemuck"] }
 qoi = "0.4"
+bevy_ecs = "0.10"

@@ -1,4 +1,4 @@
-use super::{Context, Device, Buffer};
+use super::{Context, Device, Buffer, Pool};
 use ash::vk;
 use std::ops::Deref;
 use std::path::Path;
@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use gpu_allocator::MemoryLocation;
 use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator};
 use crate::command::TransitionLayoutOptions;
+use crate::Set;
 
 #[derive(Debug)]
 pub struct Image {
@@ -140,16 +141,6 @@ impl Image {
 
         unsafe { ctx.device.create_sampler(&create_info, None) }
     }
-
-    pub fn into_texture(self, ctx: &Context) -> Result<Texture, vk::Result> {
-        let view = self.create_view(ctx)?;
-        let sampler = self.create_sampler(ctx, vk::Filter::LINEAR, vk::Filter::LINEAR)?;
-        Ok(Texture {
-            image: self,
-            view,
-            sampler
-        })
-    }
 }
 
 impl Deref for Image {
@@ -174,11 +165,10 @@ impl Drop for Image {
     }
 }
 
-#[derive(Debug)]
 pub struct Texture {
     pub image: Image,
     pub view: vk::ImageView,
-    pub sampler: vk::Sampler
+    pub sampler: vk::Sampler, 
 }
 
 impl Deref for Texture {
@@ -197,13 +187,15 @@ impl Texture {
         let texture_buffer =
             Buffer::new::<Vec<u8>>(ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
 
-        let texture = Image::new(
+        let image = Image::new(
                 ctx,
                 header.width,
                 header.height,
                 vk::Format::R8G8B8A8_SRGB,
                 vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-            )?.into_texture(ctx)?;
+            )?;
+        let view = image.create_view(ctx)?;
+        let sampler = image.create_sampler(ctx, vk::Filter::LINEAR, vk::Filter::LINEAR)?;
 
         ctx.command_pool
             .allocate(&ctx.device)
@@ -211,7 +203,7 @@ impl Texture {
             .begin()
             .unwrap()
             .transition_image_layout(
-                &texture,
+                &image,
                 &TransitionLayoutOptions {
                     old: vk::ImageLayout::UNDEFINED,
                     new: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -221,9 +213,9 @@ impl Texture {
                     destination_stage: vk::PipelineStageFlags::TRANSFER,
                 },
             )
-            .copy_buffer_to_image(&texture_buffer, &texture)
+            .copy_buffer_to_image(&texture_buffer, &image)
             .transition_image_layout(
-                &texture,
+                &image,
                 &TransitionLayoutOptions {
                     old: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     new: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -236,6 +228,10 @@ impl Texture {
             .submit()
             .unwrap();
 
-        Ok(texture)
+        Ok(Self {
+            image,
+            view,
+            sampler
+        })
     }
 }

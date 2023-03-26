@@ -3,21 +3,22 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-mod components;
+extern crate core;
+
 mod macros;
 mod renderer;
+mod mesh;
 
 use std::path::Path;
 use std::rc::Rc;
 
-use ash::vk;
 use bevy_ecs::world::World;
 use bytemuck::cast_slice;
-use vulkan::{Buffer, Context, Texture};
+use vulkan::Context;
 use renderer::Renderer;
 use winit::event_loop::ControlFlow;
 use glam::{Vec2, Vec3};
-use crate::components::{Mesh, Transform, Vertex};
+use crate::mesh::{Mesh, MeshRef, MeshRegistry, Texture, TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -42,25 +43,13 @@ fn main() {
     let ctx = Context::new(&window);
     let mut renderer = Renderer::new(ctx, window.clone()).unwrap();
 
-    let positions = [
-        Vec3::new(-0.5, -0.5, 0.0),
-        Vec3::new(0.5, -0.5, 0.0),
-        Vec3::new(0.5, 0.5, 0.0),
-        Vec3::new(-0.5, 0.5, 0.0),
-    ];
-    let colors = [
-        Vec3::new(1.0, 0.0, 0.0),
-        Vec3::new(0.0, 1.0, 0.0),
-        Vec3::new(0.0, 0.0, 1.0),
-        Vec3::new(1.0, 1.0, 1.0),
+    let mut world = World::new();
+    world.insert_resource(MeshRegistry::new());
+    world.insert_resource(TextureRegistry::new());
+    world.insert_resource(TransformRegistry::new());
 
-    ];
-    let uvs = [
-        Vec2::new(1.0, 0.0),
-        Vec2::new(0.0, 0.0),
-        Vec2::new(0.0, 1.0),
-        Vec2::new(1.0, 1.0),
-    ];
+    let texture = Texture::new(&mut renderer, Path::new("../../assets/textures/compiled/test.qoi")).unwrap();
+    let texture = world.get_resource_mut::<TextureRegistry>().unwrap().add(texture);
 
     let vertices = vec![
         Vertex {
@@ -81,10 +70,14 @@ fn main() {
         }
     ];
     let indices = vec![0, 1, 2, 2, 3, 0];
-    let texture = Texture::new(&mut renderer, Path::new("../../assets/textures/compiled/test.qoi")).unwrap();
+    let mesh = Mesh::new(&renderer, &vertices, &indices, Some(texture)).unwrap();
+    let mesh: MeshRef = world.get_resource_mut::<MeshRegistry>().unwrap().add(mesh);
 
-    let mut world = World::new();
-    world.spawn(Mesh::new(vertices, indices, Some(texture)).unwrap());
+    let transform = Transform::new(&mut renderer).unwrap();
+    let transform: TransformRef = world.get_resource_mut::<TransformRegistry>().unwrap().add(transform);
+
+    let entity = world.spawn((mesh, transform));
+
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {

@@ -13,12 +13,12 @@ use vulkan::{
 };
 use winit::window::Window;
 use vulkan::command::BufferBuilder;
-use crate::components::{Mesh, Transform};
 
 use crate::include_bytes_align_as;
+use crate::mesh::{MeshRef, MeshRegistry, TextureRegistry, TransformRef, TransformRegistry};
 
-pub struct Renderer {
-    ctx: Context,
+pub struct Renderer<'a> {
+    pub(crate) ctx: Context,
     window: Rc<Window>,
 
     renderpass: Renderpass,
@@ -30,16 +30,16 @@ pub struct Renderer {
     in_flight: vk::Fence,
 
     transform_layout: SetLayout,
-    pub transform_pool: Pool,
+    pub transform_pool: Pool<'a>,
 
     texture_layout: SetLayout,
-    pub texture_pool: Pool,
+    pub texture_pool: Pool<'a>,
 
     depth_image: Image,
     depth_view: vk::ImageView,
 }
 
-impl Renderer {
+impl Renderer<'_> {
     pub fn new(ctx: Context, window: Rc<Window>) -> Result<Self, vk::Result> {
         let transform_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
@@ -125,8 +125,6 @@ impl Renderer {
             depth_view,
         };
 
-        renderer.write_texture()?;
-
         Ok(renderer)
     }
 
@@ -209,7 +207,7 @@ impl Renderer {
     pub unsafe fn render(&mut self, world: &mut World) {
         let presentation_result =
             self.ctx
-                .render(self.in_flight, |ctx, image_available, image_index| {
+                .render(world, self.in_flight, |ctx, world, image_available, image_index| {
                     ctx.command_pool.clear(&ctx.device);
                     let mut cmd = ctx
                         .command_pool
@@ -224,12 +222,19 @@ impl Renderer {
                         )
                         .bind_pipeline(&self.pipeline);
 
-                    let mut query = world.query::<(&Mesh, &Transform)>();
-                    for (mesh, transform) in query {
-                        cmd = cmd.bind_descriptor_set(&self.pipeline, 0, &self.transform_set)
-                            .bind_descriptor_set(&self.pipeline, 1, &self.texture_set)
-                            .bind_index_buffer(mesh.index_buffer)
-                            .bind_vertex_buffer(mesh.vertex_buffer)
+                    let mut query = world.query::<(&MeshRef, &TransformRef)>();
+                    let mesh_registry = world.get_resource::<MeshRegistry>().unwrap();
+                    let transform_registry = world.get_resource::<TransformRegistry>().unwrap();
+                    let texture_registry = world.get_resource::<TextureRegistry>().unwrap();
+                    for (&mesh, &transform) in query.iter(world) {
+                        let mesh = mesh_registry.get(mesh).unwrap();
+                        let texture = texture_registry.get(mesh.texture.unwrap()).unwrap();
+                        let transform = transform_registry.get(transform).unwrap();
+
+                        cmd = cmd.bind_descriptor_set(&self.pipeline, 0, &transform.set)
+                            .bind_descriptor_set(&self.pipeline, 1, &texture.set)
+                            .bind_index_buffer(&mesh.index_buffer)
+                            .bind_vertex_buffer(&mesh.vertex_buffer)
                             .draw(DrawOptions {
                                 vertex_count: (mesh.index_buffer.size / 4).try_into().unwrap(),
                                 instance_count: 1,
@@ -271,7 +276,7 @@ impl Renderer {
     }
 }
 
-impl Deref for Renderer {
+impl Deref for Renderer<'_> {
     type Target = Context;
 
     fn deref(&self) -> &Self::Target {
