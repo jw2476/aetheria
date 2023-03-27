@@ -48,8 +48,8 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn new(renderer: &mut Renderer, path: &Path) -> Result<Self, vk::Result> {
-        let texture = vulkan::Texture::new(&mut renderer.ctx, path)?;
+    pub fn new(renderer: &mut Renderer, bytes: &[u8]) -> Result<Self, vk::Result> {
+        let texture = vulkan::Texture::new(&mut renderer.ctx, bytes)?;
         let set = renderer.texture_pool.allocate()?;
         set.update_texture(
             &renderer.device,
@@ -100,9 +100,9 @@ impl Transform {
         let model =
             Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation);
         let view = Mat4::look_at_rh(
-            Vec3::new(2.0, 2.0, 2.0),
+            Vec3::new(3.0, 3.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.0, 1.0, 0.0),
         );
         let mut projection = Mat4::perspective_rh(
             45.0_f32.to_radians(),
@@ -133,6 +133,10 @@ pub struct MeshRef(usize);
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct TextureRef(usize);
+
+impl TextureRef {
+    pub const WHITE: TextureRef = Self(0);
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Component)]

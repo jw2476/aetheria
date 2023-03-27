@@ -125,7 +125,91 @@ pub struct Image {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Material {}
+pub struct TextureInfo {
+    pub index: usize,
+    #[serde(default)]
+    #[serde(rename = "texCoord")]
+    pub tex_coord: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MaterialPBR {
+    #[serde(default)]
+    #[serde(rename = "baseColorFactor")]
+    pub base_color_factor: Option<[f32; 4]>,
+    #[serde(default)]
+    #[serde(rename = "baseColorTexture")]
+    pub base_color_texture: Option<TextureInfo>,
+    #[serde(default)]
+    #[serde(rename = "metallicFactor")]
+    pub metallic_factor: Option<f32>,
+    #[serde(default)]
+    #[serde(rename = "roughnessFactor")]
+    pub roughness_factor: Option<f32>,
+    #[serde(default)]
+    #[serde(rename = "metallicRoughnessTexture")]
+    pub metallic_roughness_texture: Option<TextureInfo>,
+}
+
+impl Default for MaterialPBR {
+    fn default() -> Self {
+        Self {
+            base_color_factor: Some([1.0, 1.0, 1.0, 1.0]),
+            base_color_texture: None,
+            metallic_factor: Some(1.0),
+            roughness_factor: Some(1.0),
+            metallic_roughness_texture: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MaterialNormalTexture {
+    pub index: usize,
+    #[serde(default)]
+    #[serde(rename = "texCoord")]
+    pub tex_coord: usize,
+    #[serde(default)]
+    pub scale: Option<f32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MaterialOcclusionTexture {
+    pub index: usize,
+    #[serde(default)]
+    #[serde(rename = "texCoord")]
+    pub tex_coord: usize,
+    #[serde(default)]
+    pub strength: Option<f32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Material {
+    #[serde(default)]
+    #[serde(rename = "pbrMetallicRoughness")]
+    pub pbr: MaterialPBR,
+    #[serde(default)]
+    #[serde(rename = "normalTexture")]
+    pub normal_texture: Option<MaterialNormalTexture>,
+    #[serde(default)]
+    #[serde(rename = "occlusionTexture")]
+    pub occlusion_texture: Option<MaterialOcclusionTexture>,
+    #[serde(default)]
+    #[serde(rename = "emissiveTexture")]
+    pub emissive_texture: Option<TextureInfo>,
+    #[serde(default)]
+    #[serde(rename = "emissiveFavtor")]
+    pub emissive_factor: Option<[f32; 3]>,
+    #[serde(default)]
+    #[serde(rename = "alphaMode")]
+    pub alpha_mode: Option<String>,
+    #[serde(default)]
+    #[serde(rename = "alphaCutoff")]
+    pub alpha_cutoff: Option<f32>,
+    #[serde(default)]
+    #[serde(rename = "doubleSided")]
+    pub double_sided: bool,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MeshPrimitive {
@@ -301,7 +385,7 @@ impl Gltf {
 
 pub struct Glb {
     pub gltf: Gltf,
-    buffer: Vec<u8>,
+    pub buffer: Vec<u8>,
 }
 
 impl Glb {

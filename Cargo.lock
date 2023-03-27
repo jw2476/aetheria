@@ -45,6 +45,7 @@ dependencies = [
  "glam",
  "gltf",
  "gpu-allocator",
+ "image",
  "qoi",
  "tracing",
  "tracing-subscriber",

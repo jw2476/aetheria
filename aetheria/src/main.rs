@@ -55,16 +55,16 @@ fn main() {
     world.insert_resource(Time::new());
     world.insert_resource(renderer);
 
+    let white = Texture::new(&mut world.get_resource_mut().unwrap(), include_bytes!("../../assets/textures/compiled/white.qoi")).unwrap();
+    world.get_resource_mut::<TextureRegistry>().unwrap().add::<TextureRef>(white);
+
     let mut schedule = Schedule::default();
     schedule.add_system(animate);
     schedule.add_system(Time::frame_finished);
     schedule.add_system(Renderer::render);
-
-    let texture = Texture::new(&mut world.get_resource_mut().unwrap(), Path::new("../../assets/textures/compiled/test.qoi")).unwrap();
-    let texture: TextureRef = world.get_resource_mut::<TextureRegistry>().unwrap().add(texture);
     
-    Model::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb"), &mut world, texture);
-    Model::load(include_bytes!("../../assets/models/fence.glb"), &mut world, texture);
+    Model::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb"), &mut world);
+    Model::load(include_bytes!("../../assets/models/fence.glb"), &mut world);
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -106,10 +106,10 @@ fn main() {
 fn animate(time: Res<Time>, renderer: Res<Renderer>, mut registry: ResMut<TransformRegistry>, query: Query<&TransformRef>) {
     for &transform in query.iter() {
         let transform = registry.get_mut(transform).unwrap();
-        let mut euler = transform.rotation.to_euler(glam::EulerRot::XYZ);
+        let mut euler = transform.rotation.to_euler(glam::EulerRot::ZXY);
         euler.2 += time.delta_seconds();
         println!("{:?}", euler);
-        transform.rotation = Quat::from_euler(glam::EulerRot::XYZ, euler.0, euler.1, euler.2);
+        transform.rotation = Quat::from_euler(glam::EulerRot::ZXY, euler.0, euler.1, euler.2);
         transform.update(&renderer);
     }
 }

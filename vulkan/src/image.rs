@@ -194,10 +194,8 @@ impl Deref for Texture {
 }
 
 impl Texture {
-    pub fn new(ctx: &mut Context, path: &Path) -> Result<Self, vk::Result> {
-        let (header, data) =
-            qoi::decode_to_vec(include_bytes!("../../assets/textures/compiled/texture.qoi"))
-                .unwrap();
+    pub fn new(ctx: &mut Context, bytes: &[u8]) -> Result<Self, vk::Result> {
+        let (header, data) = qoi::decode_to_vec(bytes).unwrap();
         let texture_buffer = Buffer::new::<Vec<u8>>(ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
 
         let image = Image::new(
