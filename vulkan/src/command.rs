@@ -1,6 +1,6 @@
 use super::{Device, Image, Pipeline, Renderpass, Set};
 use ash::vk;
-use std::{ops::Deref, result::Result};
+use std::{ops::Deref, result::Result, sync::Arc};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DrawOptions {
@@ -16,9 +16,9 @@ pub struct Buffer {
 }
 
 #[derive(Clone)]
-pub struct BufferBuilder<'a> {
+pub struct BufferBuilder {
     buffer: Buffer,
-    device: &'a Device,
+    device: Arc<Device>,
 }
 
 #[derive(Clone, Debug)]
@@ -31,7 +31,7 @@ pub struct TransitionLayoutOptions {
     pub destination_stage: vk::PipelineStageFlags,
 }
 
-impl BufferBuilder<'_> {
+impl BufferBuilder {
     pub fn begin(self) -> Result<Self, vk::Result> {
         let begin_info = vk::CommandBufferBeginInfo::builder();
         unsafe { self.device.begin_command_buffer(**self, &begin_info)? };
@@ -233,7 +233,7 @@ impl BufferBuilder<'_> {
     }
 }
 
-impl Deref for BufferBuilder<'_> {
+impl Deref for BufferBuilder {
     type Target = Buffer;
 
     fn deref(&self) -> &Self::Target {
@@ -252,10 +252,11 @@ impl Deref for Buffer {
 pub struct Pool {
     pub(crate) pool: vk::CommandPool,
     buffers: Vec<Buffer>,
+    device: Arc<Device>,
 }
 
 impl Pool {
-    pub fn new(device: &Device) -> Result<Self, vk::Result> {
+    pub fn new(device: Arc<Device>) -> Result<Self, vk::Result> {
         let create_info =
             vk::CommandPoolCreateInfo::builder().queue_family_index(device.queues.graphics.index);
 
@@ -264,31 +265,35 @@ impl Pool {
         Ok(Self {
             pool,
             buffers: Vec::new(),
+            device,
         })
     }
 
-    pub fn allocate<'a>(&'a mut self, device: &'a Device) -> Result<BufferBuilder, vk::Result> {
+    pub fn allocate(&mut self) -> Result<BufferBuilder, vk::Result> {
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(self.pool)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
-        let buffer = unsafe { device.allocate_command_buffers(&allocate_info)?[0] };
+        let buffer = unsafe { self.device.allocate_command_buffers(&allocate_info)?[0] };
         let buffer = Buffer { buffer };
         self.buffers.push(buffer.clone());
 
-        let builder = BufferBuilder { buffer, device };
+        let builder = BufferBuilder {
+            buffer,
+            device: self.device.clone(),
+        };
 
         Ok(builder)
     }
 
-    pub fn clear(&mut self, device: &Device) {
+    pub fn clear(&mut self) {
         if self.buffers.is_empty() {
             return;
         }
 
         unsafe {
-            device.free_command_buffers(
+            self.device.free_command_buffers(
                 **self,
                 &self
                     .buffers

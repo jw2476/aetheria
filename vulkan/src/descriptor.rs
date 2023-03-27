@@ -1,6 +1,6 @@
 use super::{Buffer, Device, Texture};
 use ash::vk;
-use std::{collections::HashMap, ops::Deref, result::Result};
+use std::{collections::HashMap, ops::Deref, rc::Rc, result::Result, sync::Arc};
 
 #[derive(Clone, Copy)]
 pub struct Binding {
@@ -60,7 +60,11 @@ impl<'a> SetLayoutBuilder<'a> {
 
         Ok(SetLayout {
             layout,
-            bindings: self.bindings,
+            binding_types: self
+                .bindings
+                .iter()
+                .map(|binding| binding.descriptor_type)
+                .collect(),
         })
     }
 }
@@ -68,7 +72,7 @@ impl<'a> SetLayoutBuilder<'a> {
 #[derive(Clone)]
 pub struct SetLayout {
     pub(crate) layout: vk::DescriptorSetLayout,
-    pub bindings: Vec<Binding>,
+    pub binding_types: Vec<vk::DescriptorType>,
 }
 
 impl Deref for SetLayout {
@@ -82,7 +86,7 @@ impl Deref for SetLayout {
 #[derive(Clone)]
 pub struct Set {
     pub(crate) set: vk::DescriptorSet,
-    binding_types: Vec<vk::DescriptorType>
+    binding_types: Vec<vk::DescriptorType>,
 }
 
 impl Set {
@@ -139,20 +143,20 @@ impl Deref for Set {
     }
 }
 
-pub struct Pool<'a> {
+pub struct Pool {
     pub(crate) pool: vk::DescriptorPool,
-    device: &'a Device,
+    device: Arc<Device>,
     layout: SetLayout,
     sets: Vec<Set>,
 }
 
-impl<'a> Pool<'a> {
-    pub fn new(device: &'a Device, layout: SetLayout, capacity: usize) -> Result<Self, vk::Result> {
-        let descriptor_types: Vec<vk::DescriptorType> = layout
-            .bindings
-            .iter()
-            .map(|binding| binding.descriptor_type)
-            .collect();
+impl Pool {
+    pub fn new(
+        device: Arc<Device>,
+        layout: SetLayout,
+        capacity: usize,
+    ) -> Result<Self, vk::Result> {
+        let descriptor_types: Vec<vk::DescriptorType> = layout.binding_types.clone();
 
         let mut descriptor_type_amounts: HashMap<vk::DescriptorType, usize> = HashMap::new();
         for descriptor_type in &descriptor_types {
@@ -200,12 +204,12 @@ impl<'a> Pool<'a> {
 
         Ok(Set {
             set,
-            binding_types: self.layout.bindings.iter().map(|binding| binding.descriptor_type).collect(),
+            binding_types: self.layout.binding_types.clone(),
         })
     }
 }
 
-impl Deref for Pool<'_> {
+impl Deref for Pool {
     type Target = vk::DescriptorPool;
 
     fn deref(&self) -> &Self::Target {

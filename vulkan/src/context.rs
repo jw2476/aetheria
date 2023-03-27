@@ -1,21 +1,21 @@
-use super::{
-    Device,
-    Instance, Surface, Swapchain, command
-};
+use super::{command, Device, Instance, Surface, Swapchain};
 use ash::{vk, Entry};
-use gpu_allocator::{vulkan::{Allocator, AllocatorCreateDesc}, AllocatorDebugSettings};
-use std::{cell::RefCell, rc::Rc};
-use std::sync::{Arc, Mutex};
 use bevy_ecs::world::World;
+use gpu_allocator::{
+    vulkan::{Allocator, AllocatorCreateDesc},
+    AllocatorDebugSettings,
+};
+use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, rc::Rc};
 
 pub struct Context {
     pub instance: Instance,
     pub surface: Surface,
-    pub device: Device,
+    pub device: Arc<Device>,
     pub swapchain: Swapchain,
     pub command_pool: command::Pool,
 
-    image_available: vk::Semaphore,
+    pub image_available: vk::Semaphore,
 
     pub(crate) allocator: Arc<Mutex<Allocator>>,
 }
@@ -25,13 +25,14 @@ impl Context {
         let entry = Entry::linked();
         let instance = Instance::new(&entry).expect("Vulkan instance creation failed");
         let surface = Surface::new(&instance, window).expect("Vulkan surface creation failed");
-        let device =
-            unsafe { Device::new(&instance, &surface).expect("Vulkan device creation failed") };
+        let device = unsafe {
+            Arc::new(Device::new(&instance, &surface).expect("Vulkan device creation failed"))
+        };
 
         let swapchain = Swapchain::new(&instance, &surface, &device, window)
             .expect("Vulkan swapchain creation failed");
 
-        let command_pool = command::Pool::new(&device).unwrap();
+        let command_pool = command::Pool::new(device.clone()).unwrap();
 
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
         let image_available = unsafe { device.create_semaphore(&semaphore_info, None).unwrap() };
@@ -45,7 +46,6 @@ impl Context {
         })
         .unwrap();
 
-
         Self {
             instance,
             surface,
@@ -57,10 +57,7 @@ impl Context {
         }
     }
 
-    pub unsafe fn render<F>(&mut self, world: &mut World, in_flight: vk::Fence, callback: F) -> Result<(), vk::Result>
-    where
-        F: Fn(&mut Self, &mut World, vk::Semaphore, u32) -> vk::Semaphore,
-    {
+    pub unsafe fn start_frame(&mut self, in_flight: vk::Fence) -> Result<u32, vk::Result> {
         unsafe {
             self.device
                 .wait_for_fences(&[in_flight], true, u64::MAX)
@@ -82,8 +79,16 @@ impl Context {
 
             self.device.reset_fences(&[in_flight]).unwrap();
 
-            let render_finished = callback(self, world, self.image_available, image_index);
+            Ok(image_index)
+        }
+    }
 
+    pub unsafe fn end_frame(
+        &self,
+        image_index: u32,
+        render_finished: vk::Semaphore,
+    ) -> Result<(), vk::Result> {
+        unsafe {
             let signal_semaphores = &[render_finished];
             let swapchains = &[self.swapchain.swapchain];
             let image_indices = &[image_index];

@@ -1,25 +1,30 @@
 use ash::vk;
+use bevy_ecs::prelude::Component;
+use bevy_ecs::system::{Res, ResMut, Resource};
 use glam::{Mat4, Vec3};
 
+use bevy_ecs::{system::Query, world::World};
+use std::ops::DerefMut;
 use std::rc::Rc;
 use std::{
     ops::Deref,
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use bevy_ecs::world::World;
+use vulkan::command::BufferBuilder;
 use vulkan::{
     command::TransitionLayoutOptions, Buffer, Context, DrawOptions, Image, Pipeline, Pool,
     Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain, Texture,
 };
 use winit::window::Window;
-use vulkan::command::BufferBuilder;
 
 use crate::include_bytes_align_as;
 use crate::mesh::{MeshRef, MeshRegistry, TextureRegistry, TransformRef, TransformRegistry};
 
-pub struct Renderer<'a> {
+#[derive(Resource)]
+pub struct Renderer {
     pub(crate) ctx: Context,
-    window: Rc<Window>,
+    window: Arc<Window>,
 
     renderpass: Renderpass,
     pub pipeline: Pipeline,
@@ -30,17 +35,17 @@ pub struct Renderer<'a> {
     in_flight: vk::Fence,
 
     transform_layout: SetLayout,
-    pub transform_pool: Pool<'a>,
+    pub transform_pool: Pool,
 
     texture_layout: SetLayout,
-    pub texture_pool: Pool<'a>,
+    pub texture_pool: Pool,
 
     depth_image: Image,
     depth_view: vk::ImageView,
 }
 
-impl Renderer<'_> {
-    pub fn new(ctx: Context, window: Rc<Window>) -> Result<Self, vk::Result> {
+impl Renderer {
+    pub fn new(ctx: Context, window: Arc<Window>) -> Result<Self, vk::Result> {
         let transform_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
@@ -105,8 +110,8 @@ impl Renderer<'_> {
             unsafe { ctx.device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { ctx.device.create_fence(&fence_info, None).unwrap() };
 
-        let mut transform_pool = Pool::new(&ctx.device, transform_layout.clone(), 1)?;
-        let mut texture_pool = Pool::new(&ctx.device, texture_layout.clone(), 1)?;
+        let mut transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 1000)?;
+        let mut texture_pool = Pool::new(ctx.device.clone(), texture_layout.clone(), 1000)?;
 
         let mut renderer = Self {
             ctx,
@@ -204,82 +209,107 @@ impl Renderer<'_> {
         Ok(())
     }
 
-    pub unsafe fn render(&mut self, world: &mut World) {
-        let presentation_result =
-            self.ctx
-                .render(world, self.in_flight, |ctx, world, image_available, image_index| {
-                    ctx.command_pool.clear(&ctx.device);
-                    let mut cmd = ctx
-                        .command_pool
-                        .allocate(&ctx.device)
-                        .unwrap()
-                        .begin()
-                        .unwrap()
-                        .begin_renderpass(
-                            &self.renderpass,
-                            self.framebuffers[image_index as usize],
-                            ctx.swapchain.extent,
-                        )
-                        .bind_pipeline(&self.pipeline);
+    pub fn render(
+        mut renderer: ResMut<Self>,
+        mesh_registry: Res<MeshRegistry>,
+        transform_registry: Res<TransformRegistry>,
+        texture_registry: Res<TextureRegistry>,
+        query: Query<(&MeshRef, &TransformRef)>,
+    ) {
+        unsafe {
+            let in_flight = renderer.in_flight.clone();
 
-                    let mut query = world.query::<(&MeshRef, &TransformRef)>();
-                    let mesh_registry = world.get_resource::<MeshRegistry>().unwrap();
-                    let transform_registry = world.get_resource::<TransformRegistry>().unwrap();
-                    let texture_registry = world.get_resource::<TextureRegistry>().unwrap();
-                    for (&mesh, &transform) in query.iter(world) {
-                        let mesh = mesh_registry.get(mesh).unwrap();
-                        let texture = texture_registry.get(mesh.texture.unwrap()).unwrap();
-                        let transform = transform_registry.get(transform).unwrap();
+            let acquire_result = renderer.ctx.start_frame(in_flight);
 
-                        cmd = cmd.bind_descriptor_set(&self.pipeline, 0, &transform.set)
-                            .bind_descriptor_set(&self.pipeline, 1, &texture.set)
-                            .bind_index_buffer(&mesh.index_buffer)
-                            .bind_vertex_buffer(&mesh.vertex_buffer)
-                            .draw(DrawOptions {
-                                vertex_count: (mesh.index_buffer.size / 4).try_into().unwrap(),
-                                instance_count: 1,
-                                ..Default::default()
-                            })
-                    }
+            let image_index = match acquire_result {
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                    renderer
+                        .recreate_swapchain()
+                        .expect("Swapchain recreation failed");
+                    return;
+                }
+                Err(e) => panic!("{}", e),
+                Ok(image_index) => image_index,
+            };
 
-                    let cmd = cmd.end_renderpass()
-                        .end()
-                        .unwrap();
+            renderer.ctx.command_pool.clear();
+            let mut cmd = renderer
+                .ctx
+                .command_pool
+                .allocate()
+                .unwrap()
+                .begin()
+                .unwrap()
+                .begin_renderpass(
+                    &renderer.renderpass,
+                    renderer.framebuffers[image_index as usize],
+                    renderer.ctx.swapchain.extent,
+                )
+                .bind_pipeline(&renderer.pipeline);
 
-                    let wait_semaphores = &[image_available];
-                    let signal_semaphores = &[self.render_finished];
-                    let command_buffers = &[*cmd];
-                    let submit_info = vk::SubmitInfo::builder()
-                        .wait_semaphores(wait_semaphores)
-                        .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                        .command_buffers(command_buffers)
-                        .signal_semaphores(signal_semaphores);
+            for (&mesh, &transform) in query.iter() {
+                let mesh = mesh_registry.get(mesh).unwrap();
+                let texture = texture_registry.get(mesh.texture.unwrap()).unwrap();
+                let transform = transform_registry.get(transform).unwrap();
 
-                    ctx.device
-                        .queue_submit(
-                            ctx.device.queues.graphics.queue,
-                            &[*submit_info],
-                            self.in_flight,
-                        )
-                        .unwrap();
+                cmd = cmd
+                    .bind_descriptor_set(&renderer.pipeline, 0, &transform.set)
+                    .bind_descriptor_set(&renderer.pipeline, 1, &texture.set)
+                    .bind_index_buffer(&mesh.index_buffer)
+                    .bind_vertex_buffer(&mesh.vertex_buffer)
+                    .draw(DrawOptions {
+                        vertex_count: (mesh.index_buffer.size / 4).try_into().unwrap(),
+                        instance_count: 1,
+                        ..Default::default()
+                    })
+            }
 
-                    self.render_finished
-                });
+            let cmd = cmd.end_renderpass().end().unwrap();
 
-        match presentation_result {
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self
-                .recreate_swapchain()
-                .expect("Swapchain recreation failed"),
-            Err(e) => panic!("{}", e),
-            Ok(_) => (),
+            let wait_semaphores = &[renderer.ctx.image_available];
+            let signal_semaphores = &[renderer.render_finished];
+            let command_buffers = &[*cmd];
+            let submit_info = vk::SubmitInfo::builder()
+                .wait_semaphores(wait_semaphores)
+                .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+                .command_buffers(command_buffers)
+                .signal_semaphores(signal_semaphores);
+
+            renderer
+                .ctx
+                .device
+                .queue_submit(
+                    renderer.ctx.device.queues.graphics.queue,
+                    &[*submit_info],
+                    renderer.in_flight,
+                )
+                .unwrap();
+
+            let presentation_result = renderer
+                .ctx
+                .end_frame(image_index, renderer.render_finished);
+
+            match presentation_result {
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => renderer
+                    .recreate_swapchain()
+                    .expect("Swapchain recreation failed"),
+                Err(e) => panic!("{}", e),
+                Ok(_) => (),
+            }
         }
     }
 }
 
-impl Deref for Renderer<'_> {
+impl Deref for Renderer {
     type Target = Context;
 
     fn deref(&self) -> &Self::Target {
         &self.ctx
+    }
+}
+
+impl DerefMut for Renderer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.ctx
     }
 }

@@ -1,12 +1,12 @@
-use super::{Context, Device, Buffer, Pool};
+use super::{Buffer, Context, Device, Pool};
+use crate::command::TransitionLayoutOptions;
+use crate::Set;
 use ash::vk;
+use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator};
+use gpu_allocator::MemoryLocation;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use gpu_allocator::MemoryLocation;
-use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator};
-use crate::command::TransitionLayoutOptions;
-use crate::Set;
 
 #[derive(Debug)]
 pub struct Image {
@@ -20,11 +20,21 @@ pub struct Image {
 }
 
 impl Image {
-    pub fn new(ctx: &Context, width: u32, height: u32, format: vk::Format, usage: vk::ImageUsageFlags) -> Result<Self, vk::Result> {
+    pub fn new(
+        ctx: &Context,
+        width: u32,
+        height: u32,
+        format: vk::Format,
+        usage: vk::ImageUsageFlags,
+    ) -> Result<Self, vk::Result> {
         let create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
-            .extent(vk::Extent3D { width, height, depth: 1 })
+            .extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            })
             .mip_levels(1)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -60,7 +70,7 @@ impl Image {
             width,
             height,
             allocation: Some(allocation),
-            allocator: Some(ctx.allocator.clone())
+            allocator: Some(ctx.allocator.clone()),
         })
     }
 
@@ -71,7 +81,7 @@ impl Image {
             width,
             height,
             allocation: None,
-            allocator: None
+            allocator: None,
         }
     }
 
@@ -95,10 +105,7 @@ impl Image {
         unsafe { device.create_image_view(&create_info, None) }
     }
 
-    pub fn create_view(
-        &self,
-        ctx: &Context,
-    ) -> Result<vk::ImageView, vk::Result> {
+    pub fn create_view(&self, ctx: &Context) -> Result<vk::ImageView, vk::Result> {
         let aspect_mask = if self.format == vk::Format::D32_SFLOAT {
             vk::ImageAspectFlags::DEPTH
         } else {
@@ -121,7 +128,12 @@ impl Image {
         unsafe { ctx.device.create_image_view(&create_info, None) }
     }
 
-    pub fn create_sampler(&self, ctx: &Context, mag_filter: vk::Filter, min_filter: vk::Filter) -> Result<vk::Sampler, vk::Result> {
+    pub fn create_sampler(
+        &self,
+        ctx: &Context,
+        mag_filter: vk::Filter,
+        min_filter: vk::Filter,
+    ) -> Result<vk::Sampler, vk::Result> {
         let create_info = vk::SamplerCreateInfo::builder()
             .mag_filter(mag_filter)
             .min_filter(min_filter)
@@ -153,7 +165,9 @@ impl Deref for Image {
 
 impl Drop for Image {
     fn drop(&mut self) {
-        if self.allocation.is_none() || self.allocator.is_none() { return }
+        if self.allocation.is_none() || self.allocator.is_none() {
+            return;
+        }
 
         self.allocator
             .take()
@@ -168,7 +182,7 @@ impl Drop for Image {
 pub struct Texture {
     pub image: Image,
     pub view: vk::ImageView,
-    pub sampler: vk::Sampler, 
+    pub sampler: vk::Sampler,
 }
 
 impl Deref for Texture {
@@ -184,21 +198,20 @@ impl Texture {
         let (header, data) =
             qoi::decode_to_vec(include_bytes!("../../assets/textures/compiled/texture.qoi"))
                 .unwrap();
-        let texture_buffer =
-            Buffer::new::<Vec<u8>>(ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
+        let texture_buffer = Buffer::new::<Vec<u8>>(ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
 
         let image = Image::new(
-                ctx,
-                header.width,
-                header.height,
-                vk::Format::R8G8B8A8_SRGB,
-                vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-            )?;
+            ctx,
+            header.width,
+            header.height,
+            vk::Format::R8G8B8A8_SRGB,
+            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+        )?;
         let view = image.create_view(ctx)?;
         let sampler = image.create_sampler(ctx, vk::Filter::LINEAR, vk::Filter::LINEAR)?;
 
         ctx.command_pool
-            .allocate(&ctx.device)
+            .allocate()
             .unwrap()
             .begin()
             .unwrap()
@@ -231,7 +244,7 @@ impl Texture {
         Ok(Self {
             image,
             view,
-            sampler
+            sampler,
         })
     }
 }
