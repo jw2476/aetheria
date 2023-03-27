@@ -8,6 +8,7 @@ extern crate core;
 mod macros;
 mod renderer;
 mod mesh;
+mod model;
 mod time;
 
 use std::path::Path;
@@ -15,12 +16,13 @@ use std::sync::Arc;
 
 use bevy_ecs::{world::World, system::{Res, Query, ResMut}, schedule::Schedule};
 use bytemuck::cast_slice;
+use mesh::TextureRef;
 use time::Time;
 use vulkan::Context;
 use renderer::Renderer;
 use winit::event_loop::ControlFlow;
 use glam::{Vec2, Vec3, Quat};
-use crate::mesh::{Mesh, MeshRef, MeshRegistry, Texture, TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex};
+use crate::{mesh::{Mesh, MeshRef, MeshRegistry, Texture, TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex}, model::Model};
 use gltf::Glb;
 
 struct Indices(Vec<u32>);
@@ -51,45 +53,18 @@ fn main() {
     world.insert_resource(TextureRegistry::new());
     world.insert_resource(TransformRegistry::new());
     world.insert_resource(Time::new());
+    world.insert_resource(renderer);
 
     let mut schedule = Schedule::default();
     schedule.add_system(animate);
     schedule.add_system(Time::frame_finished);
     schedule.add_system(Renderer::render);
+
+    let texture = Texture::new(&mut world.get_resource_mut().unwrap(), Path::new("../../assets/textures/compiled/test.qoi")).unwrap();
+    let texture: TextureRef = world.get_resource_mut::<TextureRegistry>().unwrap().add(texture);
     
-    let texture = Texture::new(&mut renderer, Path::new("../../assets/textures/compiled/test.qoi")).unwrap();
-    let texture = world.get_resource_mut::<TextureRegistry>().unwrap().add(texture);
-    
-    let model = Glb::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb")).unwrap();
-    let meshes = model.gltf.meshes.iter().flat_map(|mesh| mesh.primitives.clone()).map(|primitive| {
-        let positions: Vec<Vec3> = cast_slice::<u8, f32>(&primitive.get_attribute_data(&model, "POSITION").unwrap())
-            .chunks_exact(3)
-            .map(|pos| Vec3::from_slice(pos))
-            .collect();
-        let uvs: Vec<Vec2> = cast_slice::<u8, f32>(&primitive.get_attribute_data(&model, "TEXCOORD_0").unwrap())
-            .chunks_exact(2)
-            .map(|uv| Vec2::from_slice(uv))
-            .collect();
-
-        let vertices = std::iter::zip(positions, uvs).map(|(pos, uv)| Vertex { pos, uv }).collect::<Vec<Vertex>>();
-        let indices = primitive.get_indices_data(&model).unwrap();
-
-        let mesh = Mesh::new(&renderer.ctx, &vertices, &indices, Some(texture)).unwrap();
-        let mesh: MeshRef = world.get_resource_mut::<MeshRegistry>().unwrap().add(mesh);
-        mesh
-    }).collect::<Vec<MeshRef>>();
-    println!("{:?}", model.gltf);
-
-    let mut transform = Transform::new(&mut renderer).unwrap();
-    transform.scale = Vec3::new(0.005, 0.005, 0.005);
-    transform.update(&renderer).unwrap();
-    let transform: TransformRef = world.get_resource_mut::<TransformRegistry>().unwrap().add(transform);
-
-    meshes.iter().for_each(|mesh| {
-        world.spawn((*mesh, transform));
-    });
-    
-    world.insert_resource(renderer);
+    Model::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb"), &mut world, texture);
+    Model::load(include_bytes!("../../assets/models/fence.glb"), &mut world, texture);
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
