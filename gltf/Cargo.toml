@@ -1,14 +1,12 @@
 [package]
-name = "ecs-macros"
+name = "gltf"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-proc-macro2 = "1.0.53"
-quote = "1.0.26"
-syn = "2.0.8"
-
-[lib]
-proc-macro = true
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bytemuck = "1.13"
+serde_repr = "0.1"

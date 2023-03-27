@@ -21,6 +21,7 @@ use renderer::Renderer;
 use winit::event_loop::ControlFlow;
 use glam::{Vec2, Vec3, Quat};
 use crate::mesh::{Mesh, MeshRef, MeshRegistry, Texture, TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex};
+use gltf::Glb;
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -55,43 +56,39 @@ fn main() {
     schedule.add_system(animate);
     schedule.add_system(Time::frame_finished);
     schedule.add_system(Renderer::render);
-
+    
     let texture = Texture::new(&mut renderer, Path::new("../../assets/textures/compiled/test.qoi")).unwrap();
     let texture = world.get_resource_mut::<TextureRegistry>().unwrap().add(texture);
+    
+    let model = Glb::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb")).unwrap();
+    let meshes = model.gltf.meshes.iter().flat_map(|mesh| mesh.primitives.clone()).map(|primitive| {
+        let positions: Vec<Vec3> = cast_slice::<u8, f32>(&primitive.get_attribute_data(&model, "POSITION").unwrap())
+            .chunks_exact(3)
+            .map(|pos| Vec3::from_slice(pos))
+            .collect();
+        let uvs: Vec<Vec2> = cast_slice::<u8, f32>(&primitive.get_attribute_data(&model, "TEXCOORD_0").unwrap())
+            .chunks_exact(2)
+            .map(|uv| Vec2::from_slice(uv))
+            .collect();
 
-    let vertices = vec![
-        Vertex {
-            pos: Vec3::new(-0.5, -0.5, 0.0),
-            uv: Vec2::new(1.0, 0.0)
-        },
-        Vertex {
-            pos: Vec3::new(0.5, -0.5, 0.0),
-            uv: Vec2::new(0.0, 0.0)
-        },
-        Vertex {
-            pos: Vec3::new(0.5, 0.5, 0.0),
-            uv: Vec2::new(0.0, 1.0)
-        },
-        Vertex {
-            pos: Vec3::new(-0.5, 0.5, 0.0),
-            uv: Vec2::new(1.0, 1.0)
-        }
-    ];
-    let indices = vec![0, 1, 2, 2, 3, 0];
-    let mesh = Mesh::new(&renderer, &vertices, &indices, Some(texture)).unwrap();
-    let mesh: MeshRef = world.get_resource_mut::<MeshRegistry>().unwrap().add(mesh);
+        let vertices = std::iter::zip(positions, uvs).map(|(pos, uv)| Vertex { pos, uv }).collect::<Vec<Vertex>>();
+        let indices = primitive.get_indices_data(&model).unwrap();
 
-    let transform = Transform::new(&mut renderer).unwrap();
+        let mesh = Mesh::new(&renderer.ctx, &vertices, &indices, Some(texture)).unwrap();
+        let mesh: MeshRef = world.get_resource_mut::<MeshRegistry>().unwrap().add(mesh);
+        mesh
+    }).collect::<Vec<MeshRef>>();
+    println!("{:?}", model.gltf);
+
+    let mut transform = Transform::new(&mut renderer).unwrap();
+    transform.scale = Vec3::new(0.005, 0.005, 0.005);
+    transform.update(&renderer).unwrap();
     let transform: TransformRef = world.get_resource_mut::<TransformRegistry>().unwrap().add(transform);
 
-    let mut transform_two = Transform::new(&mut renderer).unwrap();
-    transform_two.translation.z = 0.5;
-    transform_two.update(&renderer).unwrap();
-    let transform_two: TransformRef = world.get_resource_mut::<TransformRegistry>().unwrap().add(transform_two);
-
-    world.spawn((mesh, transform));
-    world.spawn((mesh, transform_two));
-
+    meshes.iter().for_each(|mesh| {
+        world.spawn((*mesh, transform));
+    });
+    
     world.insert_resource(renderer);
 
     event_loop.run(move |event, _, control_flow| {

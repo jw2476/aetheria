@@ -108,7 +108,7 @@ impl Transform {
             45.0_f32.to_radians(),
             renderer.swapchain.extent.width as f32 / renderer.swapchain.extent.height as f32,
             0.01,
-            10.0,
+            1000.0,
         );
 
         projection.col_mut(1)[1] *= -1.0;
