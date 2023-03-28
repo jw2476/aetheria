@@ -109,16 +109,38 @@ pub struct Material {
 
 impl Material {
     pub fn new(
-        renderer: &Renderer,
+        world: &mut World,
         base_color_factor: Vec4,
         base_color_texture: TextureRef,
     ) -> Result<Self, vk::Result> {
         let data = MaterialData { base_color_factor };
 
         let bytes = data.to_bytes();
-        let buffer = Buffer::new(&renderer.ctx, bytes, vk::BufferUsageFlags::UNIFORM_BUFFER)?;
-        let set = renderer.material_pool.allocate()?;
-        set.update_buffer(&renderer.ctx.device, 0, &buffer);
+        let buffer = Buffer::new(
+            &world.get_resource::<Renderer>().unwrap().ctx,
+            bytes,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+        )?;
+        let set = world
+            .get_resource_mut::<Renderer>()
+            .unwrap()
+            .material_pool
+            .allocate()?;
+        set.update_buffer(
+            &world.get_resource::<Renderer>().unwrap().ctx.device,
+            0,
+            &buffer,
+        );
+        set.update_texture(
+            &world.get_resource::<Renderer>().unwrap().ctx.device,
+            1,
+            &world
+                .get_resource::<TextureRegistry>()
+                .unwrap()
+                .get(base_color_texture)
+                .unwrap(),
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        );
 
         Ok(Self {
             base_color_texture,

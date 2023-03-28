@@ -10,12 +10,14 @@ mod renderer;
 mod mesh;
 mod model;
 mod time;
+mod camera;
 
 use std::path::Path;
 use std::sync::Arc;
 
 use bevy_ecs::{world::World, system::{Res, Query, ResMut}, schedule::Schedule};
 use bytemuck::cast_slice;
+use camera::Camera;
 use mesh::{TextureRef, MaterialRegistry};
 use time::Time;
 use vulkan::{Context, Texture};
@@ -54,6 +56,7 @@ fn main() {
     world.insert_resource(TransformRegistry::new());
     world.insert_resource(MaterialRegistry::new());
     world.insert_resource(Time::new());
+    world.insert_resource(Camera::new(&mut renderer).unwrap());
     world.insert_resource(renderer);
 
     let white = Texture::new(&mut world.get_resource_mut::<Renderer>().unwrap().ctx, include_bytes!("../../assets/textures/compiled/white.qoi")).unwrap();
@@ -66,7 +69,7 @@ fn main() {
     
     Model::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb"), &mut world);
     Model::load(include_bytes!("../../assets/models/fence.glb"), &mut world);
-    //Model::load(include_bytes!("../../../../Downloads/Sponza.glb"), &mut world);
+    Model::load(include_bytes!("../../../../Downloads/Sponza.glb"), &mut world);
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -87,6 +90,8 @@ fn main() {
                 ..
             } => {
                 world.get_resource_mut::<Renderer>().unwrap().recreate_swapchain().unwrap();
+                let extent = world.get_resource::<Renderer>().unwrap().ctx.swapchain.extent.clone();
+                world.get_resource_mut::<Camera>().unwrap().update(extent.width as f32, extent.height as f32);
             }
             winit::event::Event::DeviceEvent { event: winit::event::DeviceEvent::Key(input), .. } => {
                 if let Some(key) = input.virtual_keycode && key == winit::event::VirtualKeyCode::Escape {

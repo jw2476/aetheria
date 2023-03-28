@@ -154,12 +154,9 @@ impl Model {
                     .base_color_factor
                     .unwrap_or([1.0, 1.0, 1.0, 1.0]);
 
-                let material = Material::new(
-                    &world.get_resource().unwrap(),
-                    Vec4::from(base_color_factor),
-                    *base_color_texture,
-                )
-                .unwrap();
+                let material =
+                    Material::new(world, Vec4::from(base_color_factor), *base_color_texture)
+                        .unwrap();
 
                 world
                     .get_resource_mut::<MaterialRegistry>()

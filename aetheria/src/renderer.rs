@@ -18,6 +18,7 @@ use vulkan::{
 };
 use winit::window::Window;
 
+use crate::camera::Camera;
 use crate::include_bytes_align_as;
 use crate::mesh::{
     MaterialRef, MaterialRegistry, MeshRef, MeshRegistry, TextureRegistry, TransformRef,
@@ -123,9 +124,9 @@ impl Renderer {
             unsafe { ctx.device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { ctx.device.create_fence(&fence_info, None).unwrap() };
 
-        let camera_pool = Pool::new(ctx.device.clone(), camera_layout, 1000).unwrap();
-        let material_pool = Pool::new(ctx.device.clone(), material_layout, 1000).unwrap();
-        let transform_pool = Pool::new(ctx.device.clone(), transform_layout, 1000).unwrap();
+        let camera_pool = Pool::new(ctx.device.clone(), camera_layout.clone(), 1000).unwrap();
+        let material_pool = Pool::new(ctx.device.clone(), material_layout.clone(), 1000).unwrap();
+        let transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 1000).unwrap();
 
         let mut renderer = Self {
             ctx,
@@ -234,6 +235,7 @@ impl Renderer {
         mesh_registry: Res<MeshRegistry>,
         transform_registry: Res<TransformRegistry>,
         material_registry: Res<MaterialRegistry>,
+        camera: Res<Camera>,
         query: Query<(&MeshRef, &TransformRef)>,
     ) {
         unsafe {
@@ -265,7 +267,8 @@ impl Renderer {
                     renderer.framebuffers[image_index as usize],
                     renderer.ctx.swapchain.extent,
                 )
-                .bind_pipeline(&renderer.pipeline);
+                .bind_pipeline(&renderer.pipeline)
+                .bind_descriptor_set(&renderer.pipeline, 0, &camera.set);
 
             for (&mesh, &transform) in query.iter() {
                 let mesh = mesh_registry.get(mesh).unwrap();
