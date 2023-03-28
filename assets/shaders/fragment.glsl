@@ -7,7 +7,20 @@ layout(location = 2) in vec3 fragNormal;
 
 layout(location = 0) out vec4 outColor;
 
-layout(set = 1, binding = 0) uniform sampler2D textureSampler;
+layout(set = 0, binding = 0) uniform Camera {
+    mat4 view;
+    mat4 proj;
+} camera;
+
+layout(set = 1, binding = 0) uniform Material {
+    vec4 baseColorFactor;
+} material;
+
+layout(set = 1, binding = 1) uniform sampler2D baseColorTexture;
+
+layout(set = 2, binding = 0) uniform Mesh {
+    mat4 model;
+} transform;
 
 vec3 LIGHT_POS = vec3(0.0, 10.0, 10.0);
 float AMBIENT_STRENGTH = 0.1;
@@ -19,5 +32,5 @@ void main() {
 
     float brightness = AMBIENT_STRENGTH + diffuse;
     
-    outColor = texture(textureSampler, fragUV) * brightness;
+    outColor = texture(baseColorTexture, fragUV) * material.baseColorFactor * brightness;
 }

@@ -2,9 +2,9 @@ use crate::renderer::Renderer;
 use ash::vk;
 use bevy_ecs::prelude::*;
 use bytemuck::{bytes_of, cast_slice, Pod, Zeroable};
-use glam::{Mat4, Quat, Vec2, Vec3};
+use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use std::path::Path;
-use vulkan::{Buffer, Context, Set};
+use vulkan::{Buffer, Context, Set, Texture};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -17,7 +17,7 @@ pub struct Vertex {
 pub struct Mesh {
     pub vertex_buffer: Buffer,
     pub index_buffer: Buffer,
-    pub texture: Option<TextureRef>,
+    pub material: Option<MaterialRef>,
 }
 
 impl Mesh {
@@ -25,7 +25,7 @@ impl Mesh {
         ctx: &Context,
         vertices: &[Vertex],
         indices: &[u32],
-        texture: Option<TextureRef>,
+        material: Option<MaterialRef>,
     ) -> Result<Self, vk::Result> {
         let vertex_buffer = Buffer::new(
             ctx,
@@ -38,28 +38,8 @@ impl Mesh {
         Ok(Self {
             vertex_buffer,
             index_buffer,
-            texture,
+            material,
         })
-    }
-}
-
-pub struct Texture {
-    texture: vulkan::Texture,
-    pub set: Set,
-}
-
-impl Texture {
-    pub fn new(renderer: &mut Renderer, bytes: &[u8]) -> Result<Self, vk::Result> {
-        let texture = vulkan::Texture::new(&mut renderer.ctx, bytes)?;
-        let set = renderer.texture_pool.allocate()?;
-        set.update_texture(
-            &renderer.device,
-            0,
-            &texture,
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        );
-
-        Ok(Self { texture, set })
     }
 }
 
@@ -100,30 +80,52 @@ impl Transform {
     pub fn update(&mut self, renderer: &Renderer) -> Result<(), vk::Result> {
         let model =
             Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation);
-        let view = Mat4::look_at_rh(
-            Vec3::new(4.0, 1.0, 0.0),
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(0.0, 1.0, 0.0),
-        );
-        let mut projection = Mat4::perspective_rh(
-            45.0_f32.to_radians(),
-            renderer.swapchain.extent.width as f32 / renderer.swapchain.extent.height as f32,
-            0.01,
-            1000.0,
-        );
 
-        projection.col_mut(1)[1] *= -1.0;
-
-        let mvp: [Mat4; 3] = [model, view, projection];
-        let mvp: Vec<f32> = mvp
-            .iter()
-            .flat_map(|matrix| matrix.to_cols_array())
-            .collect();
-        let mvp: &[u8] = cast_slice(&mvp);
-
-        self.buffer.upload(mvp);
+        let model = cast_slice::<f32, u8>(&model.to_cols_array()).to_vec();
+        self.buffer.upload(model);
 
         Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+struct MaterialData {
+    base_color_factor: Vec4,
+}
+
+impl MaterialData {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        cast_slice::<f32, u8>(&self.base_color_factor.to_array()).to_vec()
+    }
+}
+
+pub struct Material {
+    pub base_color_texture: TextureRef,
+
+    data: MaterialData,
+    pub buffer: Buffer,
+    pub set: Set,
+}
+
+impl Material {
+    pub fn new(
+        renderer: &Renderer,
+        base_color_factor: Vec4,
+        base_color_texture: TextureRef,
+    ) -> Result<Self, vk::Result> {
+        let data = MaterialData { base_color_factor };
+
+        let bytes = data.to_bytes();
+        let buffer = Buffer::new(&renderer.ctx, bytes, vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+        let set = renderer.material_pool.allocate()?;
+        set.update_buffer(&renderer.ctx.device, 0, &buffer);
+
+        Ok(Self {
+            base_color_texture,
+            data,
+            buffer,
+            set,
+        })
     }
 }
 
@@ -142,6 +144,10 @@ impl TextureRef {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Component)]
 pub struct TransformRef(usize);
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MaterialRef(usize);
 
 impl From<usize> for MeshRef {
     fn from(value: usize) -> Self {
@@ -173,6 +179,17 @@ impl From<usize> for TransformRef {
 }
 impl From<TransformRef> for usize {
     fn from(value: TransformRef) -> Self {
+        value.0
+    }
+}
+
+impl From<usize> for MaterialRef {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+impl From<MaterialRef> for usize {
+    fn from(value: MaterialRef) -> Self {
         value.0
     }
 }
@@ -212,3 +229,4 @@ impl<T> Default for Registry<T> {
 pub type MeshRegistry = Registry<Mesh>;
 pub type TextureRegistry = Registry<Texture>;
 pub type TransformRegistry = Registry<Transform>;
+pub type MaterialRegistry = Registry<Material>;

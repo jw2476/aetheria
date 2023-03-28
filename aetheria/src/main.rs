@@ -16,13 +16,13 @@ use std::sync::Arc;
 
 use bevy_ecs::{world::World, system::{Res, Query, ResMut}, schedule::Schedule};
 use bytemuck::cast_slice;
-use mesh::TextureRef;
+use mesh::{TextureRef, MaterialRegistry};
 use time::Time;
-use vulkan::Context;
+use vulkan::{Context, Texture};
 use renderer::Renderer;
 use winit::event_loop::ControlFlow;
 use glam::{Vec2, Vec3, Quat, EulerRot};
-use crate::{mesh::{Mesh, MeshRef, MeshRegistry, Texture, TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex}, model::Model};
+use crate::{mesh::{Mesh, MeshRef, MeshRegistry, TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex}, model::Model};
 use gltf::Glb;
 
 struct Indices(Vec<u32>);
@@ -52,10 +52,11 @@ fn main() {
     world.insert_resource(MeshRegistry::new());
     world.insert_resource(TextureRegistry::new());
     world.insert_resource(TransformRegistry::new());
+    world.insert_resource(MaterialRegistry::new());
     world.insert_resource(Time::new());
     world.insert_resource(renderer);
 
-    let white = Texture::new(&mut world.get_resource_mut().unwrap(), include_bytes!("../../assets/textures/compiled/white.qoi")).unwrap();
+    let white = Texture::new(&mut world.get_resource_mut::<Renderer>().unwrap().ctx, include_bytes!("../../assets/textures/compiled/white.qoi")).unwrap();
     world.get_resource_mut::<TextureRegistry>().unwrap().add::<TextureRef>(white);
 
     let mut schedule = Schedule::default();

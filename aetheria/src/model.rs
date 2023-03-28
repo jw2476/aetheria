@@ -2,21 +2,22 @@ use std::io::Cursor;
 
 use bevy_ecs::world::World;
 use bytemuck::cast_slice;
-use glam::{Mat4, Quat, Vec2, Vec3};
+use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use gltf::Glb;
 use image::io::Reader as ImageReader;
+use vulkan::Texture;
 
 use crate::{
     mesh::{
-        Mesh, MeshRef, MeshRegistry, Texture, TextureRef, TextureRegistry, Transform, TransformRef,
-        TransformRegistry, Vertex,
+        Material, MaterialRef, MaterialRegistry, Mesh, MeshRef, MeshRegistry, TextureRef,
+        TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex,
     },
     renderer::Renderer,
 };
 
 pub struct Model {
     glb: Glb,
-    texture_refs: Vec<TextureRef>,
+    material_refs: Vec<MaterialRef>,
 }
 
 impl Model {
@@ -46,15 +47,10 @@ impl Model {
             let mesh = glb.gltf.meshes.get(mesh).unwrap();
 
             mesh.primitives.iter().for_each(|primitive| {
-                let color_texture = primitive
-                    .material
-                    .map(|material| glb.gltf.materials.get(material))
-                    .flatten()
-                    .map(|material| material.pbr.base_color_texture.as_ref())
-                    .flatten()
-                    .map(|texture| self.texture_refs.get(texture.index))
-                    .flatten()
-                    .unwrap_or(&TextureRef::WHITE);
+                let material = self
+                    .material_refs
+                    .get(primitive.material.unwrap_or(0))
+                    .unwrap();
 
                 let positions = primitive.get_attribute_data(glb, "POSITION").unwrap();
                 let uvs = primitive.get_attribute_data(glb, "TEXCOORD_0").unwrap();
@@ -83,7 +79,7 @@ impl Model {
                     &world.get_resource::<Renderer>().unwrap().ctx,
                     &vertices,
                     &indices,
-                    Some(*color_texture),
+                    Some(*material),
                 )
                 .unwrap();
                 let mesh: MeshRef = world.get_resource_mut::<MeshRegistry>().unwrap().add(mesh);
@@ -101,44 +97,78 @@ impl Model {
     pub fn load(bytes: &[u8], world: &mut World) -> Self {
         let glb = Glb::load(bytes).expect("Failed to load GLB file");
 
-        let texture_refs: Vec<TextureRef> = glb
-            .gltf
-            .textures
-            .iter()
-            .map(|texture| {
-                let image = glb.gltf.images.get(texture.source).unwrap();
-                let buffer_view = glb
-                    .gltf
-                    .buffer_views
-                    .get(
-                        image
-                            .buffer_view
-                            .expect("Aetheria does not support textures outside of the glb buffer"),
+        let texture_refs: Vec<TextureRef> =
+            glb.gltf
+                .textures
+                .iter()
+                .map(|texture| {
+                    let image = glb.gltf.images.get(texture.source).unwrap();
+                    let buffer_view =
+                        glb.gltf
+                            .buffer_views
+                            .get(image.buffer_view.expect(
+                                "Aetheria does not support textures outside of the glb buffer",
+                            ))
+                            .unwrap();
+                    let buffer = glb.gltf.buffers.get(buffer_view.buffer).unwrap();
+
+                    let bytes = &glb.buffer[buffer_view.byte_offset
+                        ..(buffer_view.byte_offset + buffer_view.byte_length)];
+                    let decoded = ImageReader::new(Cursor::new(bytes))
+                        .with_guessed_format()
+                        .unwrap()
+                        .decode()
+                        .unwrap();
+                    let texture_bytes = decoded.to_rgba8().to_vec();
+                    let texture_bytes =
+                        qoi::encode_to_vec(&texture_bytes, decoded.width(), decoded.height())
+                            .unwrap(); // This is encoding it just to decode it again, will fix it when I compile glTF files to custom mesh and texture files
+                    let texture = Texture::new(
+                        &mut world.get_resource_mut::<Renderer>().unwrap().ctx,
+                        &texture_bytes,
                     )
                     .unwrap();
-                let buffer = glb.gltf.buffers.get(buffer_view.buffer).unwrap();
 
-                let bytes = &glb.buffer
-                    [buffer_view.byte_offset..(buffer_view.byte_offset + buffer_view.byte_length)];
-                let decoded = ImageReader::new(Cursor::new(bytes))
-                    .with_guessed_format()
-                    .unwrap()
-                    .decode()
-                    .unwrap();
-                let texture_bytes = decoded.to_rgba8().to_vec();
-                let texture_bytes =
-                    qoi::encode_to_vec(&texture_bytes, decoded.width(), decoded.height()).unwrap(); // This is encoding it just to decode it again, will fix it when I compile glTF files to custom mesh and texture files
-                let texture =
-                    Texture::new(&mut world.get_resource_mut().unwrap(), &texture_bytes).unwrap();
+                    world
+                        .get_resource_mut::<TextureRegistry>()
+                        .unwrap()
+                        .add(texture)
+                })
+                .collect();
+
+        let material_refs: Vec<MaterialRef> = glb
+            .gltf
+            .materials
+            .iter()
+            .map(|material| {
+                let base_color_texture = material
+                    .pbr
+                    .base_color_texture
+                    .as_ref()
+                    .map(|base_color_texture| texture_refs.get(base_color_texture.index))
+                    .flatten()
+                    .unwrap_or(&TextureRef::WHITE);
+
+                let base_color_factor = material
+                    .pbr
+                    .base_color_factor
+                    .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+
+                let material = Material::new(
+                    &world.get_resource().unwrap(),
+                    Vec4::from(base_color_factor),
+                    *base_color_texture,
+                )
+                .unwrap();
 
                 world
-                    .get_resource_mut::<TextureRegistry>()
+                    .get_resource_mut::<MaterialRegistry>()
                     .unwrap()
-                    .add(texture)
+                    .add(material)
             })
             .collect();
 
-        let model = Self { glb, texture_refs };
+        let model = Self { glb, material_refs };
 
         let scene = model.glb.gltf.scenes.get(model.glb.gltf.scene).unwrap();
         scene.nodes.iter().for_each(|node| {

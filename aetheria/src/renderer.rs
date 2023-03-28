@@ -19,7 +19,10 @@ use vulkan::{
 use winit::window::Window;
 
 use crate::include_bytes_align_as;
-use crate::mesh::{MeshRef, MeshRegistry, TextureRegistry, TransformRef, TransformRegistry};
+use crate::mesh::{
+    MaterialRef, MaterialRegistry, MeshRef, MeshRegistry, TextureRegistry, TransformRef,
+    TransformRegistry,
+};
 
 #[derive(Resource)]
 pub struct Renderer {
@@ -34,11 +37,14 @@ pub struct Renderer {
     render_finished: vk::Semaphore,
     in_flight: vk::Fence,
 
+    camera_layout: SetLayout,
+    pub camera_pool: Pool,
+
+    material_layout: SetLayout,
+    pub material_pool: Pool,
+
     transform_layout: SetLayout,
     pub transform_pool: Pool,
-
-    texture_layout: SetLayout,
-    pub texture_pool: Pool,
 
     depth_image: Image,
     depth_view: vk::ImageView,
@@ -46,12 +52,15 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(ctx: Context, window: Arc<Window>) -> Result<Self, vk::Result> {
-        let transform_layout = SetLayoutBuilder::new(&ctx.device)
+        let camera_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
-
-        let texture_layout = SetLayoutBuilder::new(&ctx.device)
+        let material_layout = SetLayoutBuilder::new(&ctx.device)
+            .add(vk::DescriptorType::UNIFORM_BUFFER)
             .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .build()?;
+        let transform_layout = SetLayoutBuilder::new(&ctx.device)
+            .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
 
         let depth_image = Image::new(
@@ -81,7 +90,11 @@ impl Renderer {
             fragment: Some(fragment_shader),
         };
 
-        let descriptor_layouts = &[transform_layout.clone(), texture_layout.clone()];
+        let descriptor_layouts = &[
+            camera_layout.clone(),
+            material_layout.clone(),
+            transform_layout.clone(),
+        ];
         let pipeline = Pipeline::new(
             &ctx.device,
             &renderpass,
@@ -110,24 +123,27 @@ impl Renderer {
             unsafe { ctx.device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { ctx.device.create_fence(&fence_info, None).unwrap() };
 
-        let mut transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 1000)?;
-        let mut texture_pool = Pool::new(ctx.device.clone(), texture_layout.clone(), 1000)?;
+        let camera_pool = Pool::new(ctx.device.clone(), camera_layout, 1000).unwrap();
+        let material_pool = Pool::new(ctx.device.clone(), material_layout, 1000).unwrap();
+        let transform_pool = Pool::new(ctx.device.clone(), transform_layout, 1000).unwrap();
 
         let mut renderer = Self {
             ctx,
             window,
-            transform_layout,
             renderpass,
             pipeline,
             shaders,
             framebuffers,
             render_finished,
             in_flight,
-            transform_pool,
-            texture_layout,
-            texture_pool,
             depth_image,
             depth_view,
+            camera_layout,
+            material_layout,
+            transform_layout,
+            camera_pool,
+            material_pool,
+            transform_pool,
         };
 
         Ok(renderer)
@@ -183,7 +199,11 @@ impl Renderer {
             vk::Format::D32_SFLOAT,
         )?;
 
-        let descriptor_layouts = &[self.transform_layout.clone(), self.texture_layout.clone()];
+        let descriptor_layouts = &[
+            self.camera_layout.clone(),
+            self.material_layout.clone(),
+            self.transform_layout.clone(),
+        ];
         self.pipeline = Pipeline::new(
             &self.ctx.device,
             &self.renderpass,
@@ -213,7 +233,7 @@ impl Renderer {
         mut renderer: ResMut<Self>,
         mesh_registry: Res<MeshRegistry>,
         transform_registry: Res<TransformRegistry>,
-        texture_registry: Res<TextureRegistry>,
+        material_registry: Res<MaterialRegistry>,
         query: Query<(&MeshRef, &TransformRef)>,
     ) {
         unsafe {
@@ -249,12 +269,12 @@ impl Renderer {
 
             for (&mesh, &transform) in query.iter() {
                 let mesh = mesh_registry.get(mesh).unwrap();
-                let texture = texture_registry.get(mesh.texture.unwrap()).unwrap();
+                let material = material_registry.get(mesh.material.unwrap()).unwrap();
                 let transform = transform_registry.get(transform).unwrap();
 
                 cmd = cmd
-                    .bind_descriptor_set(&renderer.pipeline, 0, &transform.set)
-                    .bind_descriptor_set(&renderer.pipeline, 1, &texture.set)
+                    .bind_descriptor_set(&renderer.pipeline, 1, &material.set)
+                    .bind_descriptor_set(&renderer.pipeline, 2, &transform.set)
                     .bind_index_buffer(&mesh.index_buffer)
                     .bind_vertex_buffer(&mesh.vertex_buffer)
                     .draw(DrawOptions {
