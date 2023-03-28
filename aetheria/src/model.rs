@@ -58,6 +58,7 @@ impl Model {
 
                 let positions = primitive.get_attribute_data(glb, "POSITION").unwrap();
                 let uvs = primitive.get_attribute_data(glb, "TEXCOORD_0").unwrap();
+                let normals = primitive.get_attribute_data(glb, "NORMAL").unwrap();
 
                 let positions = cast_slice::<u8, f32>(&positions)
                     .chunks_exact(3)
@@ -68,9 +69,13 @@ impl Model {
                     .chunks_exact(2)
                     .map(|slice| Vec2::from_slice(slice))
                     .collect::<Vec<Vec2>>();
+                let normals = cast_slice::<u8, f32>(&normals)
+                    .chunks_exact(3)
+                    .map(|slice| Vec3::from_slice(slice))
+                    .collect::<Vec<Vec3>>();
 
-                let vertices = std::iter::zip(positions, uvs)
-                    .map(|(pos, uv)| Vertex { pos, uv })
+                let vertices = std::iter::zip(positions, std::iter::zip(uvs, normals))
+                    .map(|(pos, (uv, normal))| Vertex { pos, uv, normal })
                     .collect::<Vec<Vertex>>();
                 let indices = primitive.get_indices_data(glb).unwrap();
 

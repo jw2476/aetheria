@@ -21,7 +21,7 @@ use time::Time;
 use vulkan::Context;
 use renderer::Renderer;
 use winit::event_loop::ControlFlow;
-use glam::{Vec2, Vec3, Quat};
+use glam::{Vec2, Vec3, Quat, EulerRot};
 use crate::{mesh::{Mesh, MeshRef, MeshRegistry, Texture, TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex}, model::Model};
 use gltf::Glb;
 
@@ -59,12 +59,13 @@ fn main() {
     world.get_resource_mut::<TextureRegistry>().unwrap().add::<TextureRef>(white);
 
     let mut schedule = Schedule::default();
-    schedule.add_system(animate);
     schedule.add_system(Time::frame_finished);
     schedule.add_system(Renderer::render);
+    schedule.add_system(animate);
     
     Model::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb"), &mut world);
     Model::load(include_bytes!("../../assets/models/fence.glb"), &mut world);
+    //Model::load(include_bytes!("../../../../Downloads/Sponza.glb"), &mut world);
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -84,6 +85,7 @@ fn main() {
                 event: winit::event::WindowEvent::Resized(_),
                 ..
             } => {
+                world.get_resource_mut::<Renderer>().unwrap().recreate_swapchain().unwrap();
             }
             winit::event::Event::DeviceEvent { event: winit::event::DeviceEvent::Key(input), .. } => {
                 if let Some(key) = input.virtual_keycode && key == winit::event::VirtualKeyCode::Escape {
@@ -104,12 +106,10 @@ fn main() {
 }
 
 fn animate(time: Res<Time>, renderer: Res<Renderer>, mut registry: ResMut<TransformRegistry>, query: Query<&TransformRef>) {
-    for &transform in query.iter() {
-        let transform = registry.get_mut(transform).unwrap();
-        let mut euler = transform.rotation.to_euler(glam::EulerRot::ZXY);
+    registry.registry.iter_mut().for_each(|transform| { 
+        let mut euler = transform.rotation.to_euler(EulerRot::ZXY);
         euler.2 += time.delta_seconds();
-        println!("{:?}", euler);
         transform.rotation = Quat::from_euler(glam::EulerRot::ZXY, euler.0, euler.1, euler.2);
-        transform.update(&renderer);
-    }
+        transform.update(&renderer).unwrap();
+    })
 }

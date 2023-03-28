@@ -50,7 +50,7 @@ impl Pipeline {
     ) {
         let bindings = vec![vk::VertexInputBindingDescription::builder()
             .binding(0)
-            .stride(5 * 4)
+            .stride(8 * 4)
             .input_rate(vk::VertexInputRate::VERTEX)
             .build()];
 
@@ -66,6 +66,12 @@ impl Pipeline {
                 .location(1)
                 .format(vk::Format::R32G32_SFLOAT)
                 .offset(3 * 4)
+                .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .binding(0)
+                .location(2)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(5 * 4)
                 .build(),
         ];
 

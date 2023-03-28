@@ -11,6 +11,7 @@ use vulkan::{Buffer, Context, Set};
 pub struct Vertex {
     pub pos: Vec3,
     pub uv: Vec2,
+    pub normal: Vec3,
 }
 
 pub struct Mesh {
@@ -100,7 +101,7 @@ impl Transform {
         let model =
             Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation);
         let view = Mat4::look_at_rh(
-            Vec3::new(3.0, 3.0, 0.0),
+            Vec3::new(4.0, 1.0, 0.0),
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(0.0, 1.0, 0.0),
         );

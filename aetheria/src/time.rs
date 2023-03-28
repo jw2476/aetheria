@@ -18,6 +18,8 @@ impl Time {
     }
 
     pub fn frame_finished(mut time: ResMut<Self>) {
+        println!("FPS: {}", 1.0 / time.delta_seconds());
+
         time.last_frame = time.current_frame;
         time.current_frame = Instant::now();
     }
