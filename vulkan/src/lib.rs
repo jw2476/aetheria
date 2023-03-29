@@ -20,7 +20,7 @@ pub mod image;
 pub use image::{Image, Texture};
 
 pub mod graphics;
-pub use graphics::{Pipeline, Shader, Shaders};
+pub use graphics::{Pipeline, Shader, Shaders, VertexInputBuilder};
 
 pub mod renderpass;
 pub use renderpass::Renderpass;

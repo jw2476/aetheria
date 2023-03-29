@@ -49,6 +49,7 @@ fn main() {
     let window = Arc::new(window);
     let ctx = Context::new(&window);
     let mut renderer = Renderer::new(ctx, window.clone()).unwrap();
+    let mut egui_winit_state = egui_winit::State::new(&event_loop);
 
     let mut world = World::new();
     world.insert_resource(MeshRegistry::new());
@@ -69,7 +70,7 @@ fn main() {
     
     Model::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb"), &mut world);
     Model::load(include_bytes!("../../assets/models/fence.glb"), &mut world);
-    Model::load(include_bytes!("../../../../Downloads/Sponza.glb"), &mut world);
+    //Model::load(include_bytes!("../../../../Downloads/Sponza.glb"), &mut world);
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -79,30 +80,34 @@ fn main() {
         control_flow.set_poll();
 
         match event {
-            winit::event::Event::WindowEvent {
-                event: winit::event::WindowEvent::CloseRequested,
-                ..
-            } => {
-                control_flow.set_exit();
-            }
-            winit::event::Event::WindowEvent {
-                event: winit::event::WindowEvent::Resized(_),
-                ..
-            } => {
-                world.get_resource_mut::<Renderer>().unwrap().recreate_swapchain().unwrap();
-                let extent = world.get_resource::<Renderer>().unwrap().ctx.swapchain.extent.clone();
-                world.get_resource_mut::<Camera>().unwrap().update(extent.width as f32, extent.height as f32);
-            }
-            winit::event::Event::DeviceEvent { event: winit::event::DeviceEvent::Key(input), .. } => {
-                if let Some(key) = input.virtual_keycode && key == winit::event::VirtualKeyCode::Escape {
-                    control_flow.set_exit();
+            winit::event::Event::WindowEvent { event, .. } => {
+                egui_winit_state.on_event(&world.get_resource::<Renderer>().unwrap().egui_ctx, &event);
+                
+                match event {
+                    winit::event::WindowEvent::Resized(size) => {
+                        world.get_resource_mut::<Renderer>().unwrap().recreate_swapchain().unwrap();
+                        world.get_resource_mut::<Camera>().unwrap().update(size.width as f32, size.height as f32);
+                    },
+                    winit::event::WindowEvent::CloseRequested => {
+                        control_flow.set_exit()
+                    },
+                    _ => ()     
                 }
-            }
+
+            },
+            winit::event::Event::DeviceEvent {event, ..} => match event {
+                winit::event::DeviceEvent::Key(input) => {
+                    if let Some(key) = input.virtual_keycode && key == winit::event::VirtualKeyCode::Escape {
+                        control_flow.set_exit()
+                    }
+                },
+                _ => ()
+            },
             winit::event::Event::MainEventsCleared => {
                 schedule.run(&mut world);
             }
-            _ => {}
-        }
+            _ => ()
+        };
 
         if let ControlFlow::ExitWithCode(_) = *control_flow {
             println!("Waiting for GPU to finish");
@@ -111,7 +116,7 @@ fn main() {
     });
 }
 
-fn animate(time: Res<Time>, renderer: Res<Renderer>, mut registry: ResMut<TransformRegistry>, query: Query<&TransformRef>) {
+fn animate(time: Res<Time>, renderer: Res<Renderer>, mut registry: ResMut<TransformRegistry>) {
     registry.registry.iter_mut().for_each(|transform| { 
         let mut euler = transform.rotation.to_euler(EulerRot::ZXY);
         euler.2 += time.delta_seconds();

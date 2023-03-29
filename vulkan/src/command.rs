@@ -124,6 +124,15 @@ impl BufferBuilder {
         self
     }
 
+    pub fn next_subpass(self) -> Self {
+        unsafe {
+            self.device
+                .cmd_next_subpass(**self, vk::SubpassContents::INLINE)
+        };
+
+        self
+    }
+
     pub fn draw(self, options: DrawOptions) -> Self {
         unsafe {
             self.device.cmd_draw_indexed(

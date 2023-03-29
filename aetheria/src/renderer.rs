@@ -1,7 +1,8 @@
 use ash::vk;
 use bevy_ecs::prelude::Component;
 use bevy_ecs::system::{Res, ResMut, Resource};
-use glam::{Mat4, Vec3};
+use bytemuck::cast_slice;
+use glam::{Mat4, Vec2, Vec3};
 
 use bevy_ecs::{system::Query, world::World};
 use std::ops::DerefMut;
@@ -12,6 +13,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use vulkan::command::BufferBuilder;
+use vulkan::VertexInputBuilder;
 use vulkan::{
     command::TransitionLayoutOptions, Buffer, Context, DrawOptions, Image, Pipeline, Pool,
     Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain, Texture,
@@ -49,6 +51,11 @@ pub struct Renderer {
 
     depth_image: Image,
     depth_view: vk::ImageView,
+
+    pub egui_ctx: egui::Context,
+
+    ui_shaders: Shaders,
+    ui_pipeline: Pipeline,
 }
 
 impl Renderer {
@@ -96,12 +103,22 @@ impl Renderer {
             material_layout.clone(),
             transform_layout.clone(),
         ];
+
+        let vertex_input = VertexInputBuilder::new().add_binding(|binding| {
+            binding
+                .add_attribute(vk::Format::R32G32B32_SFLOAT)
+                .add_attribute(vk::Format::R32G32_SFLOAT)
+                .add_attribute(vk::Format::R32G32B32_SFLOAT)
+        });
+
         let pipeline = Pipeline::new(
             &ctx.device,
             &renderpass,
             shaders.clone(),
             ctx.swapchain.extent,
             descriptor_layouts,
+            vertex_input,
+            0,
         )?;
 
         let framebuffers: Vec<vk::Framebuffer> =
@@ -128,6 +145,40 @@ impl Renderer {
         let material_pool = Pool::new(ctx.device.clone(), material_layout.clone(), 1000).unwrap();
         let transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 1000).unwrap();
 
+        let egui_ctx = egui::Context::default();
+
+        let vertex_shader = Shader::new(
+            &ctx.device,
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/ui.vert.spv"),
+            vk::ShaderStageFlags::VERTEX,
+        )?;
+        let fragment_shader = Shader::new(
+            &ctx.device,
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/ui.frag.spv"),
+            vk::ShaderStageFlags::FRAGMENT,
+        )?;
+        let ui_shaders = Shaders {
+            vertex: Some(vertex_shader),
+            fragment: Some(fragment_shader),
+        };
+
+        let ui_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
+            binding
+                .add_attribute(vk::Format::R32G32_SFLOAT)
+                .add_attribute(vk::Format::R32G32B32A32_SFLOAT)
+                .add_attribute(vk::Format::R32G32_SFLOAT)
+        });
+
+        let ui_pipeline = Pipeline::new(
+            &ctx.device,
+            &renderpass,
+            ui_shaders.clone(),
+            ctx.swapchain.extent,
+            &[],
+            ui_vertex_input,
+            1,
+        )?;
+
         let mut renderer = Self {
             ctx,
             window,
@@ -145,6 +196,9 @@ impl Renderer {
             camera_pool,
             material_pool,
             transform_pool,
+            egui_ctx,
+            ui_shaders,
+            ui_pipeline,
         };
 
         Ok(renderer)
@@ -205,12 +259,39 @@ impl Renderer {
             self.material_layout.clone(),
             self.transform_layout.clone(),
         ];
+
+        let vertex_input = VertexInputBuilder::new().add_binding(|binding| {
+            binding
+                .add_attribute(vk::Format::R32G32B32_SFLOAT)
+                .add_attribute(vk::Format::R32G32_SFLOAT)
+                .add_attribute(vk::Format::R32G32B32_SFLOAT)
+        });
+
         self.pipeline = Pipeline::new(
             &self.ctx.device,
             &self.renderpass,
             self.shaders.clone(),
             self.ctx.swapchain.extent,
             descriptor_layouts,
+            vertex_input,
+            0,
+        )?;
+
+        let ui_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
+            binding
+                .add_attribute(vk::Format::R32G32_SFLOAT)
+                .add_attribute(vk::Format::R32G32B32A32_SFLOAT)
+                .add_attribute(vk::Format::R32G32_SFLOAT)
+        });
+
+        let ui_pipeline = Pipeline::new(
+            &self.ctx.device,
+            &self.renderpass,
+            self.ui_shaders.clone(),
+            self.ctx.swapchain.extent,
+            &[],
+            ui_vertex_input,
+            1,
         )?;
 
         self.framebuffers =
@@ -254,6 +335,74 @@ impl Renderer {
                 Ok(image_index) => image_index,
             };
 
+            let input = egui::RawInput::default();
+            let full_output = renderer.egui_ctx.run(input, |ctx| {
+                egui::Window::new("Hello Window").show(&ctx, |ui| {
+                    ui.label("Hello egui!");
+                });
+            });
+
+            let primitives = renderer.egui_ctx.tessellate(full_output.shapes);
+            let pixels_per_point = renderer.egui_ctx.pixels_per_point();
+            let buffers = primitives
+                .iter()
+                .map(|primitive| match &primitive.primitive {
+                    epaint::Primitive::Mesh(mesh) => {
+                        let vertices = mesh
+                            .vertices
+                            .iter()
+                            .flat_map(|vertex| {
+                                let mut bytes = Vec::new();
+                                let points = epaint::Vec2::new(
+                                    renderer.swapchain.extent.width as f32 / pixels_per_point,
+                                    renderer.swapchain.extent.height as f32 / pixels_per_point,
+                                );
+
+                                let zero_to_one = vertex.pos.to_vec2() / points;
+                                let minus_one_to_one =
+                                    (zero_to_one * 2.0) - epaint::Vec2::new(1.0, 1.0);
+                                bytes.append(
+                                    &mut cast_slice::<epaint::Vec2, u8>(&[minus_one_to_one])
+                                        .to_vec(),
+                                );
+
+                                let color = [
+                                    vertex.color.r(),
+                                    vertex.color.g(),
+                                    vertex.color.b(),
+                                    vertex.color.a(),
+                                ];
+                                let color = color
+                                    .iter()
+                                    .map(|channel| (*channel as f32) / 255.0)
+                                    .collect::<Vec<f32>>();
+                                bytes.append(&mut cast_slice::<f32, u8>(&color).to_vec());
+
+                                bytes.append(
+                                    &mut cast_slice::<epaint::Pos2, u8>(&[vertex.uv]).to_vec(),
+                                );
+
+                                bytes
+                            })
+                            .collect::<Vec<u8>>();
+                        let indices = cast_slice::<u32, u8>(&mesh.indices);
+
+                        let vertex_buffer = Buffer::new(
+                            &renderer.ctx,
+                            vertices,
+                            vk::BufferUsageFlags::VERTEX_BUFFER,
+                        )
+                        .unwrap();
+                        let index_buffer =
+                            Buffer::new(&renderer.ctx, indices, vk::BufferUsageFlags::INDEX_BUFFER)
+                                .unwrap();
+
+                        (vertex_buffer, index_buffer)
+                    }
+                    epaint::Primitive::Callback(_) => todo!(),
+                })
+                .collect::<Vec<(Buffer, Buffer)>>();
+
             renderer.ctx.command_pool.clear();
             let mut cmd = renderer
                 .ctx
@@ -285,6 +434,18 @@ impl Renderer {
                         instance_count: 1,
                         ..Default::default()
                     })
+            }
+
+            cmd = cmd.next_subpass().bind_pipeline(&renderer.ui_pipeline);
+            for (vertex_buffer, index_buffer) in &buffers {
+                cmd = cmd
+                    .bind_vertex_buffer(vertex_buffer)
+                    .bind_index_buffer(index_buffer)
+                    .draw(DrawOptions {
+                        vertex_count: (index_buffer.size / 4).try_into().unwrap(),
+                        instance_count: 1,
+                        ..Default::default()
+                    });
             }
 
             let cmd = cmd.end_renderpass().end().unwrap();

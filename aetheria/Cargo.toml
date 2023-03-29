@@ -21,3 +21,6 @@ glam = { version = "0.23", features = ["bytemuck"] }
 qoi = "0.4"
 bevy_ecs = "0.10"
 image = "0.24"
+egui = "0.21"
+egui-winit = "0.21"
+epaint = { version = "0.21", features = ["bytemuck"] }

@@ -41,16 +41,29 @@ impl Renderpass {
             .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
         let color_attachments = &[*color_attachment_ref];
-        let subpass = vk::SubpassDescription::builder()
+        let render_subpass = vk::SubpassDescription::builder()
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
             .color_attachments(color_attachments)
             .depth_stencil_attachment(&depth_attachment_ref);
+        let ui_subpass = vk::SubpassDescription::builder()
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+            .color_attachments(color_attachments);
+
+        let dependency = vk::SubpassDependency::builder()
+            .src_subpass(0)
+            .dst_subpass(1)
+            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
 
         let attachments = &[*color_attachment, *depth_attachment];
-        let subpasses = &[*subpass];
+        let subpasses = &[*render_subpass, *ui_subpass];
+        let dependencies = &[*dependency];
         let create_info = vk::RenderPassCreateInfo::builder()
             .attachments(attachments)
-            .subpasses(subpasses);
+            .subpasses(subpasses)
+            .dependencies(dependencies);
 
         let renderpass = unsafe { device.create_render_pass(&create_info, None)? };
 

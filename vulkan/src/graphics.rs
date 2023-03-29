@@ -37,6 +37,89 @@ pub struct Shaders {
     pub fragment: Option<Shader>,
 }
 
+pub struct Binding {
+    binding: usize,
+    stride: usize,
+    attributes: Vec<vk::VertexInputAttributeDescription>,
+}
+
+impl Binding {
+    pub fn add_attribute(mut self, format: vk::Format) -> Self {
+        let attribute = vk::VertexInputAttributeDescription::builder()
+            .binding(self.binding.try_into().unwrap())
+            .location(self.attributes.len().try_into().unwrap())
+            .format(format)
+            .offset(self.stride.try_into().unwrap())
+            .build();
+        self.attributes.push(attribute);
+        self.stride += match format {
+            vk::Format::R32G32_SFLOAT => 2 * 4,
+            vk::Format::R32G32B32_SFLOAT => 3 * 4,
+            vk::Format::R32G32B32A32_SFLOAT => 4 * 4,
+            vk::Format::R8G8B8A8_UINT => 4 * 1,
+            _ => todo!(),
+        };
+
+        self
+    }
+}
+
+pub struct VertexInputBuilder {
+    bindings: Vec<Binding>,
+}
+
+impl VertexInputBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add_binding<F: Fn(Binding) -> Binding>(mut self, callback: F) -> Self {
+        let binding = Binding {
+            binding: self.bindings.len(),
+            stride: 0,
+            attributes: Vec::new(),
+        };
+        self.bindings.push(callback(binding));
+
+        self
+    }
+
+    fn to_vertex_bindings(
+        &self,
+    ) -> (
+        Vec<vk::VertexInputBindingDescription>,
+        Vec<vk::VertexInputAttributeDescription>,
+    ) {
+        let bindings = self
+            .bindings
+            .iter()
+            .enumerate()
+            .map(|(i, binding)| {
+                vk::VertexInputBindingDescription::builder()
+                    .binding(i.try_into().unwrap())
+                    .stride(binding.stride.try_into().unwrap())
+                    .input_rate(vk::VertexInputRate::VERTEX)
+                    .build()
+            })
+            .collect::<Vec<vk::VertexInputBindingDescription>>();
+        let attributes = self
+            .bindings
+            .iter()
+            .flat_map(|binding| binding.attributes.clone())
+            .collect::<Vec<vk::VertexInputAttributeDescription>>();
+
+        (bindings, attributes)
+    }
+}
+
+impl Default for VertexInputBuilder {
+    fn default() -> Self {
+        Self {
+            bindings: Vec::new(),
+        }
+    }
+}
+
 pub struct Pipeline {
     pub(crate) pipeline: vk::Pipeline,
     pub layout: vk::PipelineLayout,
@@ -44,46 +127,14 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    fn get_vertex_bindings<'a>() -> (
-        Vec<vk::VertexInputBindingDescription>,
-        Vec<vk::VertexInputAttributeDescription>,
-    ) {
-        let bindings = vec![vk::VertexInputBindingDescription::builder()
-            .binding(0)
-            .stride(8 * 4)
-            .input_rate(vk::VertexInputRate::VERTEX)
-            .build()];
-
-        let attributes = vec![
-            vk::VertexInputAttributeDescription::builder()
-                .binding(0)
-                .location(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(0)
-                .build(),
-            vk::VertexInputAttributeDescription::builder()
-                .binding(0)
-                .location(1)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(3 * 4)
-                .build(),
-            vk::VertexInputAttributeDescription::builder()
-                .binding(0)
-                .location(2)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(5 * 4)
-                .build(),
-        ];
-
-        (bindings, attributes)
-    }
-
     pub fn new(
         device: &Device,
         renderpass: &Renderpass,
         shaders: Shaders,
         extent: vk::Extent2D,
         descriptor_layouts: &[SetLayout],
+        vertex_input: VertexInputBuilder,
+        subpass: u32,
     ) -> Result<Self, vk::Result> {
         let vertex_stage = shaders
             .vertex
@@ -96,7 +147,7 @@ impl Pipeline {
             .expect("All graphics pipelines need a fragment shader")
             .get_stage();
 
-        let (bindings, attributes) = Self::get_vertex_bindings();
+        let (bindings, attributes) = vertex_input.to_vertex_bindings();
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::builder()
             .vertex_binding_descriptions(&bindings)
             .vertex_attribute_descriptions(&attributes);
@@ -170,7 +221,7 @@ impl Pipeline {
             .color_blend_state(&color_blending)
             .layout(layout)
             .render_pass(**renderpass)
-            .subpass(0);
+            .subpass(subpass);
 
         let pipeline = unsafe {
             device
