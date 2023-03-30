@@ -14,6 +14,9 @@ pub struct Vertex {
     pub normal: Vec3,
 }
 
+#[derive(Clone, Debug, Component)]
+pub struct Name(String);
+
 pub struct Mesh {
     pub vertex_buffer: Buffer,
     pub index_buffer: Buffer,

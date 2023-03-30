@@ -359,7 +359,7 @@ impl Renderer {
         textures_delta.set.iter().for_each(|(texture_id, delta)| {
             println!("{:?}", texture_id);
             match egui_texture_registry.get(&(*texture_id).into()) {
-                Some(texture) => {
+                Some(_) => {
                     println!("Update Texture: {:?}", delta.pos);
                     todo!();
                 }
@@ -404,7 +404,7 @@ impl Renderer {
     pub fn render(
         mut renderer: ResMut<Self>,
         mesh_registry: Res<MeshRegistry>,
-        transform_registry: Res<TransformRegistry>,
+        mut transform_registry: ResMut<TransformRegistry>,
         material_registry: Res<MaterialRegistry>,
         mut egui_texture_registry: ResMut<EguiTextureRegistry>,
         camera: Res<Camera>,
@@ -431,17 +431,19 @@ impl Renderer {
                 .lock()
                 .take_egui_input(&renderer.window)
                 .clone();
-            let full_output = renderer.egui_ctx.run(input, |ctx| {
-                egui::Window::new("Hello Window")
-                    .resizable(true)
-                    .hscroll(true)
-                    .vscroll(false)
-                    .default_height(300.0)
-                    .show(&ctx, |ui| {
-                        ui.label("Hello egui!");
-                        ui.allocate_space(ui.available_size());
+            renderer.egui_ctx.begin_frame(input);
+            egui::Window::new("Entity Editor")
+                .resizable(true)
+                .show(&renderer.egui_ctx, |ui| {
+                    query.iter().for_each(|(_, transform_ref)| {
+                        let transform = transform_registry.get_mut(transform_ref).unwrap();
+                        ui.add(egui::DragValue::new(&mut transform.translation.x).speed(0.1));
                     });
-            });
+
+                    ui.allocate_space(ui.available_size());
+                });
+            let full_output = renderer.egui_ctx.end_frame();
+
             renderer.egui_winit_state.lock().handle_platform_output(
                 &renderer.window,
                 &renderer.egui_ctx,

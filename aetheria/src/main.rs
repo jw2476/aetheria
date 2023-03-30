@@ -48,6 +48,7 @@ fn main() {
     let (event_loop, window) = create_window();
     let window = Arc::new(window);
     let ctx = Context::new(&window);
+    
     let mut renderer = Renderer::new(ctx, window.clone(), &event_loop).unwrap();
 
     let mut world = World::new();
@@ -67,7 +68,7 @@ fn main() {
     schedule.add_system(Time::frame_finished);
     schedule.add_system(Renderer::render);
     schedule.add_system(animate);
-    
+        
     Model::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb"), &mut world);
     Model::load(include_bytes!("../../assets/models/fence.glb"), &mut world);
     //Model::load(include_bytes!("../../../../Downloads/Sponza.glb"), &mut world);
