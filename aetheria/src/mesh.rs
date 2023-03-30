@@ -151,6 +151,31 @@ impl Material {
     }
 }
 
+pub struct EguiTexture {
+    texture: Texture,
+    pub set: Set,
+}
+
+impl EguiTexture {
+    pub fn new(
+        renderer: &mut Renderer,
+        bytes: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<Self, vk::Result> {
+        let texture = Texture::new_bytes(&mut renderer.ctx, bytes, width, height)?;
+        let set = renderer.egui_texture_pool.allocate()?;
+        set.update_texture(
+            &renderer.ctx.device,
+            0,
+            &texture,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        );
+
+        Ok(Self { texture, set })
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Component, Hash, Eq, PartialEq)]
 pub struct MeshRef(usize);
@@ -254,4 +279,4 @@ pub type MeshRegistry = Registry<MeshRef, Mesh>;
 pub type TextureRegistry = Registry<TextureRef, Texture>;
 pub type TransformRegistry = Registry<TransformRef, Transform>;
 pub type MaterialRegistry = Registry<MaterialRef, Material>;
-pub type EguiTextureRegistry = Registry<EguiTextureRef, Texture>;
+pub type EguiTextureRegistry = Registry<EguiTextureRef, EguiTexture>;

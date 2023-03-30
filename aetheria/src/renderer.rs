@@ -26,8 +26,8 @@ use winit::window::Window;
 use crate::camera::Camera;
 use crate::include_bytes_align_as;
 use crate::mesh::{
-    EguiTextureRef, EguiTextureRegistry, MaterialRef, MaterialRegistry, MeshRef, MeshRegistry,
-    TextureRegistry, TransformRef, TransformRegistry,
+    EguiTexture, EguiTextureRef, EguiTextureRegistry, MaterialRef, MaterialRegistry, MeshRef,
+    MeshRegistry, TextureRegistry, TransformRef, TransformRegistry,
 };
 
 #[derive(Resource)]
@@ -60,6 +60,9 @@ pub struct Renderer {
 
     ui_shaders: Shaders,
     ui_pipeline: Pipeline,
+
+    egui_texture_layout: SetLayout,
+    pub egui_texture_pool: Pool,
 }
 
 impl Renderer {
@@ -77,6 +80,9 @@ impl Renderer {
             .build()?;
         let transform_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
+            .build()?;
+        let egui_texture_layout = SetLayoutBuilder::new(&ctx.device)
+            .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .build()?;
 
         let depth_image = Image::new(
@@ -152,6 +158,8 @@ impl Renderer {
         let camera_pool = Pool::new(ctx.device.clone(), camera_layout.clone(), 1000).unwrap();
         let material_pool = Pool::new(ctx.device.clone(), material_layout.clone(), 1000).unwrap();
         let transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 1000).unwrap();
+        let egui_texture_pool =
+            Pool::new(ctx.device.clone(), egui_texture_layout.clone(), 1000).unwrap();
 
         let egui_ctx = egui::Context::default();
         let egui_winit_state = Arc::new(Mutex::new(egui_winit::State::new(event_loop)));
@@ -178,12 +186,13 @@ impl Renderer {
                 .add_attribute(vk::Format::R32G32_SFLOAT)
         });
 
+        let ui_descriptor_layouts = &[egui_texture_layout.clone()];
         let ui_pipeline = Pipeline::new(
             &ctx.device,
             &renderpass,
             ui_shaders.clone(),
             ctx.swapchain.extent,
-            &[],
+            ui_descriptor_layouts,
             ui_vertex_input,
             1,
         )?;
@@ -209,6 +218,8 @@ impl Renderer {
             egui_winit_state,
             ui_shaders,
             ui_pipeline,
+            egui_texture_layout,
+            egui_texture_pool,
         };
 
         Ok(renderer)
@@ -294,12 +305,13 @@ impl Renderer {
                 .add_attribute(vk::Format::R32G32_SFLOAT)
         });
 
+        let ui_descriptor_layouts = &[self.egui_texture_layout.clone()];
         let ui_pipeline = Pipeline::new(
             &self.ctx.device,
             &self.renderpass,
             self.ui_shaders.clone(),
             self.ctx.swapchain.extent,
-            &[],
+            ui_descriptor_layouts,
             ui_vertex_input,
             1,
         )?;
@@ -322,8 +334,8 @@ impl Renderer {
     }
 
     fn color_32_to_rgba(color: epaint::Color32) -> Vec<f32> {
-        let color = [color.r(), color.g(), color.b(), color.a()];
         let color = color
+            .to_array()
             .iter()
             .map(|channel| (*channel as f32) / 255.0)
             .collect::<Vec<f32>>();
@@ -336,22 +348,23 @@ impl Renderer {
         textures_delta: TexturesDelta,
         egui_texture_registry: &mut EguiTextureRegistry,
     ) {
-        println!("{:?}", egui_texture_registry.registry.len());
         textures_delta.set.iter().for_each(|(texture_id, delta)| {
+            println!("{:?}", texture_id);
             match egui_texture_registry.get(&(*texture_id).into()) {
                 Some(texture) => {
                     println!("Update Texture: {:?}", delta.pos);
+                    todo!();
                 }
                 None => {
                     println!("New Texture: {:?}", delta.pos);
-                    let (width, height, data) = match &delta.image {
+                    let (width, height, pixels) = match &delta.image {
                         epaint::image::ImageData::Color(image) => {
                             let pixels = image
                                 .pixels
                                 .iter()
                                 .cloned()
-                                .flat_map(|color| Self::color_32_to_rgba(color))
-                                .collect::<Vec<f32>>();
+                                .flat_map(|color| color.to_array())
+                                .collect::<Vec<u8>>();
 
                             (
                                 image.width().try_into().unwrap(),
@@ -362,8 +375,8 @@ impl Renderer {
                         epaint::image::ImageData::Font(image) => {
                             let pixels = image
                                 .srgba_pixels(None)
-                                .flat_map(|color| Self::color_32_to_rgba(color))
-                                .collect::<Vec<f32>>();
+                                .flat_map(|color| color.to_array())
+                                .collect::<Vec<u8>>();
 
                             (
                                 image.width().try_into().unwrap(),
@@ -373,13 +386,7 @@ impl Renderer {
                         }
                     };
 
-                    let texture = Texture::new_bytes(
-                        &mut self.ctx,
-                        cast_slice::<f32, u8>(&data),
-                        width,
-                        height,
-                    )
-                    .unwrap();
+                    let texture = EguiTexture::new(self, &pixels, width, height).unwrap();
                     egui_texture_registry.add(texture);
                 }
             }
@@ -481,11 +488,17 @@ impl Renderer {
                             Buffer::new(&renderer.ctx, indices, vk::BufferUsageFlags::INDEX_BUFFER)
                                 .unwrap();
 
-                        (vertex_buffer, index_buffer)
+                        let set = egui_texture_registry
+                            .get(&mesh.texture_id.into())
+                            .unwrap()
+                            .set
+                            .clone();
+
+                        (vertex_buffer, index_buffer, set)
                     }
                     epaint::Primitive::Callback(_) => todo!(),
                 })
-                .collect::<Vec<(Buffer, Buffer)>>();
+                .collect::<Vec<(Buffer, Buffer, Set)>>();
 
             renderer.ctx.command_pool.clear();
             let mut cmd = renderer
@@ -521,8 +534,9 @@ impl Renderer {
             }
 
             cmd = cmd.next_subpass().bind_pipeline(&renderer.ui_pipeline);
-            for (vertex_buffer, index_buffer) in &buffers {
+            for (vertex_buffer, index_buffer, set) in &buffers {
                 cmd = cmd
+                    .bind_descriptor_set(&renderer.ui_pipeline, 0, &set)
                     .bind_vertex_buffer(vertex_buffer)
                     .bind_index_buffer(index_buffer)
                     .draw(DrawOptions {
