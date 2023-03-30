@@ -135,6 +135,8 @@ impl Pipeline {
         descriptor_layouts: &[SetLayout],
         vertex_input: VertexInputBuilder,
         subpass: u32,
+        depth: bool,
+        cull: bool,
     ) -> Result<Self, vk::Result> {
         let vertex_stage = shaders
             .vertex
@@ -177,7 +179,11 @@ impl Pipeline {
             .rasterizer_discard_enable(false)
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
-            .cull_mode(vk::CullModeFlags::BACK)
+            .cull_mode(if cull {
+                vk::CullModeFlags::BACK
+            } else {
+                vk::CullModeFlags::NONE
+            })
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false);
 
@@ -210,18 +216,21 @@ impl Pipeline {
 
         let stages = &[*vertex_stage, *fragment_stage];
 
-        let create_info = vk::GraphicsPipelineCreateInfo::builder()
+        let mut create_info = vk::GraphicsPipelineCreateInfo::builder()
             .stages(stages)
             .vertex_input_state(&vertex_input)
             .input_assembly_state(&input_assembly)
             .viewport_state(&viewport_state)
             .rasterization_state(&rasterization_state)
             .multisample_state(&multisampling)
-            .depth_stencil_state(&depth_stencil)
             .color_blend_state(&color_blending)
             .layout(layout)
             .render_pass(**renderpass)
             .subpass(subpass);
+
+        if depth {
+            create_info = create_info.depth_stencil_state(&depth_stencil);
+        }
 
         let pipeline = unsafe {
             device

@@ -133,6 +133,8 @@ impl Renderer {
             descriptor_layouts,
             vertex_input,
             0,
+            true,
+            true,
         )?;
 
         let framebuffers: Vec<vk::Framebuffer> =
@@ -195,6 +197,8 @@ impl Renderer {
             ui_descriptor_layouts,
             ui_vertex_input,
             1,
+            false,
+            false,
         )?;
 
         let mut renderer = Self {
@@ -296,6 +300,8 @@ impl Renderer {
             descriptor_layouts,
             vertex_input,
             0,
+            true,
+            true,
         )?;
 
         let ui_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
@@ -314,6 +320,8 @@ impl Renderer {
             ui_descriptor_layouts,
             ui_vertex_input,
             1,
+            false,
+            false,
         )?;
 
         self.framebuffers =

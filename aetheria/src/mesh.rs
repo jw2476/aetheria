@@ -163,7 +163,12 @@ impl EguiTexture {
         width: u32,
         height: u32,
     ) -> Result<Self, vk::Result> {
-        let texture = Texture::new_bytes(&mut renderer.ctx, bytes, width, height)?;
+        let mut texture = Texture::new_bytes(&mut renderer.ctx, bytes, width, height)?;
+        texture.sampler = texture.image.create_sampler(
+            &renderer.ctx,
+            vk::Filter::NEAREST,
+            vk::Filter::NEAREST,
+        )?;
         let set = renderer.egui_texture_pool.allocate()?;
         set.update_texture(
             &renderer.ctx.device,
