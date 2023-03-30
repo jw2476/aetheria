@@ -3,6 +3,7 @@ use bevy_ecs::prelude::Component;
 use bevy_ecs::system::{Res, ResMut, Resource};
 use bytemuck::cast_slice;
 use egui::mutex::Mutex;
+use egui::TexturesDelta;
 use glam::{Mat4, Vec2, Vec3};
 
 use bevy_ecs::{system::Query, world::World};
@@ -25,8 +26,8 @@ use winit::window::Window;
 use crate::camera::Camera;
 use crate::include_bytes_align_as;
 use crate::mesh::{
-    MaterialRef, MaterialRegistry, MeshRef, MeshRegistry, TextureRegistry, TransformRef,
-    TransformRegistry,
+    EguiTextureRef, EguiTextureRegistry, MaterialRef, MaterialRegistry, MeshRef, MeshRegistry,
+    TextureRegistry, TransformRef, TransformRegistry,
 };
 
 #[derive(Resource)]
@@ -320,11 +321,77 @@ impl Renderer {
         Ok(())
     }
 
+    fn color_32_to_rgba(color: epaint::Color32) -> Vec<f32> {
+        let color = [color.r(), color.g(), color.b(), color.a()];
+        let color = color
+            .iter()
+            .map(|channel| (*channel as f32) / 255.0)
+            .collect::<Vec<f32>>();
+
+        color
+    }
+
+    fn handle_egui_textures(
+        &mut self,
+        textures_delta: TexturesDelta,
+        egui_texture_registry: &mut EguiTextureRegistry,
+    ) {
+        println!("{:?}", egui_texture_registry.registry.len());
+        textures_delta.set.iter().for_each(|(texture_id, delta)| {
+            match egui_texture_registry.get(&(*texture_id).into()) {
+                Some(texture) => {
+                    println!("Update Texture: {:?}", delta.pos);
+                }
+                None => {
+                    println!("New Texture: {:?}", delta.pos);
+                    let (width, height, data) = match &delta.image {
+                        epaint::image::ImageData::Color(image) => {
+                            let pixels = image
+                                .pixels
+                                .iter()
+                                .cloned()
+                                .flat_map(|color| Self::color_32_to_rgba(color))
+                                .collect::<Vec<f32>>();
+
+                            (
+                                image.width().try_into().unwrap(),
+                                image.height().try_into().unwrap(),
+                                pixels,
+                            )
+                        }
+                        epaint::image::ImageData::Font(image) => {
+                            let pixels = image
+                                .srgba_pixels(None)
+                                .flat_map(|color| Self::color_32_to_rgba(color))
+                                .collect::<Vec<f32>>();
+
+                            (
+                                image.width().try_into().unwrap(),
+                                image.height().try_into().unwrap(),
+                                pixels,
+                            )
+                        }
+                    };
+
+                    let texture = Texture::new_bytes(
+                        &mut self.ctx,
+                        cast_slice::<f32, u8>(&data),
+                        width,
+                        height,
+                    )
+                    .unwrap();
+                    egui_texture_registry.add(texture);
+                }
+            }
+        });
+    }
+
     pub fn render(
         mut renderer: ResMut<Self>,
         mesh_registry: Res<MeshRegistry>,
         transform_registry: Res<TransformRegistry>,
         material_registry: Res<MaterialRegistry>,
+        mut egui_texture_registry: ResMut<EguiTextureRegistry>,
         camera: Res<Camera>,
         query: Query<(&MeshRef, &TransformRef)>,
     ) {
@@ -349,7 +416,6 @@ impl Renderer {
                 .lock()
                 .take_egui_input(&renderer.window)
                 .clone();
-            println!("{:?}", input);
             let full_output = renderer.egui_ctx.run(input, |ctx| {
                 egui::Window::new("Hello Window")
                     .resizable(true)
@@ -366,6 +432,8 @@ impl Renderer {
                 &renderer.egui_ctx,
                 full_output.platform_output,
             );
+
+            renderer.handle_egui_textures(full_output.textures_delta, &mut egui_texture_registry);
 
             let primitives = renderer.egui_ctx.tessellate(full_output.shapes);
             let pixels_per_point = renderer.egui_ctx.pixels_per_point();
@@ -391,16 +459,7 @@ impl Renderer {
                                         .to_vec(),
                                 );
 
-                                let color = [
-                                    vertex.color.r(),
-                                    vertex.color.g(),
-                                    vertex.color.b(),
-                                    vertex.color.a(),
-                                ];
-                                let color = color
-                                    .iter()
-                                    .map(|channel| (*channel as f32) / 255.0)
-                                    .collect::<Vec<f32>>();
+                                let color = Self::color_32_to_rgba(vertex.color);
                                 bytes.append(&mut cast_slice::<f32, u8>(&color).to_vec());
 
                                 bytes.append(
@@ -445,9 +504,9 @@ impl Renderer {
                 .bind_descriptor_set(&renderer.pipeline, 0, &camera.set);
 
             for (&mesh, &transform) in query.iter() {
-                let mesh = mesh_registry.get(mesh).unwrap();
-                let material = material_registry.get(mesh.material.unwrap()).unwrap();
-                let transform = transform_registry.get(transform).unwrap();
+                let mesh = mesh_registry.get(&mesh).unwrap();
+                let material = material_registry.get(&mesh.material.unwrap()).unwrap();
+                let transform = transform_registry.get(&transform).unwrap();
 
                 cmd = cmd
                     .bind_descriptor_set(&renderer.pipeline, 1, &material.set)

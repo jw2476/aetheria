@@ -419,8 +419,6 @@ impl Glb {
         }
 
         let gltf_bytes: Vec<u8> = Self::get(&mut bytes, gltf_length as usize);
-        println!("{:?}", std::str::from_utf8(&gltf_bytes[62..72]).unwrap());
-        println!("{:?}", std::str::from_utf8(&gltf_bytes).unwrap());
         let gltf = Gltf::load(&gltf_bytes)?;
 
         let mut buffer = Vec::new();

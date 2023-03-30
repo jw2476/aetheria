@@ -3,7 +3,7 @@ use ash::vk;
 use bevy_ecs::prelude::*;
 use bytemuck::{bytes_of, cast_slice, Pod, Zeroable};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
-use std::path::Path;
+use std::{collections::HashMap, hash::Hash, path::Path};
 use vulkan::{Buffer, Context, Set, Texture};
 
 #[repr(C)]
@@ -137,7 +137,7 @@ impl Material {
             &world
                 .get_resource::<TextureRegistry>()
                 .unwrap()
-                .get(base_color_texture)
+                .get(&base_color_texture)
                 .unwrap(),
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         );
@@ -152,11 +152,11 @@ impl Material {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Component)]
+#[derive(Clone, Copy, Debug, Component, Hash, Eq, PartialEq)]
 pub struct MeshRef(usize);
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct TextureRef(usize);
 
 impl TextureRef {
@@ -164,33 +164,20 @@ impl TextureRef {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Component)]
+#[derive(Clone, Copy, Debug, Component, Hash, Eq, PartialEq)]
 pub struct TransformRef(usize);
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct MaterialRef(usize);
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub struct EguiTextureRef(usize);
 
 impl From<usize> for MeshRef {
     fn from(value: usize) -> Self {
         Self(value)
-    }
-}
-
-impl From<MeshRef> for usize {
-    fn from(value: MeshRef) -> Self {
-        value.0
-    }
-}
-
-impl From<usize> for TextureRef {
-    fn from(value: usize) -> Self {
-        Self(value)
-    }
-}
-impl From<TextureRef> for usize {
-    fn from(value: TextureRef) -> Self {
-        value.0
     }
 }
 
@@ -199,9 +186,10 @@ impl From<usize> for TransformRef {
         Self(value)
     }
 }
-impl From<TransformRef> for usize {
-    fn from(value: TransformRef) -> Self {
-        value.0
+
+impl From<usize> for TextureRef {
+    fn from(value: usize) -> Self {
+        Self(value)
     }
 }
 
@@ -210,45 +198,60 @@ impl From<usize> for MaterialRef {
         Self(value)
     }
 }
-impl From<MaterialRef> for usize {
-    fn from(value: MaterialRef) -> Self {
-        value.0
+
+impl From<usize> for EguiTextureRef {
+    fn from(value: usize) -> Self {
+        Self(value)
     }
 }
 
-#[derive(Resource)]
-pub struct Registry<T> {
-    pub registry: Vec<T>,
-}
-
-impl<T> Registry<T> {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn add<R: From<usize>>(&mut self, data: T) -> R {
-        self.registry.push(data);
-        (self.registry.len() - 1).into()
-    }
-
-    pub fn get<R: Into<usize>>(&self, data_ref: R) -> Option<&T> {
-        self.registry.get(data_ref.into())
-    }
-
-    pub fn get_mut<R: Into<usize>>(&mut self, data_ref: R) -> Option<&mut T> {
-        self.registry.get_mut(data_ref.into())
-    }
-}
-
-impl<T> Default for Registry<T> {
-    fn default() -> Self {
-        Self {
-            registry: Vec::new(),
+impl From<egui::TextureId> for EguiTextureRef {
+    fn from(value: egui::TextureId) -> Self {
+        match value {
+            egui::TextureId::Managed(id) => Self(id.try_into().unwrap()),
+            egui::TextureId::User(id) => Self(id.try_into().unwrap()),
         }
     }
 }
 
-pub type MeshRegistry = Registry<Mesh>;
-pub type TextureRegistry = Registry<Texture>;
-pub type TransformRegistry = Registry<Transform>;
-pub type MaterialRegistry = Registry<Material>;
+#[derive(Resource)]
+pub struct Registry<R, T> {
+    pub registry: HashMap<R, T>,
+    next_id: usize,
+}
+
+impl<R: Hash + Eq + From<usize> + Clone, T> Registry<R, T> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add(&mut self, data: T) -> R {
+        let r: R = self.next_id.into();
+        self.registry.insert(r.clone(), data);
+        self.next_id += 1;
+        r
+    }
+
+    pub fn get(&self, data_ref: &R) -> Option<&T> {
+        self.registry.get(data_ref)
+    }
+
+    pub fn get_mut(&mut self, data_ref: &R) -> Option<&mut T> {
+        self.registry.get_mut(data_ref)
+    }
+}
+
+impl<R, T> Default for Registry<R, T> {
+    fn default() -> Self {
+        Self {
+            registry: HashMap::new(),
+            next_id: 0,
+        }
+    }
+}
+
+pub type MeshRegistry = Registry<MeshRef, Mesh>;
+pub type TextureRegistry = Registry<TextureRef, Texture>;
+pub type TransformRegistry = Registry<TransformRef, Transform>;
+pub type MaterialRegistry = Registry<MaterialRef, Material>;
+pub type EguiTextureRegistry = Registry<EguiTextureRef, Texture>;

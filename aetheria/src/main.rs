@@ -18,7 +18,7 @@ use std::sync::Arc;
 use bevy_ecs::{world::World, system::{Res, Query, ResMut}, schedule::Schedule};
 use bytemuck::cast_slice;
 use camera::Camera;
-use mesh::{TextureRef, MaterialRegistry};
+use mesh::{TextureRef, MaterialRegistry, EguiTextureRegistry};
 use time::Time;
 use vulkan::{Context, Texture};
 use renderer::Renderer;
@@ -55,12 +55,13 @@ fn main() {
     world.insert_resource(TextureRegistry::new());
     world.insert_resource(TransformRegistry::new());
     world.insert_resource(MaterialRegistry::new());
+    world.insert_resource(EguiTextureRegistry::new());
     world.insert_resource(Time::new());
     world.insert_resource(Camera::new(&mut renderer).unwrap());
     world.insert_resource(renderer);
 
     let white = Texture::new(&mut world.get_resource_mut::<Renderer>().unwrap().ctx, include_bytes!("../../assets/textures/compiled/white.qoi")).unwrap();
-    world.get_resource_mut::<TextureRegistry>().unwrap().add::<TextureRef>(white);
+    world.get_resource_mut::<TextureRegistry>().unwrap().add(white);
 
     let mut schedule = Schedule::default();
     schedule.add_system(Time::frame_finished);
@@ -117,7 +118,7 @@ fn main() {
 }
 
 fn animate(time: Res<Time>, renderer: Res<Renderer>, mut registry: ResMut<TransformRegistry>) {
-    registry.registry.iter_mut().for_each(|transform| { 
+    registry.registry.values_mut().for_each(|transform| { 
         let mut euler = transform.rotation.to_euler(EulerRot::ZXY);
         euler.2 += time.delta_seconds();
         transform.rotation = Quat::from_euler(glam::EulerRot::ZXY, euler.0, euler.1, euler.2);
