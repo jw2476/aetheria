@@ -2,6 +2,7 @@ use ash::vk;
 use bevy_ecs::prelude::Component;
 use bevy_ecs::system::{Res, ResMut, Resource};
 use bytemuck::cast_slice;
+use egui::mutex::Mutex;
 use glam::{Mat4, Vec2, Vec3};
 
 use bevy_ecs::{system::Query, world::World};
@@ -18,6 +19,7 @@ use vulkan::{
     command::TransitionLayoutOptions, Buffer, Context, DrawOptions, Image, Pipeline, Pool,
     Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain, Texture,
 };
+use winit::event_loop::EventLoop;
 use winit::window::Window;
 
 use crate::camera::Camera;
@@ -53,13 +55,18 @@ pub struct Renderer {
     depth_view: vk::ImageView,
 
     pub egui_ctx: egui::Context,
+    pub egui_winit_state: Arc<Mutex<egui_winit::State>>,
 
     ui_shaders: Shaders,
     ui_pipeline: Pipeline,
 }
 
 impl Renderer {
-    pub fn new(ctx: Context, window: Arc<Window>) -> Result<Self, vk::Result> {
+    pub fn new(
+        ctx: Context,
+        window: Arc<Window>,
+        event_loop: &EventLoop<()>,
+    ) -> Result<Self, vk::Result> {
         let camera_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
@@ -146,6 +153,7 @@ impl Renderer {
         let transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 1000).unwrap();
 
         let egui_ctx = egui::Context::default();
+        let egui_winit_state = Arc::new(Mutex::new(egui_winit::State::new(event_loop)));
 
         let vertex_shader = Shader::new(
             &ctx.device,
@@ -197,6 +205,7 @@ impl Renderer {
             material_pool,
             transform_pool,
             egui_ctx,
+            egui_winit_state,
             ui_shaders,
             ui_pipeline,
         };
@@ -335,12 +344,28 @@ impl Renderer {
                 Ok(image_index) => image_index,
             };
 
-            let input = egui::RawInput::default();
+            let input = renderer
+                .egui_winit_state
+                .lock()
+                .take_egui_input(&renderer.window)
+                .clone();
+            println!("{:?}", input);
             let full_output = renderer.egui_ctx.run(input, |ctx| {
-                egui::Window::new("Hello Window").show(&ctx, |ui| {
-                    ui.label("Hello egui!");
-                });
+                egui::Window::new("Hello Window")
+                    .resizable(true)
+                    .hscroll(true)
+                    .vscroll(false)
+                    .default_height(300.0)
+                    .show(&ctx, |ui| {
+                        ui.label("Hello egui!");
+                        ui.allocate_space(ui.available_size());
+                    });
             });
+            renderer.egui_winit_state.lock().handle_platform_output(
+                &renderer.window,
+                &renderer.egui_ctx,
+                full_output.platform_output,
+            );
 
             let primitives = renderer.egui_ctx.tessellate(full_output.shapes);
             let pixels_per_point = renderer.egui_ctx.pixels_per_point();

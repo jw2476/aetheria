@@ -48,8 +48,7 @@ fn main() {
     let (event_loop, window) = create_window();
     let window = Arc::new(window);
     let ctx = Context::new(&window);
-    let mut renderer = Renderer::new(ctx, window.clone()).unwrap();
-    let mut egui_winit_state = egui_winit::State::new(&event_loop);
+    let mut renderer = Renderer::new(ctx, window.clone(), &event_loop).unwrap();
 
     let mut world = World::new();
     world.insert_resource(MeshRegistry::new());
@@ -80,9 +79,10 @@ fn main() {
         control_flow.set_poll();
 
         match event {
-            winit::event::Event::WindowEvent { event, .. } => {
-                egui_winit_state.on_event(&world.get_resource::<Renderer>().unwrap().egui_ctx, &event);
-                
+            winit::event::Event::WindowEvent { event, .. } => {     
+                let egui_ctx = &world.get_resource::<Renderer>().unwrap().egui_ctx;
+                world.get_resource::<Renderer>().unwrap().egui_winit_state.lock().on_event(egui_ctx, &event);
+                           
                 match event {
                     winit::event::WindowEvent::Resized(size) => {
                         world.get_resource_mut::<Renderer>().unwrap().recreate_swapchain().unwrap();

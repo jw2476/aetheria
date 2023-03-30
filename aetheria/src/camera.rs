@@ -17,8 +17,8 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(renderer: &mut Renderer) -> Result<Self, vk::Result> {
-        let eye = Vec3::new(2.0, 2.0, 2.0);
-        let target = Vec3::new(0.0, 0.0, 0.0);
+        let eye = Vec3::new(3.0, 2.0, 2.0);
+        let target = Vec3::new(0.0, 0.5, 0.0);
 
         let default = [0_u8; 128];
         let set = renderer.camera_pool.allocate()?;
@@ -46,7 +46,7 @@ impl Camera {
 
     pub fn update(&mut self, width: f32, height: f32) {
         let view = Mat4::look_at_rh(self.eye, self.target, Vec3::new(0.0, 1.0, 0.0));
-        let mut proj = Mat4::perspective_rh(45.0_f32.to_radians(), width / height, 0.1, 10.0);
+        let mut proj = Mat4::perspective_rh(45.0_f32.to_radians(), width / height, 0.1, 100.0);
 
         proj.col_mut(1)[1] *= -1.0;
 
