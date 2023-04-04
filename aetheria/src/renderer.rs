@@ -312,7 +312,7 @@ impl Renderer {
         });
 
         let ui_descriptor_layouts = &[self.egui_texture_layout.clone()];
-        let ui_pipeline = Pipeline::new(
+        self.ui_pipeline = Pipeline::new(
             &self.ctx.device,
             &self.renderpass,
             self.ui_shaders.clone(),

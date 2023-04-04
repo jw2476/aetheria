@@ -32,5 +32,14 @@ void main() {
 
     float brightness = AMBIENT_STRENGTH + diffuse;
     
+    if (brightness > 0.6) {
+        brightness = 1.1;
+    } else if (brightness > 0.59) {
+        brightness = 0.7 + (40 * (brightness - 0.59));
+    } else {
+        brightness = 0.7;
+    }
+
+    
     outColor = texture(baseColorTexture, fragUV) * material.baseColorFactor * brightness;
 }
