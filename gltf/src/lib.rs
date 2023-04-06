@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-#[derive(Deserialize_repr, Serialize_repr, Debug)]
+#[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
 #[repr(u16)]
 pub enum ComponentType {
     I8 = 5120,
@@ -29,7 +29,7 @@ impl ComponentType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Accessor {
     #[serde(rename = "bufferView")]
     pub buffer_view: usize,
@@ -71,10 +71,10 @@ impl Accessor {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Animation {}
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Asset {
     #[serde(default)]
     pub copyright: Option<String>,
@@ -86,7 +86,7 @@ pub struct Asset {
     pub min_version: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Buffer {
     #[serde(default)]
     pub uri: String,
@@ -94,7 +94,7 @@ pub struct Buffer {
     pub byte_length: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BufferView {
     pub buffer: usize,
     #[serde(default)]
@@ -109,10 +109,10 @@ pub struct BufferView {
     pub target: Option<u32>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Camera {}
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Image {
     #[serde(default)]
     pub uri: Option<String>,
@@ -124,7 +124,7 @@ pub struct Image {
     pub buffer_view: Option<usize>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TextureInfo {
     pub index: usize,
     #[serde(default)]
@@ -132,7 +132,7 @@ pub struct TextureInfo {
     pub tex_coord: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MaterialPBR {
     #[serde(default)]
     #[serde(rename = "baseColorFactor")]
@@ -163,7 +163,7 @@ impl Default for MaterialPBR {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MaterialNormalTexture {
     pub index: usize,
     #[serde(default)]
@@ -173,7 +173,7 @@ pub struct MaterialNormalTexture {
     pub scale: Option<f32>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MaterialOcclusionTexture {
     pub index: usize,
     #[serde(default)]
@@ -183,7 +183,7 @@ pub struct MaterialOcclusionTexture {
     pub strength: Option<f32>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Material {
     #[serde(default)]
     #[serde(rename = "pbrMetallicRoughness")]
@@ -244,14 +244,14 @@ impl MeshPrimitive {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Mesh {
     pub primitives: Vec<MeshPrimitive>,
     #[serde(default)]
     pub weights: Option<Vec<f64>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
     #[serde(default)]
     pub camera: Option<usize>,
@@ -273,7 +273,7 @@ pub struct Node {
     pub weights: Option<Vec<f64>>,
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug)]
+#[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
 #[repr(u16)]
 pub enum Filter {
     Nearest = 9728,
@@ -290,7 +290,7 @@ impl Default for Filter {
     }
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug)]
+#[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
 #[repr(u16)]
 pub enum AddressMode {
     ClampToEdge = 33071,
@@ -304,7 +304,7 @@ impl Default for AddressMode {
     }
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct Sampler {
     #[serde(default)]
     #[serde(rename = "magFilter")]
@@ -320,23 +320,23 @@ pub struct Sampler {
     pub wrap_v: AddressMode,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Scene {
     #[serde(default)]
     pub nodes: Vec<usize>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Skin {}
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Texture {
     #[serde(default)]
     pub sampler: Option<usize>,
     pub source: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Gltf {
     #[serde(default)]
     #[serde(rename = "extensionsUsed")]
@@ -383,6 +383,7 @@ impl Gltf {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Glb {
     pub gltf: Gltf,
     pub buffer: Vec<u8>,

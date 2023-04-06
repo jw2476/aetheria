@@ -1,13 +1,16 @@
 [package]
-name = "hecs-macros"
+name = "assets-build"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-syn = "1.0"
-quote = "1.0"
+gltf = { path = "../../gltf" }
 
-[lib]
-proc-macro = true
+image = "0.24"
+qoi = "0.4"
+shaderc = "0.8"
+syn = "2.0"
+quote = "1.0"
+proc-macro2 = "1.0"

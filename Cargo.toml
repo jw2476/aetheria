@@ -1,6 +1,8 @@
 [workspace]
 members = [
   "assets",
+  "assets/build",
+  "assets/macros",
   "aetheria",
   "gltf",
   "hecs",

@@ -3,7 +3,11 @@ name = "assets"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+assets-macros = { path = "macros" }
+
+bytemuck = "1.13"
+
 [build-dependencies]
-shaderc = "0.8"
-image = "0.24"
-qoi = "0.4"
+assets-build = { path = "build" }
+walkdir = "2.3"
