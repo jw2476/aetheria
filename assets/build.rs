@@ -1,70 +1,107 @@
 #![feature(let_chains)]
 
-use assets_build::{Model, Shader, Texture};
+use std::{
+    fs::{self, File},
+    io::{Read, Write},
+    path::PathBuf,
+};
+use image::io::Reader as ImageReader;
 
-use walkdir::WalkDir;
 
 fn main() {
-    std::fs::create_dir_all("./src/shaders").unwrap();
+    // SHADERS
 
-    WalkDir::new(".")
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
-                .path()
-                .iter()
-                .find(|segment| segment.to_str().unwrap() == "out")
-                .is_none()
-        })
-        .for_each(|entry| {
-            let path = entry.path();
-            path.extension()
-                .map(|extension| extension.to_str())
-                .flatten()
-                .map(|extension| {
-                    if ["glsl", "glb", "jpg", "jpeg", "png"].contains(&extension) {
-                        println!("cargo:rerun-if-changed={}", path.display());
-                    }
-
-                    match extension {
-                        "glsl" => Shader::new(path, &std::fs::read(path).unwrap())
-                            .compile()
-                            .codegen(),
-                        "glb" => {
-                            Model::new(path, &std::fs::read(path).unwrap());
-                        }
-                        "jpg" | "jpeg" | "png" => {
-                            Texture::new(path, &std::fs::read(path).unwrap()).compile()
-                        }
-                        _ => (),
-                    };
-                });
-        });
-
-    let shader_modules = std::fs::read_dir("src/shaders")
+    let compiler = shaderc::Compiler::new().unwrap();
+    let options = shaderc::CompileOptions::new().unwrap();
+    let shader_source_paths: Vec<PathBuf> = fs::read_dir("shaders")
         .unwrap()
-        .filter_map(|entry| entry.ok())
         .filter_map(|entry| {
-            entry
-                .path()
-                .extension()
-                .map(|extension| {
-                    if extension.to_str().unwrap() == "rs" {
-                        entry
-                            .path()
-                            .file_stem()
-                            .map(|osstr| osstr.to_str().unwrap().to_owned())
-                    } else {
-                        None
-                    }
-                })
-                .flatten()
+            if let Ok(entry) = entry.as_ref() && let Some(extension) = entry.path().extension() && extension == "glsl" {
+                Some(entry.path())
+            } else {
+                None
+            }
         })
-        .filter(|modname| modname != "mod")
-        .map(|modname| format!("mod {0};\npub use {0}::*;", modname))
-        .collect::<Vec<String>>()
-        .join("\n");
+        .collect();
 
-    std::fs::write("./src/shaders/mod.rs", shader_modules).unwrap();
+    for shader_source_path in &shader_source_paths {
+        println!("cargo:rerun-if-changed={}", shader_source_path.display());
+    }
+
+    let shader_output_paths: Vec<PathBuf> = shader_source_paths
+        .iter()
+        .map(|path| {
+            PathBuf::from(format!(
+                "shaders/compiled/{}.spv",
+                path.file_stem().unwrap().to_str().unwrap()
+            ))
+        })
+        .collect();
+
+    std::iter::zip(shader_source_paths, shader_output_paths).for_each(|(input, output)| {
+        let mut file = File::open(&input).unwrap();
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).unwrap();
+
+        let source = String::from_utf8(buf).unwrap();
+
+        let kind = if source.starts_with("VERTEX") {
+            shaderc::ShaderKind::Vertex
+        } else if source.starts_with("FRAGMENT") {
+            shaderc::ShaderKind::Fragment
+        } else {
+            panic!("Unknown shader type in file {}", input.display())
+        };
+
+        let source = source.lines().skip(1).collect::<Vec<&str>>().join("\n");
+
+        let spirv = compiler
+            .compile_into_spirv(
+                &source,
+                kind,
+                input.file_name().unwrap().to_str().unwrap(),
+                "main",
+                Some(&options),
+            )
+            .unwrap();
+
+        let mut output_file = File::create(output).unwrap();
+        output_file.write_all(spirv.as_binary_u8()).unwrap();
+    });
+
+    // TEXTURES
+
+    let texture_source_paths: Vec<PathBuf> = fs::read_dir("textures")
+        .unwrap()
+        .filter_map(|entry| {
+            if let Ok(entry) = entry.as_ref() && let Some(extension) = entry.path().extension() && (extension == "png" || extension == "jpg")  {
+                Some(entry.path())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for texture_source_path in &texture_source_paths {
+        println!("cargo:rerun-if-changed={}", texture_source_path.display());
+    }
+
+    let texture_output_paths: Vec<PathBuf> = texture_source_paths
+        .iter()
+        .map(|path| {
+            PathBuf::from(format!(
+                "textures/compiled/{}.qoi",
+                path.file_stem().unwrap().to_str().unwrap()
+            ))
+        })
+        .collect();
+
+    std::iter::zip(texture_source_paths, texture_output_paths).for_each(|(input, output)| {
+        let image = ImageReader::open(input).unwrap().decode().unwrap();
+        let bytes = image.to_rgba8().to_vec();
+        let encoded = qoi::encode_to_vec(bytes, image.width(), image.height()).unwrap();
+
+        let mut output_file = File::create(output).unwrap();
+        output_file.write_all(&encoded).unwrap();
+    });
 }
