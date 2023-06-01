@@ -17,7 +17,7 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(renderer: &mut Renderer) -> Result<Self, vk::Result> {
-        let eye = Vec3::new(3.0, 2.0, 2.0);
+        let eye = Vec3::new(0.0, 5.0, 5.0);
         let target = Vec3::new(0.0, 0.5, 0.0);
 
         let default = [0_u8; 128];

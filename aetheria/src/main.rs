@@ -100,6 +100,20 @@ fn main() {
                         control_flow.set_exit()
                     }
                 },
+                winit::event::DeviceEvent::MouseMotion { delta } => {
+                    let width;
+                    let height;
+                    {
+                        let renderer = world.get_resource::<Renderer>().unwrap();
+                        width = renderer.ctx.swapchain.extent.width;
+                        height = renderer.ctx.swapchain.extent.height;
+                    }
+
+                    let quat = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), (-delta.0 / 100.0) as f32);
+                    let mut camera = world.get_resource_mut::<Camera>().unwrap();
+                    camera.eye = quat * camera.eye;
+                    camera.update(width as f32, height as f32);
+                },
                 _ => ()
             },
             winit::event::Event::MainEventsCleared => {
