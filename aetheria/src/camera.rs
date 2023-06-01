@@ -15,8 +15,6 @@ pub struct Camera {
     pub set: Set,
 }
 
-const DEFAULT_ZOOM: f32 = 1000.0;
-
 impl Camera {
     pub fn new(renderer: &mut Renderer) -> Result<Self, vk::Result> {
         let eye = Vec3::new(0.0, 5.0 * 35.264_f32.tan(), 5.0);
@@ -47,8 +45,9 @@ impl Camera {
     }
 
     pub fn update(&mut self, width: f32, height: f32) {
+        let aspect = width / height;
         let view = Mat4::look_at_rh(self.eye, self.target, Vec3::new(0.0, 1.0, 0.0));
-        let mut proj = Mat4::orthographic_rh(-width/DEFAULT_ZOOM, width/DEFAULT_ZOOM, -height/DEFAULT_ZOOM, height/DEFAULT_ZOOM, 0.1, 100.0);
+        let mut proj = Mat4::orthographic_rh(-3.0 * aspect, 3.0 * aspect, -3.0, 3.0, 0.1, 100.0);
 
         proj.col_mut(1)[1] *= -1.0;
 
