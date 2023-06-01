@@ -10,4 +10,4 @@ syn = "1.0"
 quote = "1.0"
 
 [lib]
-crate-type = ["proc-macro"]
+proc-macro = true

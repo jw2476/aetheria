@@ -12,9 +12,7 @@ mod model;
 mod time;
 mod camera;
 
-use std::path::Path;
 use std::sync::Arc;
-
 use bevy_ecs::{world::World, system::{Res, Query, ResMut}, schedule::Schedule};
 use bytemuck::cast_slice;
 use camera::Camera;
@@ -25,8 +23,6 @@ use renderer::Renderer;
 use winit::event_loop::ControlFlow;
 use glam::{Vec2, Vec3, Quat, EulerRot};
 use crate::{mesh::{Mesh, MeshRef, MeshRegistry, TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex}, model::Model};
-use gltf::Glb;
-use hecs::{Entity, Scene};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -41,14 +37,6 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
         .build(&event_loop)
         .unwrap();
     (event_loop, window)
-}
-
-#[derive(Entity)]
-struct EntityTest {}
-
-#[derive(Scene)]
-struct SceneTest {
-     entity: EntityTest   
 }
 
 fn main() {
@@ -78,10 +66,9 @@ fn main() {
     schedule.add_system(Renderer::render);
     schedule.add_system(animate);
         
-    Model::load(include_bytes!("../../assets/models/samples/2.0/Duck/glTF-Binary/Duck.glb"), &mut world);
     Model::load(include_bytes!("../../assets/models/fence.glb"), &mut world);
     Model::load(include_bytes!("../../assets/models/tree.glb"), &mut world);
-   // Model::load(include_bytes!("../../../../Downloads/Sponza.glb"), &mut world);
+    Model::load(include_bytes!("../../assets/models/stones.glb"), &mut world);
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -131,7 +118,7 @@ fn main() {
 fn animate(time: Res<Time>, renderer: Res<Renderer>, mut registry: ResMut<TransformRegistry>) {
     registry.registry.values_mut().for_each(|transform| { 
         let mut euler = transform.rotation.to_euler(EulerRot::ZXY);
-        euler.2 += time.delta_seconds();
+        euler.2 += time.delta_seconds() / 4.0;
         transform.rotation = Quat::from_euler(glam::EulerRot::ZXY, euler.0, euler.1, euler.2);
         transform.update(&renderer).unwrap();
     })

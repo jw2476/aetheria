@@ -22,6 +22,7 @@ use vulkan::{
 };
 use winit::event_loop::EventLoop;
 use winit::window::Window;
+use tracing::info;
 
 use crate::camera::Camera;
 use crate::include_bytes_align_as;
@@ -35,13 +36,17 @@ pub struct Renderer {
     pub(crate) ctx: Context,
     window: Arc<Window>,
 
-    renderpass: Renderpass,
-    pub pipeline: Pipeline,
-    shaders: Shaders,
-    framebuffers: Vec<vk::Framebuffer>,
+    render_renderpass: Renderpass,
+    render_framebuffer: vk::Framebuffer,
+    upscale_renderpass: Renderpass,
+    upscale_framebuffers: Vec<vk::Framebuffer>,
 
     render_finished: vk::Semaphore,
     in_flight: vk::Fence,
+
+    render_layout: SetLayout,
+    pub render_pool: Pool,
+    render_set: Set,
 
     camera_layout: SetLayout,
     pub camera_pool: Pool,
@@ -52,18 +57,27 @@ pub struct Renderer {
     transform_layout: SetLayout,
     pub transform_pool: Pool,
 
+    render_texture: Texture,
+    render_view: vk::ImageView,
     depth_image: Image,
     depth_view: vk::ImageView,
 
     pub egui_ctx: egui::Context,
     pub egui_winit_state: Arc<Mutex<egui_winit::State>>,
 
+    render_shaders: Shaders,
+    render_pipeline: Pipeline,
+    upscale_shaders: Shaders,
+    upscale_pipeline: Pipeline,
     ui_shaders: Shaders,
     ui_pipeline: Pipeline,
 
     egui_texture_layout: SetLayout,
     pub egui_texture_pool: Pool,
 }
+
+const PIXEL_WIDTH: u32 = 480;
+const PIXEL_HEIGHT: u32 = 270;
 
 impl Renderer {
     pub fn new(
@@ -81,71 +95,116 @@ impl Renderer {
         let transform_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
+        let render_layout = SetLayoutBuilder::new(&ctx.device)
+            .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .build()?;
         let egui_texture_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .build()?;
 
         let depth_image = Image::new(
             &ctx,
-            ctx.swapchain.extent.width,
-            ctx.swapchain.extent.height,
+            PIXEL_WIDTH,
+            PIXEL_HEIGHT,
             vk::Format::D32_SFLOAT,
             vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         )?;
         let depth_view = depth_image.create_view(&ctx)?;
 
-        let renderpass =
-            Renderpass::new(&ctx.device, ctx.swapchain.format, vk::Format::D32_SFLOAT)?;
+        let render_image = Image::new(
+            &ctx,
+            PIXEL_WIDTH,
+            PIXEL_HEIGHT,
+            ctx.swapchain.format,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED  
+        )?;
+        let render_view = render_image.create_view(&ctx)?;
+        let render_texture = Texture::from_image(&ctx, render_image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
 
-        let vertex_shader = Shader::new(
+        let render_renderpass = Renderpass::new_render(&ctx.device, ctx.swapchain.format)?;
+        let upscale_renderpass = Renderpass::new_upscale_ui(&ctx.device, ctx.swapchain.format)?;
+
+        let render_vertex_shader = Shader::new(
             &ctx.device,
-            include_bytes_align_as!(u32, "../../assets/shaders/compiled/vertex.spv"),
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/render.vert.spv"),
             vk::ShaderStageFlags::VERTEX,
         )?;
-        let fragment_shader = Shader::new(
+        let render_fragment_shader = Shader::new(
             &ctx.device,
-            include_bytes_align_as!(u32, "../../assets/shaders/compiled/fragment.spv"),
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/render.frag.spv"),
             vk::ShaderStageFlags::FRAGMENT,
         )?;
-        let shaders = Shaders {
-            vertex: Some(vertex_shader),
-            fragment: Some(fragment_shader),
+        let render_shaders = Shaders {
+            vertex: Some(render_vertex_shader),
+            fragment: Some(render_fragment_shader),
         };
 
-        let descriptor_layouts = &[
+        let render_descriptor_layouts = &[
             camera_layout.clone(),
             material_layout.clone(),
             transform_layout.clone(),
         ];
 
-        let vertex_input = VertexInputBuilder::new().add_binding(|binding| {
+        let render_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
             binding
                 .add_attribute(vk::Format::R32G32B32_SFLOAT)
                 .add_attribute(vk::Format::R32G32_SFLOAT)
                 .add_attribute(vk::Format::R32G32B32_SFLOAT)
         });
 
-        let pipeline = Pipeline::new(
+        let render_pipeline = Pipeline::new(
             &ctx.device,
-            &renderpass,
-            shaders.clone(),
-            ctx.swapchain.extent,
-            descriptor_layouts,
-            vertex_input,
+            &render_renderpass,
+            render_shaders.clone(),
+            vk::Extent2D { width: PIXEL_WIDTH, height: PIXEL_HEIGHT },
+            render_descriptor_layouts,
+            render_vertex_input,
             0,
             true,
             true,
         )?;
+        
+        let render_framebuffer = render_renderpass.create_framebuffer(&ctx.device, PIXEL_WIDTH, PIXEL_HEIGHT, &[render_view, depth_view])?;
 
-        let framebuffers: Vec<vk::Framebuffer> =
+        let upscale_vertex_shader = Shader::new(
+            &ctx.device,
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/upscale.vert.spv"),
+            vk::ShaderStageFlags::VERTEX,
+        )?;
+        let upscale_fragment_shader = Shader::new(
+            &ctx.device,
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/upscale.frag.spv"),
+            vk::ShaderStageFlags::FRAGMENT,
+        )?;
+        let upscale_shaders = Shaders {
+            vertex: Some(upscale_vertex_shader),
+            fragment: Some(upscale_fragment_shader),
+        };
+
+        let upscale_descriptor_layouts = &[render_layout.clone()];
+        let upscale_vertex_input = VertexInputBuilder::new();
+
+        let upscale_pipeline = Pipeline::new(
+            &ctx.device,
+            &upscale_renderpass,
+            upscale_shaders.clone(),
+            ctx.swapchain.extent,
+            upscale_descriptor_layouts,
+            upscale_vertex_input,
+            0,
+            false,
+            false,
+        )?;
+
+        let upscale_framebuffers: Vec<vk::Framebuffer> =
             std::iter::zip(&ctx.swapchain.images, &ctx.swapchain.image_views)
                 .map(|(image, &view)| {
-                    renderpass
+                    upscale_renderpass
                         .create_framebuffer(
                             &ctx.device,
                             image.width,
                             image.height,
-                            &[view, depth_view],
+                            &[view],
                         )
                         .unwrap()
                 })
@@ -160,6 +219,10 @@ impl Renderer {
         let camera_pool = Pool::new(ctx.device.clone(), camera_layout.clone(), 1000).unwrap();
         let material_pool = Pool::new(ctx.device.clone(), material_layout.clone(), 1000).unwrap();
         let transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 1000).unwrap();
+        let mut render_pool = Pool::new(ctx.device.clone(), render_layout.clone(), 1000).unwrap();
+        let render_set = render_pool.allocate()?;
+        render_set.update_texture(&ctx.device, 0, &render_texture, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+
         let egui_texture_pool =
             Pool::new(ctx.device.clone(), egui_texture_layout.clone(), 1000).unwrap();
 
@@ -191,7 +254,7 @@ impl Renderer {
         let ui_descriptor_layouts = &[egui_texture_layout.clone()];
         let ui_pipeline = Pipeline::new(
             &ctx.device,
-            &renderpass,
+            &upscale_renderpass,
             ui_shaders.clone(),
             ctx.swapchain.extent,
             ui_descriptor_layouts,
@@ -201,23 +264,32 @@ impl Renderer {
             false,
         )?;
 
-        let mut renderer = Self {
+        let renderer = Self {
             ctx,
             window,
-            renderpass,
-            pipeline,
-            shaders,
-            framebuffers,
+            render_renderpass,
+            upscale_renderpass,
+            render_pipeline,
+            upscale_pipeline,
+            render_shaders,
+            upscale_shaders,
+            render_framebuffer,
+            upscale_framebuffers,
             render_finished,
             in_flight,
+            render_view,
+            render_texture,
             depth_image,
             depth_view,
             camera_layout,
             material_layout,
             transform_layout,
+            render_layout,
             camera_pool,
             material_pool,
             transform_pool,
+            render_pool,
+            render_set,
             egui_ctx,
             egui_winit_state,
             ui_shaders,
@@ -232,14 +304,14 @@ impl Renderer {
     unsafe fn destroy_swapchain(&mut self) {
         self.ctx.device.device_wait_idle().unwrap();
 
-        self.framebuffers
+        self.upscale_framebuffers
             .iter()
             .for_each(|framebuffer| self.ctx.device.destroy_framebuffer(*framebuffer, None));
-        self.ctx.device.destroy_pipeline(*self.pipeline, None);
+        self.ctx.device.destroy_pipeline(*self.upscale_pipeline, None);
         self.ctx
             .device
-            .destroy_pipeline_layout(self.pipeline.layout, None);
-        self.ctx.device.destroy_render_pass(*self.renderpass, None);
+            .destroy_pipeline_layout(self.upscale_pipeline.layout, None);
+        self.ctx.device.destroy_render_pass(*self.upscale_renderpass, None);
         self.ctx
             .swapchain
             .image_views
@@ -257,6 +329,8 @@ impl Renderer {
     pub fn recreate_swapchain(&mut self) -> Result<(), vk::Result> {
         unsafe { self.destroy_swapchain() };
 
+        info!("Recreating swapchain");
+
         self.ctx.swapchain = Swapchain::new(
             &self.ctx.instance,
             &self.ctx.surface,
@@ -273,17 +347,12 @@ impl Renderer {
         )?;
         self.depth_view = self.depth_image.create_view(&self.ctx)?;
 
-        self.renderpass = Renderpass::new(
+        self.upscale_renderpass = Renderpass::new_upscale_ui(
             &self.ctx.device,
             self.ctx.swapchain.format,
-            vk::Format::D32_SFLOAT,
         )?;
 
-        let descriptor_layouts = &[
-            self.camera_layout.clone(),
-            self.material_layout.clone(),
-            self.transform_layout.clone(),
-        ];
+        let descriptor_layouts = &[self.render_layout.clone()];
 
         let vertex_input = VertexInputBuilder::new().add_binding(|binding| {
             binding
@@ -292,16 +361,16 @@ impl Renderer {
                 .add_attribute(vk::Format::R32G32B32_SFLOAT)
         });
 
-        self.pipeline = Pipeline::new(
+        self.upscale_pipeline = Pipeline::new(
             &self.ctx.device,
-            &self.renderpass,
-            self.shaders.clone(),
+            &self.upscale_renderpass,
+            self.upscale_shaders.clone(),
             self.ctx.swapchain.extent,
             descriptor_layouts,
             vertex_input,
             0,
-            true,
-            true,
+            false,
+            false,
         )?;
 
         let ui_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
@@ -314,7 +383,7 @@ impl Renderer {
         let ui_descriptor_layouts = &[self.egui_texture_layout.clone()];
         self.ui_pipeline = Pipeline::new(
             &self.ctx.device,
-            &self.renderpass,
+            &self.upscale_renderpass,
             self.ui_shaders.clone(),
             self.ctx.swapchain.extent,
             ui_descriptor_layouts,
@@ -324,15 +393,15 @@ impl Renderer {
             false,
         )?;
 
-        self.framebuffers =
+        self.upscale_framebuffers =
             std::iter::zip(&self.ctx.swapchain.images, &self.ctx.swapchain.image_views)
                 .map(|(image, &view)| {
-                    self.renderpass
+                    self.upscale_renderpass
                         .create_framebuffer(
                             &self.ctx.device,
                             image.width,
                             image.height,
-                            &[view, self.depth_view],
+                            &[view],
                         )
                         .unwrap()
                 })
@@ -518,13 +587,11 @@ impl Renderer {
                 .unwrap()
                 .begin()
                 .unwrap()
-                .begin_renderpass(
-                    &renderer.renderpass,
-                    renderer.framebuffers[image_index as usize],
-                    renderer.ctx.swapchain.extent,
-                )
-                .bind_pipeline(&renderer.pipeline)
-                .bind_descriptor_set(&renderer.pipeline, 0, &camera.set);
+                .begin_renderpass(&renderer.render_renderpass, renderer.render_framebuffer, vk::Extent2D { width: PIXEL_WIDTH, height: PIXEL_HEIGHT })
+                .bind_pipeline(&renderer.render_pipeline)
+                .bind_descriptor_set(&renderer.render_pipeline, 0, &camera.set);
+
+            println!("Render renderpass + framebuffer are fine");
 
             for (&mesh, &transform) in query.iter() {
                 let mesh = mesh_registry.get(&mesh).unwrap();
@@ -532,8 +599,8 @@ impl Renderer {
                 let transform = transform_registry.get(&transform).unwrap();
 
                 cmd = cmd
-                    .bind_descriptor_set(&renderer.pipeline, 1, &material.set)
-                    .bind_descriptor_set(&renderer.pipeline, 2, &transform.set)
+                    .bind_descriptor_set(&renderer.render_pipeline, 1, &material.set)
+                    .bind_descriptor_set(&renderer.render_pipeline, 2, &transform.set)
                     .bind_index_buffer(&mesh.index_buffer)
                     .bind_vertex_buffer(&mesh.vertex_buffer)
                     .draw(DrawOptions {
@@ -543,7 +610,13 @@ impl Renderer {
                     })
             }
 
-            cmd = cmd.next_subpass().bind_pipeline(&renderer.ui_pipeline);
+            cmd = cmd.end_renderpass()
+                .begin_renderpass(&renderer.upscale_renderpass, renderer.upscale_framebuffers[image_index as usize], renderer.ctx.swapchain.extent)
+                .bind_pipeline(&renderer.upscale_pipeline)
+                .bind_descriptor_set(&renderer.upscale_pipeline, 0, &renderer.render_set)
+                .draw(DrawOptions { vertex_count: 3, instance_count: 1, first_vertex: 0, first_instance: 0 })
+                .next_subpass()
+                .bind_pipeline(&renderer.ui_pipeline);
             for (vertex_buffer, index_buffer, set) in &buffers {
                 cmd = cmd
                     .bind_descriptor_set(&renderer.ui_pipeline, 0, &set)
