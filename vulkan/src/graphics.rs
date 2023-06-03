@@ -12,7 +12,7 @@ pub struct Shader {
 
 impl Shader {
     pub fn new(
-        device: &Device,
+        device: &ash::Device,
         code: &[u8],
         stage: vk::ShaderStageFlags,
     ) -> Result<Self, vk::Result> {
@@ -23,7 +23,7 @@ impl Shader {
         Ok(Self { module, stage })
     }
 
-    fn get_stage(&self) -> vk::PipelineShaderStageCreateInfoBuilder {
+    pub fn get_stage(&self) -> vk::PipelineShaderStageCreateInfoBuilder {
         vk::PipelineShaderStageCreateInfo::builder()
             .stage(self.stage)
             .module(self.module)

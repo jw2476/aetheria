@@ -1,12 +1,10 @@
 use ash::vk;
-use bevy_ecs::system::Resource;
 use bytemuck::cast_slice;
 use glam::{Mat4, Vec3};
 use vulkan::{Buffer, Set};
 
 use crate::renderer::Renderer;
 
-#[derive(Resource)]
 pub struct Camera {
     pub eye: Vec3,
     pub target: Vec3,

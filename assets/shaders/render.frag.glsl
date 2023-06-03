@@ -13,14 +13,8 @@ layout(set = 0, binding = 0) uniform Camera {
 } camera;
 
 layout(set = 1, binding = 0) uniform Material {
-    vec4 baseColorFactor;
+	vec4 baseColor;
 } material;
-
-layout(set = 1, binding = 1) uniform sampler2D baseColorTexture;
-
-layout(set = 2, binding = 0) uniform Mesh {
-    mat4 model;
-} transform;
 
 vec3 LIGHT_POS = vec3(0.0, 10.0, 10.0);
 float AMBIENT_STRENGTH = 0.1;
@@ -62,18 +56,20 @@ vec3 PALETTE[32] = {
 };
 
 void main() {
+    vec4 baseColor = material.baseColor;
     vec3 normal = normalize(fragNormal);
     vec3 lightDirection = normalize(LIGHT_POS - fragPos);
     float diffuse = max(dot(normal, lightDirection), 0.0);
 
     float brightness = AMBIENT_STRENGTH + diffuse;
     
-    vec3 color = (texture(baseColorTexture, fragUV) * material.baseColorFactor * brightness).rgb;
+    
+    vec3 color = (baseColor * brightness).rgb;
     float minPaletteLength = INFINITY;
     for (int i = 0; i < 32; i++) {
 	 if (length(PALETTE[i] - color) < minPaletteLength) {
 	 	minPaletteLength = length(PALETTE[i] - color);
-		outColor = vec4(PALETTE[i], texture(baseColorTexture, fragUV).a);
+		outColor = vec4(PALETTE[i], baseColor.a);
 	 }
     }
 }

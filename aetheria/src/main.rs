@@ -8,21 +8,21 @@ extern crate core;
 mod macros;
 mod renderer;
 mod mesh;
-mod model;
+mod material;
 mod time;
 mod camera;
 
 use std::sync::Arc;
-use bevy_ecs::{world::World, system::{Res, Query, ResMut}, schedule::Schedule};
+use ash::vk;
+use assets::{MeshRegistry, Mesh};
 use bytemuck::cast_slice;
 use camera::Camera;
-use mesh::{TextureRef, MaterialRegistry, EguiTextureRegistry};
+use material::Material;
 use time::Time;
-use vulkan::{Context, Texture};
-use renderer::Renderer;
+use vulkan::Context;
+use renderer::{Renderer, MeshMaterial};
 use winit::event_loop::ControlFlow;
-use glam::{Vec2, Vec3, Quat, EulerRot};
-use crate::{mesh::{Mesh, MeshRef, MeshRegistry, TextureRegistry, Transform, TransformRef, TransformRegistry, Vertex}, model::Model};
+use glam::{Vec3, Quat, EulerRot, Vec4};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -39,6 +39,26 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
     (event_loop, window)
 }
 
+
+struct Tree {
+    pub trunk: MeshMaterial,
+    pub foliage: MeshMaterial
+}
+
+impl Tree {
+    pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry) -> Result<Tree, vk::Result> {
+        let trunk_color = Vec4::new(0.9150942, 0.6063219, 0.4359647, 1.0);
+        let trunk = MeshMaterial::new(renderer, mesh_registry, "tree.trunk.obj", trunk_color)?;
+        let foliage_color = Vec4::new(0.2588235, 0.7921569, 0.6034038, 1.0);
+        let foliage = MeshMaterial::new(renderer, mesh_registry, "tree.foliage.obj", foliage_color)?;
+
+        Ok(Self {
+           trunk,
+           foliage
+        })
+    }
+}
+
 fn main() {
     tracing_subscriber::fmt::init();
 
@@ -47,28 +67,9 @@ fn main() {
     let ctx = Context::new(&window);
     
     let mut renderer = Renderer::new(ctx, window.clone(), &event_loop).unwrap();
-
-    let mut world = World::new();
-    world.insert_resource(MeshRegistry::new());
-    world.insert_resource(TextureRegistry::new());
-    world.insert_resource(TransformRegistry::new());
-    world.insert_resource(MaterialRegistry::new());
-    world.insert_resource(EguiTextureRegistry::new());
-    world.insert_resource(Time::new());
-    world.insert_resource(Camera::new(&mut renderer).unwrap());
-    world.insert_resource(renderer);
-
-    let white = Texture::new(&mut world.get_resource_mut::<Renderer>().unwrap().ctx, include_bytes!("../../assets/textures/compiled/white.qoi")).unwrap();
-    world.get_resource_mut::<TextureRegistry>().unwrap().add(white);
-
-    let mut schedule = Schedule::default();
-    schedule.add_system(Time::frame_finished);
-    schedule.add_system(Renderer::render);
-    schedule.add_system(animate);
-        
-    Model::load(include_bytes!("../../assets/models/fence.glb"), &mut world);
-    Model::load(include_bytes!("../../assets/models/tree.glb"), &mut world);
-    Model::load(include_bytes!("../../assets/models/stones.glb"), &mut world);
+    let mut camera = Camera::new(&mut renderer).unwrap();
+    let mut mesh_registry = MeshRegistry::new();
+    let tree = Tree::load(&mut renderer, &mut mesh_registry).unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -79,13 +80,13 @@ fn main() {
 
         match event {
             winit::event::Event::WindowEvent { event, .. } => {     
-                let egui_ctx = &world.get_resource::<Renderer>().unwrap().egui_ctx;
-                world.get_resource::<Renderer>().unwrap().egui_winit_state.lock().on_event(egui_ctx, &event);
+                let egui_ctx = &renderer.egui_ctx;
+                renderer.egui_winit_state.lock().on_event(egui_ctx, &event);
                            
                 match event {
                     winit::event::WindowEvent::Resized(size) => {
-                        world.get_resource_mut::<Renderer>().unwrap().recreate_swapchain().unwrap();
-                        world.get_resource_mut::<Camera>().unwrap().update(size.width as f32, size.height as f32);
+                        renderer.recreate_swapchain().unwrap();
+                        camera.update(size.width as f32, size.height as f32);
                     },
                     winit::event::WindowEvent::CloseRequested => {
                         control_flow.set_exit()
@@ -101,39 +102,24 @@ fn main() {
                     }
                 },
                 winit::event::DeviceEvent::MouseMotion { delta } => {
-                    let width;
-                    let height;
-                    {
-                        let renderer = world.get_resource::<Renderer>().unwrap();
-                        width = renderer.ctx.swapchain.extent.width;
-                        height = renderer.ctx.swapchain.extent.height;
-                    }
-
+                    let width = renderer.ctx.swapchain.extent.width;
+                    let height = renderer.ctx.swapchain.extent.height;
+                    
                     let quat = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), (-delta.0 / 100.0) as f32);
-                    let mut camera = world.get_resource_mut::<Camera>().unwrap();
                     camera.eye = quat * camera.eye;
                     camera.update(width as f32, height as f32);
                 },
                 _ => ()
             },
             winit::event::Event::MainEventsCleared => {
-                schedule.run(&mut world);
+                renderer.render(&[tree.trunk.clone(), tree.foliage.clone()], &camera);
             }
             _ => ()
         };
 
         if let ControlFlow::ExitWithCode(_) = *control_flow {
             println!("Waiting for GPU to finish");
-            unsafe { world.get_resource::<Renderer>().unwrap().device.device_wait_idle().unwrap() };
+            unsafe { renderer.device.device_wait_idle().unwrap() };
         }
     });
-}
-
-fn animate(time: Res<Time>, renderer: Res<Renderer>, mut registry: ResMut<TransformRegistry>) {
-    registry.registry.values_mut().for_each(|transform| { 
-        let mut euler = transform.rotation.to_euler(EulerRot::ZXY);
-        euler.2 += time.delta_seconds() / 4.0;
-        transform.rotation = Quat::from_euler(glam::EulerRot::ZXY, euler.0, euler.1, euler.2);
-        transform.update(&renderer).unwrap();
-    })
 }

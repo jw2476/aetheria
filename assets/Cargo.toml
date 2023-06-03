@@ -7,3 +7,12 @@ edition = "2021"
 shaderc = "0.8"
 image = "0.24"
 qoi = "0.4"
+
+[dependencies]
+vulkan = { path = "../vulkan" }
+
+ash = "0.37.2"
+bytemuck = { version = "1.13", features = ["derive"] }
+tracing = "0.1"
+tobj = "4.0.0"
+glam = { version = "0.24", features = ["bytemuck"] }

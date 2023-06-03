@@ -1,23 +1,18 @@
 use ash::vk;
-use bevy_ecs::prelude::Component;
-use bevy_ecs::system::{Res, ResMut, Resource};
+use assets::{Mesh, MeshRegistry};
 use bytemuck::cast_slice;
 use egui::mutex::Mutex;
 use egui::TexturesDelta;
-use glam::{Mat4, Vec2, Vec3};
-
-use bevy_ecs::{system::Query, world::World};
+use glam::Vec4;
+use std::collections::HashMap;
 use std::ops::DerefMut;
-use std::rc::Rc;
 use std::{
     ops::Deref,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
 };
-use vulkan::command::BufferBuilder;
 use vulkan::VertexInputBuilder;
 use vulkan::{
-    command::TransitionLayoutOptions, Buffer, Context, DrawOptions, Image, Pipeline, Pool,
+    Buffer, Context, DrawOptions, Image, Pipeline, Pool,
     Renderpass, Set, SetLayout, SetLayoutBuilder, Shader, Shaders, Swapchain, Texture,
 };
 use winit::event_loop::EventLoop;
@@ -26,12 +21,9 @@ use tracing::info;
 
 use crate::camera::Camera;
 use crate::include_bytes_align_as;
-use crate::mesh::{
-    EguiTexture, EguiTextureRef, EguiTextureRegistry, MaterialRef, MaterialRegistry, MeshRef,
-    MeshRegistry, TextureRegistry, TransformRef, TransformRegistry,
-};
+use crate::material::Material;
+use crate::mesh::EguiTexture;
 
-#[derive(Resource)]
 pub struct Renderer {
     pub(crate) ctx: Context,
     window: Arc<Window>,
@@ -64,6 +56,7 @@ pub struct Renderer {
 
     pub egui_ctx: egui::Context,
     pub egui_winit_state: Arc<Mutex<egui_winit::State>>,
+    egui_textures: HashMap<egui::TextureId, EguiTexture>,
 
     render_shaders: Shaders,
     render_pipeline: Pipeline,
@@ -74,6 +67,16 @@ pub struct Renderer {
 
     egui_texture_layout: SetLayout,
     pub egui_texture_pool: Pool,
+}
+
+#[derive(Clone)]
+pub struct MeshMaterial(Arc<Mesh>, Arc<Material>);
+impl MeshMaterial {
+    pub fn new(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, mesh: &str, color: Vec4) -> Result<MeshMaterial, vk::Result> {
+        let mesh = mesh_registry.load(&renderer.ctx, mesh);
+        let material = Arc::new(Material::new(renderer, color)?);
+        Ok(Self(mesh, material))
+    }
 }
 
 const PIXEL_WIDTH: u32 = 480;
@@ -90,7 +93,6 @@ impl Renderer {
             .build()?;
         let material_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
-            .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .build()?;
         let transform_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
@@ -141,8 +143,7 @@ impl Renderer {
 
         let render_descriptor_layouts = &[
             camera_layout.clone(),
-            material_layout.clone(),
-            transform_layout.clone(),
+            material_layout.clone()
         ];
 
         let render_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
@@ -292,6 +293,7 @@ impl Renderer {
             render_set,
             egui_ctx,
             egui_winit_state,
+            egui_textures: HashMap::new(),
             ui_shaders,
             ui_pipeline,
             egui_texture_layout,
@@ -423,11 +425,10 @@ impl Renderer {
     fn handle_egui_textures(
         &mut self,
         textures_delta: TexturesDelta,
-        egui_texture_registry: &mut EguiTextureRegistry,
     ) {
         textures_delta.set.iter().for_each(|(texture_id, delta)| {
             println!("{:?}", texture_id);
-            match egui_texture_registry.get(&(*texture_id).into()) {
+            match self.egui_textures.get(texture_id) {
                 Some(_) => {
                     println!("Update Texture: {:?}", delta.pos);
                     todo!();
@@ -464,29 +465,21 @@ impl Renderer {
                     };
 
                     let texture = EguiTexture::new(self, &pixels, width, height).unwrap();
-                    egui_texture_registry.add(texture);
+                    self.egui_textures.insert(*texture_id, texture);
                 }
             }
         });
     }
 
-    pub fn render(
-        mut renderer: ResMut<Self>,
-        mesh_registry: Res<MeshRegistry>,
-        mut transform_registry: ResMut<TransformRegistry>,
-        material_registry: Res<MaterialRegistry>,
-        mut egui_texture_registry: ResMut<EguiTextureRegistry>,
-        camera: Res<Camera>,
-        query: Query<(&MeshRef, &TransformRef)>,
-    ) {
+    pub fn render(&mut self, objects: &[MeshMaterial], camera: &Camera) {
         unsafe {
-            let in_flight = renderer.in_flight.clone();
+            let in_flight = self.in_flight.clone();
 
-            let acquire_result = renderer.ctx.start_frame(in_flight);
+            let acquire_result = self.ctx.start_frame(in_flight);
 
             let image_index = match acquire_result {
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                    renderer
+                    self
                         .recreate_swapchain()
                         .expect("Swapchain recreation failed");
                     return;
@@ -495,34 +488,29 @@ impl Renderer {
                 Ok(image_index) => image_index,
             };
 
-            let input = renderer
+            let input = self
                 .egui_winit_state
                 .lock()
-                .take_egui_input(&renderer.window)
+                .take_egui_input(&self.window)
                 .clone();
-            renderer.egui_ctx.begin_frame(input);
+            self.egui_ctx.begin_frame(input);
             egui::Window::new("Entity Editor")
                 .resizable(true)
-                .show(&renderer.egui_ctx, |ui| {
-                    query.iter().for_each(|(_, transform_ref)| {
-                        let transform = transform_registry.get_mut(transform_ref).unwrap();
-                        ui.add(egui::DragValue::new(&mut transform.translation.x).speed(0.1));
-                    });
-
+                .show(&self.egui_ctx, |ui| {
                     ui.allocate_space(ui.available_size());
                 });
-            let full_output = renderer.egui_ctx.end_frame();
+            let full_output = self.egui_ctx.end_frame();
 
-            renderer.egui_winit_state.lock().handle_platform_output(
-                &renderer.window,
-                &renderer.egui_ctx,
+            self.egui_winit_state.lock().handle_platform_output(
+                &self.window,
+                &self.egui_ctx,
                 full_output.platform_output,
             );
 
-            renderer.handle_egui_textures(full_output.textures_delta, &mut egui_texture_registry);
+            self.handle_egui_textures(full_output.textures_delta);
 
-            let primitives = renderer.egui_ctx.tessellate(full_output.shapes);
-            let pixels_per_point = renderer.egui_ctx.pixels_per_point();
+            let primitives = self.egui_ctx.tessellate(full_output.shapes);
+            let pixels_per_point = self.egui_ctx.pixels_per_point();
             let buffers = primitives
                 .iter()
                 .map(|primitive| match &primitive.primitive {
@@ -533,8 +521,8 @@ impl Renderer {
                             .flat_map(|vertex| {
                                 let mut bytes = Vec::new();
                                 let points = epaint::Vec2::new(
-                                    renderer.swapchain.extent.width as f32 / pixels_per_point,
-                                    renderer.swapchain.extent.height as f32 / pixels_per_point,
+                                    self.swapchain.extent.width as f32 / pixels_per_point,
+                                    self.swapchain.extent.height as f32 / pixels_per_point,
                                 );
 
                                 let zero_to_one = vertex.pos.to_vec2() / points;
@@ -558,16 +546,16 @@ impl Renderer {
                         let indices = cast_slice::<u32, u8>(&mesh.indices);
 
                         let vertex_buffer = Buffer::new(
-                            &renderer.ctx,
+                            &self.ctx,
                             vertices,
                             vk::BufferUsageFlags::VERTEX_BUFFER,
                         )
                         .unwrap();
                         let index_buffer =
-                            Buffer::new(&renderer.ctx, indices, vk::BufferUsageFlags::INDEX_BUFFER)
+                            Buffer::new(&self.ctx, indices, vk::BufferUsageFlags::INDEX_BUFFER)
                                 .unwrap();
 
-                        let set = egui_texture_registry
+                        let set = self.egui_textures
                             .get(&mesh.texture_id.into())
                             .unwrap()
                             .set
@@ -579,30 +567,24 @@ impl Renderer {
                 })
                 .collect::<Vec<(Buffer, Buffer, Set)>>();
 
-            renderer.ctx.command_pool.clear();
-            let mut cmd = renderer
+            self.ctx.command_pool.clear();
+            let mut cmd = self
                 .ctx
                 .command_pool
                 .allocate()
                 .unwrap()
                 .begin()
                 .unwrap()
-                .begin_renderpass(&renderer.render_renderpass, renderer.render_framebuffer, vk::Extent2D { width: PIXEL_WIDTH, height: PIXEL_HEIGHT })
-                .bind_pipeline(&renderer.render_pipeline)
-                .bind_descriptor_set(&renderer.render_pipeline, 0, &camera.set);
+                .begin_renderpass(&self.render_renderpass, self.render_framebuffer, vk::Extent2D { width: PIXEL_WIDTH, height: PIXEL_HEIGHT })
+                .bind_pipeline(&self.render_pipeline)
+                .bind_descriptor_set(&self.render_pipeline, 0, &camera.set);
 
-            println!("Render renderpass + framebuffer are fine");
 
-            for (&mesh, &transform) in query.iter() {
-                let mesh = mesh_registry.get(&mesh).unwrap();
-                let material = material_registry.get(&mesh.material.unwrap()).unwrap();
-                let transform = transform_registry.get(&transform).unwrap();
-
+            for MeshMaterial(mesh, material) in objects {
                 cmd = cmd
-                    .bind_descriptor_set(&renderer.render_pipeline, 1, &material.set)
-                    .bind_descriptor_set(&renderer.render_pipeline, 2, &transform.set)
                     .bind_index_buffer(&mesh.index_buffer)
                     .bind_vertex_buffer(&mesh.vertex_buffer)
+                    .bind_descriptor_set(&self.render_pipeline, 1, &material.set)
                     .draw(DrawOptions {
                         vertex_count: (mesh.index_buffer.size / 4).try_into().unwrap(),
                         instance_count: 1,
@@ -611,15 +593,15 @@ impl Renderer {
             }
 
             cmd = cmd.end_renderpass()
-                .begin_renderpass(&renderer.upscale_renderpass, renderer.upscale_framebuffers[image_index as usize], renderer.ctx.swapchain.extent)
-                .bind_pipeline(&renderer.upscale_pipeline)
-                .bind_descriptor_set(&renderer.upscale_pipeline, 0, &renderer.render_set)
+                .begin_renderpass(&self.upscale_renderpass, self.upscale_framebuffers[image_index as usize], self.ctx.swapchain.extent)
+                .bind_pipeline(&self.upscale_pipeline)
+                .bind_descriptor_set(&self.upscale_pipeline, 0, &self.render_set)
                 .draw(DrawOptions { vertex_count: 3, instance_count: 1, first_vertex: 0, first_instance: 0 })
                 .next_subpass()
-                .bind_pipeline(&renderer.ui_pipeline);
+                .bind_pipeline(&self.ui_pipeline);
             for (vertex_buffer, index_buffer, set) in &buffers {
                 cmd = cmd
-                    .bind_descriptor_set(&renderer.ui_pipeline, 0, &set)
+                    .bind_descriptor_set(&self.ui_pipeline, 0, &set)
                     .bind_vertex_buffer(vertex_buffer)
                     .bind_index_buffer(index_buffer)
                     .draw(DrawOptions {
@@ -631,8 +613,8 @@ impl Renderer {
 
             let cmd = cmd.end_renderpass().end().unwrap();
 
-            let wait_semaphores = &[renderer.ctx.image_available];
-            let signal_semaphores = &[renderer.render_finished];
+            let wait_semaphores = &[self.ctx.image_available];
+            let signal_semaphores = &[self.render_finished];
             let command_buffers = &[*cmd];
             let submit_info = vk::SubmitInfo::builder()
                 .wait_semaphores(wait_semaphores)
@@ -640,22 +622,22 @@ impl Renderer {
                 .command_buffers(command_buffers)
                 .signal_semaphores(signal_semaphores);
 
-            renderer
+            self
                 .ctx
                 .device
                 .queue_submit(
-                    renderer.ctx.device.queues.graphics.queue,
+                    self.ctx.device.queues.graphics.queue,
                     &[*submit_info],
-                    renderer.in_flight,
+                    self.in_flight,
                 )
                 .unwrap();
 
-            let presentation_result = renderer
+            let presentation_result = self
                 .ctx
-                .end_frame(image_index, renderer.render_finished);
+                .end_frame(image_index, self.render_finished);
 
             match presentation_result {
-                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => renderer
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self
                     .recreate_swapchain()
                     .expect("Swapchain recreation failed"),
                 Err(e) => panic!("{}", e),

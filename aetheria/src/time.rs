@@ -1,8 +1,5 @@
 use std::time::Instant;
 
-use bevy_ecs::prelude::*;
-
-#[derive(Resource)]
 pub struct Time {
     last_frame: Instant,
     current_frame: Instant,
@@ -17,11 +14,11 @@ impl Time {
         (self.current_frame - self.last_frame).as_secs_f32()
     }
 
-    pub fn frame_finished(mut time: ResMut<Self>) {
-        println!("FPS: {}", 1.0 / time.delta_seconds());
+    pub fn frame_finished(&mut self) {
+        println!("FPS: {}", 1.0 / self.delta_seconds());
 
-        time.last_frame = time.current_frame;
-        time.current_frame = Instant::now();
+        self.last_frame = self.current_frame;
+        self.current_frame = Instant::now();
     }
 }
 

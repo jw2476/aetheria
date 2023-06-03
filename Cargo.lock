@@ -39,13 +39,12 @@ version = "0.1.0"
 dependencies = [
  "ash",
  "assets",
- "bevy_ecs",
  "bytemuck",
  "cstr",
  "egui",
  "egui-winit",
  "epaint",
- "glam",
+ "glam 0.23.0",
  "gltf",
  "gpu-allocator",
  "hecs",
@@ -75,6 +74,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c99f64d1e06488f620f932677e24bc6e2897582980441ae90a671415bd7ec2f"
 dependencies = [
  "cfg-if",
+ "getrandom",
  "once_cell",
  "version_check",
 ]
@@ -146,9 +146,15 @@ dependencies = [
 name = "assets"
 version = "0.1.0"
 dependencies = [
+ "ash",
+ "bytemuck",
+ "glam 0.24.0",
  "image",
  "qoi",
  "shaderc",
+ "tobj",
+ "tracing",
+ "vulkan",
 ]
 
 [[package]]
@@ -920,6 +926,15 @@ name = "glam"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e4afd9ad95555081e109fe1d21f2a30c691b5f0919c67dfa690a2e1eb6bd51c"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
+name = "glam"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad83ab008a4fa3b31dfa713dd41b5a9bdea1e94e4cf1e2fc274ffbd49b0271d3"
 dependencies = [
  "bytemuck",
 ]
@@ -1977,6 +1992,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
+name = "tobj"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b450e3ba06251ec4fc76917dafeaf55805ffb26dbf7d5500bfb9511ce63a0d1f"
+dependencies = [
+ "ahash 0.8.3",
+]
+
+[[package]]
 name = "toml_datetime"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2142,7 +2166,7 @@ dependencies = [
  "bevy_ecs",
  "bytemuck",
  "cstr",
- "glam",
+ "glam 0.23.0",
  "gpu-allocator",
  "qoi",
  "tracing",

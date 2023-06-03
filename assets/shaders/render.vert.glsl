@@ -14,19 +14,9 @@ layout(set = 0, binding = 0) uniform Camera {
     mat4 proj;
 } camera;
 
-layout(set = 1, binding = 0) uniform Material {
-    vec4 baseColorFactor;
-} material;
-
-layout(set = 1, binding = 1) uniform sampler2D baseColorTexture;
-
-layout(set = 2, binding = 0) uniform Mesh {
-    mat4 model;
-} transform;
-
 void main() {
-    gl_Position = camera.proj * camera.view * transform.model * vec4(inPos, 1.0);
-    fragPos = (transform.model * vec4(inPos, 1.0)).xyz;
+    gl_Position = camera.proj * camera.view * vec4(inPos, 1.0);
+    fragPos = inPos;
     fragUV = inUV;
-    fragNormal = mat3(transpose(inverse(transform.model))) * inNormal;
+    fragNormal = inNormal;
 }
