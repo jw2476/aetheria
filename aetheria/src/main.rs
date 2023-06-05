@@ -18,6 +18,7 @@ use ash::vk;
 use assets::MeshRegistry;
 use bytemuck::cast_slice;
 use camera::Camera;
+use time::Time;
 use transform::Transform;
 use vulkan::Context;
 use renderer::{Renderer, RenderObject, Renderable};
@@ -139,7 +140,8 @@ fn main() {
     let ctx = Context::new(&window);
     
     let mut renderer = Renderer::new(ctx, window.clone(), &event_loop).unwrap();
-    let mut camera = Camera::new(&mut renderer).unwrap();
+    let mut camera = Camera::new(&renderer).unwrap();
+    let mut time = Time::new(&renderer).unwrap();
     let mut mesh_registry = MeshRegistry::new();
 
     let mut renderables = Vec::new();
@@ -159,12 +161,8 @@ fn main() {
         let renderable: Box<dyn Renderable> = Box::new(rock);
         renderables.push(renderable);
     }
-
-    {
-        let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
-        let renderable: Box<dyn Renderable> = Box::new(grass);
-        renderables.push(renderable);
-    }
+    
+    let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -207,7 +205,8 @@ fn main() {
                 _ => ()
             },
             winit::event::Event::MainEventsCleared => {
-                renderer.render(&renderables, &camera); 
+                renderer.render(&renderables, &grass, &camera);
+                time.frame_finished();
             }
             _ => ()
         };

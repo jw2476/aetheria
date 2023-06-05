@@ -9,35 +9,33 @@ pub struct Camera {
     pub eye: Vec3,
     pub target: Vec3,
 
-    buffer: Buffer,
-    pub set: Set,
+    pub buffer: Buffer,
 }
 
 impl Camera {
-    pub fn new(renderer: &mut Renderer) -> Result<Self, vk::Result> {
+    pub fn new(renderer: &Renderer) -> Result<Self, vk::Result> {
         let eye = Vec3::new(0.0, 5.0 * 35.264_f32.tan(), 5.0);
         let target = Vec3::new(0.0, 0.5, 0.0);
 
         let default = [0_u8; 128];
-        let set = renderer.camera_pool.allocate()?;
         let buffer = Buffer::new(
             &renderer.ctx,
             default.to_vec(),
             vk::BufferUsageFlags::UNIFORM_BUFFER,
         )?;
-        set.update_buffer(&renderer.ctx.device, 0, &buffer);
 
         let mut camera = Self {
             eye,
             target,
             buffer,
-            set,
         };
 
         camera.update(
             renderer.swapchain.extent.width as f32,
             renderer.swapchain.extent.height as f32,
         );
+
+        renderer.set_camera(&camera);
 
         Ok(camera)
     }

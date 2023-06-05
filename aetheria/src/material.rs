@@ -7,7 +7,7 @@ use crate::renderer::Renderer;
 
 pub struct Material {
     buffer: Buffer,
-    pub set: Set
+    pub set: Set,
 }
 
 impl Material {
@@ -16,6 +16,9 @@ impl Material {
          let set = renderer.material_pool.allocate()?;
          set.update_buffer(&renderer.ctx.device, 0, &buffer);
 
-         Ok(Self { buffer, set })
+         Ok(Self { 
+             buffer, 
+             set, 
+         })
     }
 }

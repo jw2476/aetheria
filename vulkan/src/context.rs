@@ -1,6 +1,5 @@
 use super::{command, Device, Instance, Surface, Swapchain};
 use ash::{vk, Entry};
-use bevy_ecs::world::World;
 use gpu_allocator::{
     vulkan::{Allocator, AllocatorCreateDesc},
     AllocatorDebugSettings,

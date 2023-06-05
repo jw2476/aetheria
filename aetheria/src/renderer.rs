@@ -23,6 +23,7 @@ use crate::camera::Camera;
 use crate::include_bytes_align_as;
 use crate::material::Material;
 use crate::mesh::EguiTexture;
+use crate::time::Time;
 use crate::transform::{Transform, TransformGPU};
 
 pub struct Renderer {
@@ -41,14 +42,20 @@ pub struct Renderer {
     pub render_pool: Pool,
     render_set: Set,
 
-    camera_layout: SetLayout,
-    pub camera_pool: Pool,
+    scene_layout: SetLayout,
+    pub scene_pool: Pool,
+    scene_set: Set,
 
     material_layout: SetLayout,
     pub material_pool: Pool,
 
     transform_layout: SetLayout,
     pub transform_pool: Pool,
+
+    texture_layout: SetLayout,
+    pub texture_set_pool: Pool,
+    noise_texture: Texture,
+    noise_set: Set,
 
     render_texture: Texture,
     render_view: vk::ImageView,
@@ -59,8 +66,10 @@ pub struct Renderer {
     pub egui_winit_state: Arc<Mutex<egui_winit::State>>,
     egui_textures: HashMap<egui::TextureId, EguiTexture>,
 
-    render_shaders: Shaders,
-    render_pipeline: Pipeline,
+    geometry_shaders: Shaders,
+    geometry_pipeline: Pipeline,
+    grass_shaders: Shaders,
+    grass_pipeline: Pipeline,
     upscale_shaders: Shaders,
     upscale_pipeline: Pipeline,
     ui_shaders: Shaders,
@@ -139,11 +148,12 @@ const PIXEL_HEIGHT: u32 = 270;
 
 impl Renderer {
     pub fn new(
-        ctx: Context,
+        mut ctx: Context,
         window: Arc<Window>,
         event_loop: &EventLoop<()>,
     ) -> Result<Self, vk::Result> {
-        let camera_layout = SetLayoutBuilder::new(&ctx.device)
+        let scene_layout = SetLayoutBuilder::new(&ctx.device)
+            .add(vk::DescriptorType::UNIFORM_BUFFER)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
         let material_layout = SetLayoutBuilder::new(&ctx.device)
@@ -156,6 +166,9 @@ impl Renderer {
             .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .build()?;
         let egui_texture_layout = SetLayoutBuilder::new(&ctx.device)
+            .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .build()?;
+        let texture_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .build()?;
 
@@ -181,42 +194,83 @@ impl Renderer {
         let render_renderpass = Renderpass::new_render(&ctx.device, ctx.swapchain.format)?;
         let upscale_renderpass = Renderpass::new_upscale_ui(&ctx.device, ctx.swapchain.format)?;
 
-        let render_vertex_shader = Shader::new(
+        let geometry_vertex_shader = Shader::new(
             &ctx.device,
-            include_bytes_align_as!(u32, "../../assets/shaders/compiled/render.vert.spv"),
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/geometry.vert.spv"),
             vk::ShaderStageFlags::VERTEX,
         )?;
-        let render_fragment_shader = Shader::new(
+        let geometry_fragment_shader = Shader::new(
             &ctx.device,
-            include_bytes_align_as!(u32, "../../assets/shaders/compiled/render.frag.spv"),
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/geometry.frag.spv"),
             vk::ShaderStageFlags::FRAGMENT,
         )?;
-        let render_shaders = Shaders {
-            vertex: Some(render_vertex_shader),
-            fragment: Some(render_fragment_shader),
+        let geometry_shaders = Shaders {
+            vertex: Some(geometry_vertex_shader),
+            fragment: Some(geometry_fragment_shader),
         };
 
-        let render_descriptor_layouts = &[
-            camera_layout.clone(),
+        let geometry_descriptor_layouts = &[
+            scene_layout.clone(),
             material_layout.clone(),
-            transform_layout.clone()
+            transform_layout.clone(),
         ];
 
-        let render_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
+        let geometry_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
             binding
                 .add_attribute(vk::Format::R32G32B32_SFLOAT)
                 .add_attribute(vk::Format::R32G32_SFLOAT)
                 .add_attribute(vk::Format::R32G32B32_SFLOAT)
         });
 
-        let render_pipeline = Pipeline::new(
+        let geometry_pipeline = Pipeline::new(
             &ctx.device,
             &render_renderpass,
-            render_shaders.clone(),
+            geometry_shaders.clone(),
             vk::Extent2D { width: PIXEL_WIDTH, height: PIXEL_HEIGHT },
-            render_descriptor_layouts,
-            render_vertex_input,
+            geometry_descriptor_layouts,
+            geometry_vertex_input,
             0,
+            true,
+            true,
+        )?;
+
+        let grass_vertex_shader = Shader::new(
+            &ctx.device,
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/grass.vert.spv"),
+            vk::ShaderStageFlags::VERTEX,
+        )?;
+        let grass_fragment_shader = Shader::new(
+            &ctx.device,
+            include_bytes_align_as!(u32, "../../assets/shaders/compiled/grass.frag.spv"),
+            vk::ShaderStageFlags::FRAGMENT,
+        )?;
+        let grass_shaders = Shaders {
+            vertex: Some(grass_vertex_shader),
+            fragment: Some(grass_fragment_shader),
+        };
+
+        let grass_descriptor_layouts = &[
+            scene_layout.clone(),
+            material_layout.clone(),
+            transform_layout.clone(),
+            texture_layout.clone()
+        ];
+
+        let grass_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
+            binding
+                .add_attribute(vk::Format::R32G32B32_SFLOAT)
+                .add_attribute(vk::Format::R32G32_SFLOAT)
+                .add_attribute(vk::Format::R32G32B32_SFLOAT)
+        });
+
+        let grass_pipeline = Pipeline::new(
+            &ctx.device,
+            &render_renderpass,
+            grass_shaders.clone(),
+            vk::Extent2D { width: PIXEL_WIDTH, height: PIXEL_HEIGHT },
+            grass_descriptor_layouts,
+            grass_vertex_input,
+            1,
             true,
             true,
         )?;
@@ -273,12 +327,19 @@ impl Renderer {
             unsafe { ctx.device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { ctx.device.create_fence(&fence_info, None).unwrap() };
 
-        let camera_pool = Pool::new(ctx.device.clone(), camera_layout.clone(), 1).unwrap();
+        let mut scene_pool = Pool::new(ctx.device.clone(), scene_layout.clone(), 1).unwrap();
+        let scene_set = scene_pool.allocate()?;
+
         let material_pool = Pool::new(ctx.device.clone(), material_layout.clone(), 100000).unwrap();
         let transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 100000).unwrap();
-        let mut render_pool = Pool::new(ctx.device.clone(), render_layout.clone(), 1).unwrap();
+        let mut texture_set_pool = Pool::new(ctx.device.clone(), render_layout.clone(), 1).unwrap();
+        let mut render_pool = Pool::new(ctx.device.clone(), render_layout.clone(), 100000).unwrap();
         let render_set = render_pool.allocate()?;
         render_set.update_texture(&ctx.device, 0, &render_texture, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+       
+        let noise_texture = Texture::new(&mut ctx, &std::fs::read("assets/textures/compiled/noise.qoi").unwrap())?;
+        let noise_set = texture_set_pool.allocate()?;
+        noise_set.update_texture(&ctx.device, 0, &noise_texture, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
 
         let egui_texture_pool =
             Pool::new(ctx.device.clone(), egui_texture_layout.clone(), 1000).unwrap();
@@ -326,9 +387,11 @@ impl Renderer {
             window,
             render_renderpass,
             upscale_renderpass,
-            render_pipeline,
+            geometry_shaders,
+            geometry_pipeline,
+            grass_shaders,
+            grass_pipeline,
             upscale_pipeline,
-            render_shaders,
             upscale_shaders,
             render_framebuffer,
             upscale_framebuffers,
@@ -338,15 +401,20 @@ impl Renderer {
             render_texture,
             depth_image,
             depth_view,
-            camera_layout,
+            scene_layout,
             material_layout,
             transform_layout,
             render_layout,
-            camera_pool,
+            texture_layout,
+            scene_pool,
             material_pool,
             transform_pool,
             render_pool,
             render_set,
+            scene_set,
+            texture_set_pool,
+            noise_texture,
+            noise_set,
             egui_ctx,
             egui_winit_state,
             egui_textures: HashMap::new(),
@@ -357,6 +425,14 @@ impl Renderer {
         };
 
         Ok(renderer)
+    }
+
+    pub fn set_camera(&self, camera: &Camera) {
+        self.scene_set.update_buffer(&self.ctx.device, 0, &camera.buffer);
+    }
+
+    pub fn set_time(&self, time: &Time) {
+        self.scene_set.update_buffer(&self.ctx.device, 1, &time.buffer);
     }
 
     unsafe fn destroy_swapchain(&mut self) {
@@ -527,7 +603,7 @@ impl Renderer {
         });
     }
 
-    pub fn render(&mut self, renderables: &[Box<dyn Renderable>], camera: &Camera) {
+    pub fn render(&mut self, geometries: &[Box<dyn Renderable>], grass: &dyn Renderable, camera: &Camera) {
         unsafe {
             let in_flight = self.in_flight.clone();
 
@@ -632,18 +708,34 @@ impl Renderer {
                 .begin()
                 .unwrap()
                 .begin_renderpass(&self.render_renderpass, self.render_framebuffer, vk::Extent2D { width: PIXEL_WIDTH, height: PIXEL_HEIGHT })
-                .bind_pipeline(&self.render_pipeline)
-                .bind_descriptor_set(&self.render_pipeline, 0, &camera.set);
+                .bind_pipeline(&self.geometry_pipeline)
+                .bind_descriptor_set(&self.geometry_pipeline, 0, &self.scene_set);
 
 
-            let objects = renderables.iter().flat_map(|renderable| renderable.get_objects()).collect::<Vec<&RenderObject>>();
-            println!("{}", objects.len());
+            let objects = geometries.iter().flat_map(|renderable| renderable.get_objects()).collect::<Vec<&RenderObject>>();
             for RenderObject { mesh, material, transform } in objects {
                 cmd = cmd
                     .bind_index_buffer(&mesh.index_buffer)
                     .bind_vertex_buffer(&mesh.vertex_buffer)
-                    .bind_descriptor_set(&self.render_pipeline, 1, &material.set)
-                    .bind_descriptor_set(&self.render_pipeline, 2, &transform.lock().set)
+                    .bind_descriptor_set(&self.geometry_pipeline, 1, &material.set)
+                    .bind_descriptor_set(&self.geometry_pipeline, 2, &transform.lock().set)
+                    .draw(DrawOptions {
+                        vertex_count: (mesh.index_buffer.size / 4).try_into().unwrap(),
+                        instance_count: 1,
+                        ..Default::default()
+                    })
+            }
+            
+            cmd = cmd.next_subpass()
+                .bind_pipeline(&self.grass_pipeline)
+                .bind_descriptor_set(&self.grass_pipeline, 3, &self.noise_set);
+            let objects = grass.get_objects();
+            for RenderObject { mesh, material, transform } in objects {
+                cmd = cmd
+                    .bind_index_buffer(&mesh.index_buffer)
+                    .bind_vertex_buffer(&mesh.vertex_buffer)
+                    .bind_descriptor_set(&self.grass_pipeline, 1, &material.set)
+                    .bind_descriptor_set(&self.grass_pipeline, 2, &transform.lock().set)
                     .draw(DrawOptions {
                         vertex_count: (mesh.index_buffer.size / 4).try_into().unwrap(),
                         instance_count: 1,

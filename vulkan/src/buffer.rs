@@ -62,12 +62,7 @@ impl Buffer {
     pub fn upload<T: Into<Vec<u8>>>(&mut self, data: T) {
         let bytes: Vec<u8> = data.into();
 
-        self.allocation
-            .as_mut()
-            .unwrap()
-            .mapped_slice_mut()
-            .unwrap()[..bytes.len()]
-            .copy_from_slice(&bytes);
+        self.upload_bytes(&bytes);
     }
 
     fn upload_bytes(&mut self, bytes: &[u8]) {

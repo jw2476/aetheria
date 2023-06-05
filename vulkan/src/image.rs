@@ -4,6 +4,7 @@ use crate::Set;
 use ash::vk;
 use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator};
 use gpu_allocator::MemoryLocation;
+use std::cell::OnceCell;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -138,9 +139,9 @@ impl Image {
             .mag_filter(mag_filter)
             .min_filter(min_filter)
             .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
-            .address_mode_u(vk::SamplerAddressMode::REPEAT)
-            .address_mode_v(vk::SamplerAddressMode::REPEAT)
-            .address_mode_w(vk::SamplerAddressMode::REPEAT)
+            .address_mode_u(vk::SamplerAddressMode::MIRRORED_REPEAT)
+            .address_mode_v(vk::SamplerAddressMode::MIRRORED_REPEAT)
+            .address_mode_w(vk::SamplerAddressMode::MIRRORED_REPEAT)
             .mip_lod_bias(0.0)
             .anisotropy_enable(true)
             .max_anisotropy(ctx.device.physical.properties.limits.max_sampler_anisotropy)
@@ -194,6 +195,8 @@ impl Deref for Texture {
 }
 
 impl Texture {
+    pub const WHITE: OnceCell<Self> = OnceCell::new();
+
     pub fn new(ctx: &mut Context, bytes: &[u8]) -> Result<Self, vk::Result> {
         let (header, data) = qoi::decode_to_vec(bytes).unwrap();
 
