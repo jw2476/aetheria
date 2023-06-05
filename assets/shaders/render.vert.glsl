@@ -14,9 +14,13 @@ layout(set = 0, binding = 0) uniform Camera {
     mat4 proj;
 } camera;
 
+layout(set = 2, binding = 0) uniform Transform {
+    mat4 model;
+} transform;
+
 void main() {
-    gl_Position = camera.proj * camera.view * vec4(inPos, 1.0);
-    fragPos = inPos;
+    gl_Position = camera.proj * camera.view * transform.model * vec4(inPos, 1.0);
+    fragPos = (transform.model * vec4(inPos, 1.0)).xyz;
     fragUV = inUV;
-    fragNormal = inNormal;
+    fragNormal = mat3(transpose(inverse(transform.model))) * inNormal;
 }

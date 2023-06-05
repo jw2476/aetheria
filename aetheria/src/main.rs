@@ -11,18 +11,18 @@ mod mesh;
 mod material;
 mod time;
 mod camera;
+mod transform;
 
 use std::sync::Arc;
 use ash::vk;
-use assets::{MeshRegistry, Mesh};
+use assets::MeshRegistry;
 use bytemuck::cast_slice;
 use camera::Camera;
-use material::Material;
-use time::Time;
+use transform::Transform;
 use vulkan::Context;
-use renderer::{Renderer, MeshMaterial};
+use renderer::{Renderer, RenderObject, Renderable};
 use winit::event_loop::ControlFlow;
-use glam::{Vec3, Quat, EulerRot, Vec4};
+use glam::{Vec3, Quat, Vec4};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -41,22 +41,94 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
 
 
 struct Tree {
-    pub trunk: MeshMaterial,
-    pub foliage: MeshMaterial
+    pub transform: Transform,
+    trunk: RenderObject,
+    foliage: RenderObject,
 }
 
 impl Tree {
-    pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry) -> Result<Tree, vk::Result> {
-        let trunk_color = Vec4::new(0.9150942, 0.6063219, 0.4359647, 1.0);
-        let trunk = MeshMaterial::new(renderer, mesh_registry, "tree.trunk.obj", trunk_color)?;
-        let foliage_color = Vec4::new(0.2588235, 0.7921569, 0.6034038, 1.0);
-        let foliage = MeshMaterial::new(renderer, mesh_registry, "tree.foliage.obj", foliage_color)?;
+    pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Tree, vk::Result> {
+        let trunk = RenderObject::builder(renderer, mesh_registry)
+            .set_mesh("tree.trunk.obj")?
+            .set_color(Vec4::new(0.9150942, 0.6063219, 0.4359647, 1.0))
+            .set_transform(transform.clone())
+            .build()?;
+        let foliage = RenderObject::builder(renderer, mesh_registry)
+            .set_mesh("tree.foliage.obj")?
+            .set_color(Vec4::new(0.2588235, 0.7921569, 0.6034038, 1.0))
+            .set_transform(transform.clone())
+            .build()?;
 
         Ok(Self {
-           trunk,
-           foliage
+            transform,
+            trunk,
+            foliage
         })
     }
+
+    pub fn update_transform(&mut self) -> Result<(), vk::Result> {
+        let mut trunk = self.trunk.transform.lock();
+        let mut foliage = self.foliage.transform.lock();
+        trunk.transform = self.transform.clone();
+        trunk.update()?;
+        foliage.transform = self.transform.clone();
+        foliage.update()?;
+        Ok(())
+    }
+}
+
+impl Renderable for Tree {
+    fn get_objects(&self) -> Vec<&RenderObject> {
+        vec![&self.trunk, &self.foliage]
+    }
+}
+
+struct Rock {
+    pub transform: Transform,
+    rock: RenderObject
+}
+
+impl Rock {
+    pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Self, vk::Result> {
+        let rock = RenderObject::builder(renderer, mesh_registry)
+            .set_mesh("rocks.obj")?
+            .set_color(Vec4::new(0.6916608, 0.8617874, 0.9339623, 1.0))
+            .set_transform(transform.clone())
+            .build()?;
+        Ok(Self { transform, rock })
+    }
+}
+
+impl Renderable for Rock {
+    fn get_objects(&self) -> Vec<&RenderObject> {
+        vec![&self.rock]
+    }
+}
+
+struct Grass {
+    pub transform: Transform,
+    grass: RenderObject
+}
+
+impl Grass {
+    pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Self, vk::Result> {
+        let grass = RenderObject::builder(renderer, mesh_registry)
+            .set_mesh("grass.obj")?
+            .set_color(Vec4::new(0.2588235, 0.7921569, 0.6034038, 1.0))
+            .set_transform(transform.clone())
+            .build()?;
+        Ok(Self { transform, grass })
+    }
+}
+
+impl Renderable for Grass {
+    fn get_objects(&self) -> Vec<&RenderObject> {
+        vec![&self.grass]
+    }
+}
+
+fn get_coord() -> f32 {
+    (rand::random::<f32>() - 0.5) * 25.0
 }
 
 fn main() {
@@ -69,7 +141,30 @@ fn main() {
     let mut renderer = Renderer::new(ctx, window.clone(), &event_loop).unwrap();
     let mut camera = Camera::new(&mut renderer).unwrap();
     let mut mesh_registry = MeshRegistry::new();
-    let tree = Tree::load(&mut renderer, &mut mesh_registry).unwrap();
+
+    let mut renderables = Vec::new();
+    for _ in 0..100 {
+        let mut transform = Transform::IDENTITY;
+        transform.translation = Vec3::new(get_coord(), 0.0, get_coord());
+        let tree = Tree::load(&mut renderer, &mut mesh_registry, transform).unwrap();
+        let renderable: Box<dyn Renderable> = Box::new(tree);
+        renderables.push(renderable);
+    }
+
+    for _ in 0..100 {
+        let mut transform = Transform::IDENTITY;
+        transform.translation = Vec3::new(get_coord(), 0.0, get_coord());
+        transform.scale *= 0.6;
+        let rock = Rock::load(&mut renderer, &mut mesh_registry, transform).unwrap();
+        let renderable: Box<dyn Renderable> = Box::new(rock);
+        renderables.push(renderable);
+    }
+
+    {
+        let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
+        let renderable: Box<dyn Renderable> = Box::new(grass);
+        renderables.push(renderable);
+    }
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -112,7 +207,7 @@ fn main() {
                 _ => ()
             },
             winit::event::Event::MainEventsCleared => {
-                renderer.render(&[tree.trunk.clone(), tree.foliage.clone()], &camera);
+                renderer.render(&renderables, &camera); 
             }
             _ => ()
         };

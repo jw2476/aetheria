@@ -16,8 +16,8 @@ layout(set = 1, binding = 0) uniform Material {
 	vec4 baseColor;
 } material;
 
-vec3 LIGHT_POS = vec3(0.0, 10.0, 10.0);
-float AMBIENT_STRENGTH = 0.1;
+vec3 SUN_DIRECTION = vec3(0.0, 4.0, 1.0);
+float AMBIENT_STRENGTH = 0.3;
 float INFINITY = 1.0 / 0.0;
 
 vec3 PALETTE[32] = {
@@ -58,10 +58,10 @@ vec3 PALETTE[32] = {
 void main() {
     vec4 baseColor = material.baseColor;
     vec3 normal = normalize(fragNormal);
-    vec3 lightDirection = normalize(LIGHT_POS - fragPos);
-    float diffuse = max(dot(normal, lightDirection), 0.0);
+    float sun = max(dot(normal, normalize(SUN_DIRECTION)), 0.0);
 
-    float brightness = AMBIENT_STRENGTH + diffuse;
+    float brightness = AMBIENT_STRENGTH + sun;
+    brightness = min(brightness, 1.0);
     
     
     vec3 color = (baseColor * brightness).rgb;

@@ -24,3 +24,4 @@ image = "0.24"
 egui = "0.21"
 egui-winit = "0.21"
 epaint = { version = "0.21", features = ["bytemuck"] }
+rand = "0.8.5"

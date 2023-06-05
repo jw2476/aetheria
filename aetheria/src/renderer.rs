@@ -3,7 +3,7 @@ use assets::{Mesh, MeshRegistry};
 use bytemuck::cast_slice;
 use egui::mutex::Mutex;
 use egui::TexturesDelta;
-use glam::Vec4;
+use glam::{Vec4, Vec3, Quat};
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::{
@@ -23,6 +23,7 @@ use crate::camera::Camera;
 use crate::include_bytes_align_as;
 use crate::material::Material;
 use crate::mesh::EguiTexture;
+use crate::transform::{Transform, TransformGPU};
 
 pub struct Renderer {
     pub(crate) ctx: Context,
@@ -69,14 +70,68 @@ pub struct Renderer {
     pub egui_texture_pool: Pool,
 }
 
-#[derive(Clone)]
-pub struct MeshMaterial(Arc<Mesh>, Arc<Material>);
-impl MeshMaterial {
-    pub fn new(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, mesh: &str, color: Vec4) -> Result<MeshMaterial, vk::Result> {
-        let mesh = mesh_registry.load(&renderer.ctx, mesh);
-        let material = Arc::new(Material::new(renderer, color)?);
-        Ok(Self(mesh, material))
+pub struct RenderObjectBuilder<'a> {
+    renderer: &'a mut Renderer,
+    mesh_registry: &'a mut MeshRegistry,
+    mesh: Option<Arc<Mesh>>,
+    color: Option<Vec4>,
+    transform: Option<Transform>
+}
+
+impl RenderObjectBuilder<'_> {
+    pub fn set_mesh(&mut self, path: &str) -> Result<&mut Self, vk::Result> {
+         self.mesh = Some(self.mesh_registry.load(self.renderer, path));
+         Ok(self)
     }
+    
+    pub fn set_color(&mut self, color: Vec4) -> &mut Self {
+        self.color = Some(color);
+        self
+    }
+
+    pub fn set_transform(&mut self, transform: Transform) -> &mut Self {
+        self.transform = Some(transform);
+        self
+    }
+
+    pub fn build(&mut self) -> Result<RenderObject, vk::Result> {
+        if self.mesh.is_none() {
+            panic!("Tried to create RenderObject with no mesh");
+        }
+
+        let material = Arc::new(Material::new(self.renderer, self.color.unwrap_or_else(|| Vec4::new(1.0, 1.0, 1.0, 1.0)))?);
+        let transform = self.transform.clone().unwrap_or(Transform::IDENTITY);
+        let transform_gpu = TransformGPU::new(self.renderer, transform)?;
+
+        Ok(RenderObject {
+            mesh: self.mesh.clone().unwrap(),
+            material,
+            transform: Arc::new(Mutex::new(transform_gpu))
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct RenderObject {
+    mesh: Arc<Mesh>,
+    material: Arc<Material>,
+    pub transform: Arc<Mutex<TransformGPU>>
+}
+
+impl RenderObject {
+    pub fn builder<'a>(renderer: &'a mut Renderer, mesh_registry: &'a mut MeshRegistry) -> RenderObjectBuilder<'a> {
+        RenderObjectBuilder {
+            renderer,
+            mesh_registry,
+            mesh: None,
+            color: None,
+            transform: None
+        }
+    }
+}
+
+pub trait Renderable {
+    fn get_objects(&self) -> Vec<&RenderObject>;
 }
 
 const PIXEL_WIDTH: u32 = 480;
@@ -143,7 +198,8 @@ impl Renderer {
 
         let render_descriptor_layouts = &[
             camera_layout.clone(),
-            material_layout.clone()
+            material_layout.clone(),
+            transform_layout.clone()
         ];
 
         let render_vertex_input = VertexInputBuilder::new().add_binding(|binding| {
@@ -217,10 +273,10 @@ impl Renderer {
             unsafe { ctx.device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { ctx.device.create_fence(&fence_info, None).unwrap() };
 
-        let camera_pool = Pool::new(ctx.device.clone(), camera_layout.clone(), 1000).unwrap();
-        let material_pool = Pool::new(ctx.device.clone(), material_layout.clone(), 1000).unwrap();
-        let transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 1000).unwrap();
-        let mut render_pool = Pool::new(ctx.device.clone(), render_layout.clone(), 1000).unwrap();
+        let camera_pool = Pool::new(ctx.device.clone(), camera_layout.clone(), 1).unwrap();
+        let material_pool = Pool::new(ctx.device.clone(), material_layout.clone(), 100000).unwrap();
+        let transform_pool = Pool::new(ctx.device.clone(), transform_layout.clone(), 100000).unwrap();
+        let mut render_pool = Pool::new(ctx.device.clone(), render_layout.clone(), 1).unwrap();
         let render_set = render_pool.allocate()?;
         render_set.update_texture(&ctx.device, 0, &render_texture, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
 
@@ -471,7 +527,7 @@ impl Renderer {
         });
     }
 
-    pub fn render(&mut self, objects: &[MeshMaterial], camera: &Camera) {
+    pub fn render(&mut self, renderables: &[Box<dyn Renderable>], camera: &Camera) {
         unsafe {
             let in_flight = self.in_flight.clone();
 
@@ -580,11 +636,14 @@ impl Renderer {
                 .bind_descriptor_set(&self.render_pipeline, 0, &camera.set);
 
 
-            for MeshMaterial(mesh, material) in objects {
+            let objects = renderables.iter().flat_map(|renderable| renderable.get_objects()).collect::<Vec<&RenderObject>>();
+            println!("{}", objects.len());
+            for RenderObject { mesh, material, transform } in objects {
                 cmd = cmd
                     .bind_index_buffer(&mesh.index_buffer)
                     .bind_vertex_buffer(&mesh.vertex_buffer)
                     .bind_descriptor_set(&self.render_pipeline, 1, &material.set)
+                    .bind_descriptor_set(&self.render_pipeline, 2, &transform.lock().set)
                     .draw(DrawOptions {
                         vertex_count: (mesh.index_buffer.size / 4).try_into().unwrap(),
                         instance_count: 1,
