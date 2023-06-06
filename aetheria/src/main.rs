@@ -12,6 +12,7 @@ mod material;
 mod time;
 mod camera;
 mod transform;
+mod input;
 
 use std::sync::Arc;
 use ash::vk;
@@ -22,8 +23,9 @@ use time::Time;
 use transform::Transform;
 use vulkan::Context;
 use renderer::{Renderer, RenderObject, Renderable};
-use winit::event_loop::ControlFlow;
+use winit::{event_loop::ControlFlow, event::{VirtualKeyCode, MouseButton}};
 use glam::{Vec3, Quat, Vec4};
+use input::{Keyboard, Mouse};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -132,6 +134,10 @@ fn get_coord() -> f32 {
     (rand::random::<f32>() - 0.5) * 25.0
 }
 
+
+const CAMERA_SENSITIVITY: f32 = 25.0;
+const MOVEMENT_SENSITIVITY: f32 = 0.15;
+
 fn main() {
     tracing_subscriber::fmt::init();
 
@@ -143,6 +149,8 @@ fn main() {
     let mut camera = Camera::new(&renderer).unwrap();
     let mut time = Time::new(&renderer).unwrap();
     let mut mesh_registry = MeshRegistry::new();
+    let mut keyboard = Keyboard::new();
+    let mut mouse = Mouse::new();
 
     let mut renderables = Vec::new();
     for _ in 0..100 {
@@ -171,6 +179,9 @@ fn main() {
         
         control_flow.set_poll();
 
+        keyboard.on_event(&event);
+        mouse.on_event(&event);
+
         match event {
             winit::event::Event::WindowEvent { event, .. } => {     
                 let egui_ctx = &renderer.egui_ctx;
@@ -179,7 +190,9 @@ fn main() {
                 match event {
                     winit::event::WindowEvent::Resized(size) => {
                         renderer.recreate_swapchain().unwrap();
-                        camera.update(size.width as f32, size.height as f32);
+                        camera.width = size.width as f32;
+                        camera.height = size.height as f32;
+                        camera.update();
                     },
                     winit::event::WindowEvent::CloseRequested => {
                         control_flow.set_exit()
@@ -188,25 +201,18 @@ fn main() {
                 }
 
             },
-            winit::event::Event::DeviceEvent {event, ..} => match event {
-                winit::event::DeviceEvent::Key(input) => {
-                    if let Some(key) = input.virtual_keycode && key == winit::event::VirtualKeyCode::Escape {
-                        control_flow.set_exit()
-                    }
-                },
-                winit::event::DeviceEvent::MouseMotion { delta } => {
-                    let width = renderer.ctx.swapchain.extent.width;
-                    let height = renderer.ctx.swapchain.extent.height;
-                    
-                    let quat = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), (-delta.0 / 100.0) as f32);
-                    camera.eye = quat * camera.eye;
-                    camera.update(width as f32, height as f32);
-                },
-                _ => ()
-            },
             winit::event::Event::MainEventsCleared => {
+                if keyboard.is_key_down(VirtualKeyCode::Escape) { control_flow.set_exit() }
+                if mouse.is_button_down(MouseButton::Right) { camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY }
+                if keyboard.is_key_down(VirtualKeyCode::W) { camera.target -= camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
+                if keyboard.is_key_down(VirtualKeyCode::S) { camera.target += camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
+                if keyboard.is_key_down(VirtualKeyCode::A) { camera.target -= camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
+                if keyboard.is_key_down(VirtualKeyCode::D) { camera.target += camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
                 renderer.render(&renderables, &grass, &camera);
                 time.frame_finished();
+                keyboard.frame_finished();
+                camera.frame_finished();
+                mouse.frame_finished();
             }
             _ => ()
         };

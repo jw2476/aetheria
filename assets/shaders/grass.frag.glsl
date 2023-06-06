@@ -66,11 +66,12 @@ void main() {
     vec4 baseColor = material.baseColor;
     vec3 normal = normalize(fragNormal);
     float sun = max(dot(normal, normalize(SUN_DIRECTION)), 0.0);
-    float time = scene.time * 0.01;
+    float time = scene.time;
 
-    vec2 noiseScroll = vec2(time * pow(sin(time), 2), time * pow(cos(time), 2)) + vec2(0.5, 0.5);
-    float noiseValue = length(texture(noise, fragPos.xz * 0.05 + noiseScroll).rgb);
-    float brightness = 0.3 + noiseValue * 0.7;
+    vec2 noiseScroll = vec2(time / 1000.0, time / 200.0);
+    noiseScroll.y += 0.001 * cos(time * 3);
+    float noiseValue = length(texture(noise, fragPos.xz * 0.025 + noiseScroll).rgb);
+    float brightness = 0.4 + noiseValue * 0.3;
     
     vec3 color = (baseColor * brightness).rgb;
     float minPaletteLength = INFINITY;
