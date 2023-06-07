@@ -49,6 +49,8 @@ fn main() {
             shaderc::ShaderKind::Vertex
         } else if source.starts_with("FRAGMENT") {
             shaderc::ShaderKind::Fragment
+        } else if source.starts_with("COMPUTE") {
+            shaderc::ShaderKind::Compute
         } else {
             panic!("Unknown shader type in file {}", input.display())
         };

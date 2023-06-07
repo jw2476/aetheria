@@ -44,7 +44,7 @@ impl Swapchain {
         let format = formats
             .iter()
             .find(|format| {
-                format.format == vk::Format::B8G8R8A8_SRGB
+                format.format == vk::Format::R8G8B8A8_SRGB
                     && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
             })
             .unwrap_or_else(|| formats.first().unwrap());
@@ -89,7 +89,7 @@ impl Swapchain {
             .image_color_space(format.color_space)
             .image_extent(extent)
             .image_array_layers(1)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST)
             .image_sharing_mode(sharing_mode)
             .queue_family_indices(&queue_family_indices)
             .pre_transform(capabilities.current_transform)

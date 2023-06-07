@@ -27,6 +27,13 @@ impl Pipeline {
             Pipeline::Compute(compute) => compute.layout
         }
     }
+
+    pub fn get_bind_point(&self) -> vk::PipelineBindPoint {
+        match self {
+            Pipeline::Compute(_) => vk::PipelineBindPoint::COMPUTE,
+            Pipeline::Graphics(_) => vk::PipelineBindPoint::GRAPHICS
+        }
+    }
 }
 
 pub struct BufferBuilder {
@@ -121,7 +128,7 @@ impl BufferBuilder {
         unsafe {
             self.device.cmd_bind_descriptor_sets(
                 **self,
-                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.as_ref().unwrap().get_bind_point(),
                 self.pipeline.as_ref().unwrap().get_layout(),
                 binding,
                 descriptor_sets,
@@ -171,6 +178,33 @@ impl BufferBuilder {
             );
         };
 
+        self
+    }
+
+    pub fn dispatch(self, x: u32, y: u32, z: u32) -> Self {
+        unsafe {
+            self.device.cmd_dispatch(**self, x, y, z);
+        }
+        
+        self
+    }
+
+    pub fn copy_image(self, from: &Image, to: &Image, from_layout: vk::ImageLayout, to_layout: vk::ImageLayout, aspect: vk::ImageAspectFlags) -> Self {
+        unsafe {
+            let subresource = vk::ImageSubresourceLayers::builder()
+                .aspect_mask(aspect)
+                .mip_level(0)
+                .base_array_layer(0)
+                .layer_count(1);
+            let copy_info = vk::ImageCopy::builder()
+                .src_subresource(*subresource)
+                .src_offset(vk::Offset3D::default())
+                .dst_subresource(*subresource)
+                .dst_offset(vk::Offset3D::default())
+                .extent(vk::Extent3D { width: from.width, height: from.height, depth: 1 });
+            self.device.cmd_copy_image(**self, from.image, from_layout, to.image, to_layout, &[*copy_info]);
+        }
+        
         self
     }
 

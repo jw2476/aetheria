@@ -14,6 +14,7 @@ impl Pipeline {
     pub fn new(device: &Device, shader: Arc<Shader>, layouts: &[SetLayout]) -> Result<Self, vk::Result> {
         let stage = shader.get_stage();
         let descriptors = layouts.iter().map(|layout| layout.layout).collect::<Vec<DescriptorSetLayout>>();
+        println!("Descriptors: {}", descriptors.len());
         let layout_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(&descriptors);
         let layout = unsafe { device.create_pipeline_layout(&layout_info, None)? };

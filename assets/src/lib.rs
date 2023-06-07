@@ -25,9 +25,10 @@ impl ShaderRegistry {
                 let stage = match spv.file_stem().unwrap().to_str().unwrap().split(".").last().unwrap() {
                     "vert" => vk::ShaderStageFlags::VERTEX,
                     "frag" => vk::ShaderStageFlags::FRAGMENT,
+                    "comp" => vk::ShaderStageFlags::COMPUTE,
                     shader_type => panic!("Unexpected shader type: {}", shader_type)
                 };
-                let code = std::fs::read(spv).ok().unwrap();
+                let code = std::fs::read(spv).ok().expect(&format!("Cannot find file: {}", path));
                 let shader = Arc::new(Shader::new(device, &code, stage).unwrap());
                 self.registry.insert(path.to_owned(), Arc::downgrade(&shader));
                 shader
