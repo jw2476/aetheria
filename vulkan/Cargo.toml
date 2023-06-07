@@ -1,0 +1,16 @@
+[package]
+name = "vulkan"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ash = { version="0.37", features = ["linked"] }
+winit = "0.28"
+cstr = "0.2.11"
+bytemuck = "1.13"
+tracing = "0.1"
+gpu-allocator = "0.22"
+glam = { version = "0.23", features = ["bytemuck"] }
+qoi = "0.4"

@@ -2,7 +2,11 @@
 members = [
   "assets",
   "aetheria",
+  "gltf",
+  "hecs",
+  "hecs/macros",
+  "vulkan"
 ]
 
 [profile.release]
-strip = true
+debug = true
