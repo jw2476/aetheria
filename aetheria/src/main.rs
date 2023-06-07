@@ -7,7 +7,6 @@ extern crate core;
 
 mod macros;
 mod renderer;
-mod mesh;
 mod material;
 mod time;
 mod camera;
@@ -16,13 +15,13 @@ mod input;
 
 use std::sync::Arc;
 use ash::vk;
-use assets::MeshRegistry;
+use assets::{MeshRegistry, ShaderRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
 use time::Time;
 use transform::Transform;
 use vulkan::Context;
-use renderer::{Renderer, RenderObject, Renderable};
+use renderer::Renderer;
 use winit::{event_loop::ControlFlow, event::{VirtualKeyCode, MouseButton}};
 use glam::{Vec3, Quat, Vec4};
 use input::{Keyboard, Mouse};
@@ -43,7 +42,7 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
 }
 
 
-struct Tree {
+/*struct Tree {
     pub transform: Transform,
     trunk: RenderObject,
     foliage: RenderObject,
@@ -128,7 +127,7 @@ impl Renderable for Grass {
     fn get_objects(&self) -> Vec<&RenderObject> {
         vec![&self.grass]
     }
-}
+}*/
 
 fn get_coord() -> f32 {
     (rand::random::<f32>() - 0.5) * 25.0
@@ -145,32 +144,14 @@ fn main() {
     let window = Arc::new(window);
     let ctx = Context::new(&window);
     
-    let mut renderer = Renderer::new(ctx, window.clone(), &event_loop).unwrap();
-    let mut camera = Camera::new(&renderer).unwrap();
-    let mut time = Time::new(&renderer).unwrap();
     let mut mesh_registry = MeshRegistry::new();
+    let mut shader_registry = ShaderRegistry::new();
+
+    let mut renderer = Renderer::new(ctx, &mut shader_registry, window.clone(), &event_loop).unwrap();
+    let mut camera = Camera::new(490.0, 270.0).unwrap();
+    let mut time = Time::new().unwrap();
     let mut keyboard = Keyboard::new();
     let mut mouse = Mouse::new();
-
-    let mut renderables = Vec::new();
-    for _ in 0..100 {
-        let mut transform = Transform::IDENTITY;
-        transform.translation = Vec3::new(get_coord(), 0.0, get_coord());
-        let tree = Tree::load(&mut renderer, &mut mesh_registry, transform).unwrap();
-        let renderable: Box<dyn Renderable> = Box::new(tree);
-        renderables.push(renderable);
-    }
-
-    for _ in 0..100 {
-        let mut transform = Transform::IDENTITY;
-        transform.translation = Vec3::new(get_coord(), 0.0, get_coord());
-        transform.scale *= 0.6;
-        let rock = Rock::load(&mut renderer, &mut mesh_registry, transform).unwrap();
-        let renderable: Box<dyn Renderable> = Box::new(rock);
-        renderables.push(renderable);
-    }
-    
-    let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -184,9 +165,6 @@ fn main() {
 
         match event {
             winit::event::Event::WindowEvent { event, .. } => {     
-                let egui_ctx = &renderer.egui_ctx;
-                renderer.egui_winit_state.lock().on_event(egui_ctx, &event);
-                           
                 match event {
                     winit::event::WindowEvent::Resized(size) => {
                         renderer.recreate_swapchain().unwrap();
@@ -208,7 +186,7 @@ fn main() {
                 if keyboard.is_key_down(VirtualKeyCode::S) { camera.target += camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
                 if keyboard.is_key_down(VirtualKeyCode::A) { camera.target -= camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
                 if keyboard.is_key_down(VirtualKeyCode::D) { camera.target += camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
-                renderer.render(&renderables, &grass, &camera);
+                renderer.render();
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();

@@ -1,15 +1,17 @@
 use ash::vk::{self, DescriptorSetLayout};
 
 use crate::{Shader, Device, SetLayout};
+use std::{sync::Arc, ops::Deref};
 
+#[derive(Clone)]
 pub struct Pipeline {
-    shader: Shader,
-    layout: vk::PipelineLayout,
+    shader: Arc<Shader>,
+    pub(crate) layout: vk::PipelineLayout,
     pipeline: vk::Pipeline
 }
 
 impl Pipeline {
-    pub fn new(device: &Device, shader: Shader, layouts: &[SetLayout]) -> Result<Self, vk::Result> {
+    pub fn new(device: &Device, shader: Arc<Shader>, layouts: &[SetLayout]) -> Result<Self, vk::Result> {
         let stage = shader.get_stage();
         let descriptors = layouts.iter().map(|layout| layout.layout).collect::<Vec<DescriptorSetLayout>>();
         let layout_info = vk::PipelineLayoutCreateInfo::builder()
@@ -25,5 +27,13 @@ impl Pipeline {
             layout,
             pipeline
         })
+    }
+}
+
+impl Deref for Pipeline {
+    type Target = vk::Pipeline;
+
+    fn deref(&self) -> &Self::Target {
+        &self.pipeline
     }
 }

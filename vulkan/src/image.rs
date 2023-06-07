@@ -27,7 +27,7 @@ impl Image {
         height: u32,
         format: vk::Format,
         usage: vk::ImageUsageFlags,
-    ) -> Result<Self, vk::Result> {
+    ) -> Result<Arc<Self>, vk::Result> {
         let create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
@@ -65,25 +65,25 @@ impl Image {
                 .bind_image_memory(image, allocation.memory(), allocation.offset())?;
         };
 
-        Ok(Self {
+        Ok(Arc::new(Self {
             image,
             format,
             width,
             height,
             allocation: Some(allocation),
             allocator: Some(ctx.allocator.clone()),
-        })
+        }))
     }
 
-    pub const fn from_image(image: vk::Image, format: vk::Format, width: u32, height: u32) -> Self {
-        Self {
+    pub fn from_image(image: vk::Image, format: vk::Format, width: u32, height: u32) -> Arc<Self> {
+        Arc::new(Self {
             image,
             format,
             width,
             height,
             allocation: None,
             allocator: None,
-        }
+        })
     }
 
     pub fn create_view_without_context(
@@ -181,7 +181,7 @@ impl Drop for Image {
 }
 
 pub struct Texture {
-    pub image: Image,
+    pub image: Arc<Image>,
     pub view: vk::ImageView,
     pub sampler: vk::Sampler,
 }
@@ -259,7 +259,7 @@ impl Texture {
         })
     }
 
-    pub fn from_image(ctx: &Context, image: Image, mag_filter: vk::Filter, min_filter: vk::Filter) -> Result<Self, vk::Result> {
+    pub fn from_image(ctx: &Context, image: Arc<Image>, mag_filter: vk::Filter, min_filter: vk::Filter) -> Result<Self, vk::Result> {
         let view = image.create_view(ctx)?;
         let sampler = image.create_sampler(ctx, mag_filter, min_filter)?;
         Ok(Self {

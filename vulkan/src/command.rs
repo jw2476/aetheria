@@ -1,4 +1,4 @@
-use super::{Device, Image, Pipeline, Renderpass, Set};
+use super::{Device, Image, Renderpass, Set, graphics, compute};
 use ash::vk;
 use std::{ops::Deref, result::Result, sync::Arc};
 
@@ -15,10 +15,24 @@ pub struct Buffer {
     pub(crate) buffer: vk::CommandBuffer,
 }
 
-#[derive(Clone)]
+enum Pipeline {
+    Graphics(graphics::Pipeline),
+    Compute(compute::Pipeline)
+}
+
+impl Pipeline {
+    pub fn get_layout(&self) -> vk::PipelineLayout {
+        match self {
+            Pipeline::Graphics(graphics) => graphics.layout,
+            Pipeline::Compute(compute) => compute.layout
+        }
+    }
+}
+
 pub struct BufferBuilder {
     buffer: Buffer,
     device: Arc<Device>,
+    pipeline: Option<Pipeline> 
 }
 
 #[derive(Clone, Debug)]
@@ -76,18 +90,30 @@ impl BufferBuilder {
         self
     }
 
-    pub fn bind_pipeline(self, pipeline: &Pipeline) -> Self {
+    pub fn bind_graphics_pipeline(mut self, pipeline: graphics::Pipeline) -> Self {
         unsafe {
             self.device
-                .cmd_bind_pipeline(**self, vk::PipelineBindPoint::GRAPHICS, **pipeline)
+                .cmd_bind_pipeline(**self, vk::PipelineBindPoint::GRAPHICS, *pipeline)
         };
+
+        self.pipeline = Some(Pipeline::Graphics(pipeline));
+
+        self
+    }
+
+    pub fn bind_compute_pipeline(mut self, pipeline: compute::Pipeline) -> Self {
+        unsafe {
+            self.device
+                .cmd_bind_pipeline(**self, vk::PipelineBindPoint::COMPUTE, *pipeline)
+        };
+    
+        self.pipeline = Some(Pipeline::Compute(pipeline));
 
         self
     }
 
     pub fn bind_descriptor_set(
         self,
-        pipeline: &Pipeline,
         binding: u32,
         descriptor_set: &Set,
     ) -> Self {
@@ -96,7 +122,7 @@ impl BufferBuilder {
             self.device.cmd_bind_descriptor_sets(
                 **self,
                 vk::PipelineBindPoint::GRAPHICS,
-                pipeline.layout,
+                self.pipeline.as_ref().unwrap().get_layout(),
                 binding,
                 descriptor_sets,
                 &[],
@@ -291,6 +317,7 @@ impl Pool {
         let builder = BufferBuilder {
             buffer,
             device: self.device.clone(),
+            pipeline: None
         };
 
         Ok(builder)

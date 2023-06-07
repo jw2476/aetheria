@@ -20,7 +20,7 @@ impl Transform {
     }
 }
 
-pub struct TransformGPU {
+/*pub struct TransformGPU {
     pub transform: Transform,
     buffer: Buffer,
     pub set: Set
@@ -52,4 +52,4 @@ impl TransformGPU {
 
         Ok(())
     }
-}
+}*/

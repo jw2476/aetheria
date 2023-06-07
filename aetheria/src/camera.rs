@@ -3,17 +3,12 @@ use std::f32::EPSILON;
 use ash::vk;
 use bytemuck::cast_slice;
 use glam::{Mat4, Vec3, Quat};
-use vulkan::{Buffer, Set};
-
-use crate::renderer::Renderer;
 
 pub struct Camera {
     pub target: Vec3,
     actual_target: Vec3,
     pub theta: f32,
     actual_theta: f32,
-
-    pub buffer: Buffer,
 
     pub width: f32,
     pub height: f32,
@@ -22,30 +17,20 @@ pub struct Camera {
 impl Camera {
     const DAMPING: f32 = 0.2;
 
-    pub fn new(renderer: &Renderer) -> Result<Self, vk::Result> {
+    pub fn new(width: f32, height: f32) -> Result<Self, vk::Result> {
         let theta = 0.0;
         let target = Vec3::new(0.0, 0.5, 0.0);
-
-        let default = [0_u8; 128];
-        let buffer = Buffer::new(
-            &renderer.ctx,
-            default.to_vec(),
-            vk::BufferUsageFlags::UNIFORM_BUFFER,
-        )?;
 
         let mut camera = Self {
             theta,
             actual_theta: theta,
             target,
             actual_target: target,
-            buffer,
-            width: renderer.ctx.swapchain.extent.width as f32,
-            height: renderer.ctx.swapchain.extent.height as f32
+            width,
+            height
         };
 
         camera.update();
-
-        renderer.set_camera(&camera);
 
         Ok(camera)
     }
@@ -59,13 +44,12 @@ impl Camera {
 
         proj.col_mut(1)[1] *= -1.0;
 
-        let vp = [view.to_cols_array(), proj.to_cols_array()]
+        /*let vp = [view.to_cols_array(), proj.to_cols_array()]
             .iter()
             .flatten()
             .copied()
             .collect::<Vec<f32>>();
-        let vp = cast_slice::<f32, u8>(&vp);
-        self.buffer.upload(vp.to_vec());
+        let vp = cast_slice::<f32, u8>(&vp);*/
     }
 
     pub fn frame_finished(&mut self) {

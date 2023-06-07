@@ -5,7 +5,7 @@ use vulkan::{Set, Buffer};
 
 use crate::renderer::Renderer;
 
-pub struct Material {
+/*pub struct Material {
     buffer: Buffer,
     pub set: Set,
 }
@@ -21,4 +21,4 @@ impl Material {
              set, 
          })
     }
-}
+}*/
