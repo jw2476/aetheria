@@ -135,7 +135,7 @@ fn get_coord() -> f32 {
 }
 
 
-const CAMERA_SENSITIVITY: f32 = 25.0;
+const CAMERA_SENSITIVITY: f32 = 250.0;
 const MOVEMENT_SENSITIVITY: f32 = 0.15;
 
 fn main() {
