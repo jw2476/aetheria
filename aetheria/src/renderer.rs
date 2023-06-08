@@ -125,7 +125,7 @@ impl Renderer {
             .add(vk::DescriptorType::STORAGE_IMAGE)
             .build()?;
         let mut output_pool = Pool::new(ctx.device.clone(), output_layout.clone(), 1)?;
-        let output_image = Image::new(&ctx, ctx.swapchain.extent.width, ctx.swapchain.extent.height, vk::Format::R8G8B8A8_SNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
+        let output_image = Image::new(&ctx, ctx.swapchain.extent.width, ctx.swapchain.extent.height, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
         let output_texture = Texture::from_image(&ctx, output_image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
         let output_set = output_pool.allocate()?;
         output_set.update_texture(&ctx.device, 0, &output_texture, vk::ImageLayout::GENERAL);
@@ -178,7 +178,7 @@ impl Renderer {
         )?;
 
         
-        let output_image = Image::new(&self.ctx, self.ctx.swapchain.extent.width, self.ctx.swapchain.extent.height, vk::Format::R8G8B8A8_SNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
+        let output_image = Image::new(&self.ctx, self.ctx.swapchain.extent.width, self.ctx.swapchain.extent.height, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
         self.output_texture = Texture::from_image(&self.ctx, output_image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
         self.output_set.update_texture(&self.ctx.device, 0, &self.output_texture, vk::ImageLayout::GENERAL);
 
@@ -204,6 +204,8 @@ impl Renderer {
                 Ok(image_index) => image_index,
             };
 
+            self.command_pool.clear();
+
             let cmd = self.command_pool
                 .allocate()
                 .unwrap()
@@ -228,7 +230,15 @@ impl Renderer {
                     destination_stage: vk::PipelineStageFlags::TRANSFER 
                 })
                 .dispatch((self.ctx.swapchain.extent.width as f32 / Self::BATCH_SIZE.0).ceil() as u32, (self.ctx.swapchain.extent.height as f32 / Self::BATCH_SIZE.1).ceil() as u32, 1)
-                .copy_image(&self.output_texture.image, &self.ctx.swapchain.images[image_index as usize], vk::ImageLayout::GENERAL, vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageAspectFlags::COLOR)
+                .transition_image_layout(&self.output_texture.image, &TransitionLayoutOptions { 
+                    old: vk::ImageLayout::GENERAL, 
+                    new: vk::ImageLayout::TRANSFER_SRC_OPTIMAL, 
+                    source_access: vk::AccessFlags::SHADER_WRITE, 
+                    destination_access: vk::AccessFlags::TRANSFER_READ, 
+                    source_stage: vk::PipelineStageFlags::COMPUTE_SHADER, 
+                    destination_stage: vk::PipelineStageFlags::TRANSFER 
+                })
+                .copy_image(&self.output_texture.image, &self.ctx.swapchain.images[image_index as usize], vk::ImageLayout::TRANSFER_SRC_OPTIMAL, vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageAspectFlags::COLOR)
                 .transition_image_layout(&self.ctx.swapchain.images[image_index as usize], &TransitionLayoutOptions { 
                     old: vk::ImageLayout::TRANSFER_DST_OPTIMAL, 
                     new: vk::ImageLayout::PRESENT_SRC_KHR, 

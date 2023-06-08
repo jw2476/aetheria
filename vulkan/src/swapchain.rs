@@ -41,13 +41,17 @@ impl Swapchain {
             )?
         };
 
+        println!("{:#?}", formats);
+
         let format = formats
             .iter()
             .find(|format| {
-                format.format == vk::Format::R8G8B8A8_SRGB
+                format.format == vk::Format::B8G8R8A8_SRGB
                     && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
             })
             .unwrap_or_else(|| formats.first().unwrap());
+        
+        println!("{:#?}", format);
 
         let present_mode = present_modes
             .iter()
