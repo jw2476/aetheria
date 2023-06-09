@@ -135,7 +135,7 @@ fn get_coord() -> f32 {
 
 
 const CAMERA_SENSITIVITY: f32 = 250.0;
-const MOVEMENT_SENSITIVITY: f32 = 0.15;
+const MOVEMENT_SENSITIVITY: f32 = 10.0;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -170,7 +170,6 @@ fn main() {
                         renderer.recreate_swapchain().unwrap();
                         camera.width = size.width as f32;
                         camera.height = size.height as f32;
-                        camera.update();
                     },
                     winit::event::WindowEvent::CloseRequested => {
                         control_flow.set_exit()
@@ -182,11 +181,11 @@ fn main() {
             winit::event::Event::MainEventsCleared => {
                 if keyboard.is_key_down(VirtualKeyCode::Escape) { control_flow.set_exit() }
                 if mouse.is_button_down(MouseButton::Right) { camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY }
-                if keyboard.is_key_down(VirtualKeyCode::W) { camera.target -= camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
-                if keyboard.is_key_down(VirtualKeyCode::S) { camera.target += camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
+                if keyboard.is_key_down(VirtualKeyCode::W) { camera.target -= camera.get_rotation() * Vec3::new(0.0, MOVEMENT_SENSITIVITY, 0.0) }
+                if keyboard.is_key_down(VirtualKeyCode::S) { camera.target += camera.get_rotation() * Vec3::new(0.0, MOVEMENT_SENSITIVITY, 0.0) }
                 if keyboard.is_key_down(VirtualKeyCode::A) { camera.target -= camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
                 if keyboard.is_key_down(VirtualKeyCode::D) { camera.target += camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
-                renderer.render();
+                renderer.render(&camera);
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();

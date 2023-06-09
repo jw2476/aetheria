@@ -100,10 +100,11 @@ pub struct Renderer {
     render_finished: vk::Semaphore,
     in_flight: vk::Fence,
 
-    output_layout: SetLayout,
-    output_pool: Pool,
+    per_frame_layout: SetLayout,
+    per_frame_pool: Pool,
     output_texture: Texture,
-    output_set: Set,
+    camera_buffer: Buffer,
+    per_frame_set: Set,
 
     render_pipeline: compute::Pipeline
 }
@@ -121,27 +122,31 @@ impl Renderer {
             unsafe { ctx.device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { ctx.device.create_fence(&fence_info, None).unwrap() };
 
-        let output_layout = SetLayoutBuilder::new(&ctx.device)
+        let per_frame_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::STORAGE_IMAGE)
+            .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
-        let mut output_pool = Pool::new(ctx.device.clone(), output_layout.clone(), 1)?;
+        let mut per_frame_pool = Pool::new(ctx.device.clone(), per_frame_layout.clone(), 1)?;
         let output_image = Image::new(&ctx, ctx.swapchain.extent.width, ctx.swapchain.extent.height, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
         let output_texture = Texture::from_image(&ctx, output_image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
-        let output_set = output_pool.allocate()?;
-        output_set.update_texture(&ctx.device, 0, &output_texture, vk::ImageLayout::GENERAL);
+        let camera_buffer = Buffer::new(&ctx, vec![0_u8; 32], vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+        let per_frame_set = per_frame_pool.allocate()?;
+        per_frame_set.update_texture(&ctx.device, 0, &output_texture, vk::ImageLayout::GENERAL);
+        per_frame_set.update_buffer(&ctx.device, 1, &camera_buffer);
 
         let shader = shader_registry.load(&ctx.device, "test.comp.glsl");
-        let render_pipeline = compute::Pipeline::new(&ctx.device, shader.clone(), &[output_layout.clone()])?; 
+        let render_pipeline = compute::Pipeline::new(&ctx.device, shader.clone(), &[per_frame_layout.clone()])?; 
 
         let renderer = Self {
             ctx,
             window,
             render_finished,
             in_flight,
-            output_layout,
-            output_pool,
+            per_frame_layout,
+            per_frame_pool,
             output_texture,
-            output_set,
+            camera_buffer,
+            per_frame_set,
             render_pipeline
         };
 
@@ -180,14 +185,16 @@ impl Renderer {
         
         let output_image = Image::new(&self.ctx, self.ctx.swapchain.extent.width, self.ctx.swapchain.extent.height, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
         self.output_texture = Texture::from_image(&self.ctx, output_image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
-        self.output_set.update_texture(&self.ctx.device, 0, &self.output_texture, vk::ImageLayout::GENERAL);
+        self.per_frame_set.update_texture(&self.ctx.device, 0, &self.output_texture, vk::ImageLayout::GENERAL);
 
         Ok(())
     }
 
-    const BATCH_SIZE: (f32, f32) = (16.0, 16.0);
+    const BATCH_SIZE: (f32, f32) = (64.0, 64.0);
 
-    pub fn render(&mut self) {
+    pub fn render(&mut self, camera: &Camera) {
+        camera.update_buffer(&mut self.camera_buffer); 
+
         unsafe {
             let in_flight = self.in_flight.clone();
 
@@ -212,7 +219,7 @@ impl Renderer {
                 .begin()
                 .unwrap()
                 .bind_compute_pipeline(self.render_pipeline.clone())
-                .bind_descriptor_set(0, &self.output_set)
+                .bind_descriptor_set(0, &self.per_frame_set)
                 .transition_image_layout(&self.output_texture.image, &TransitionLayoutOptions { 
                     old: vk::ImageLayout::UNDEFINED, 
                     new: vk::ImageLayout::GENERAL, 
