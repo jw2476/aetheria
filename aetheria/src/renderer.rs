@@ -109,12 +109,14 @@ pub struct Renderer {
     render_pipeline: compute::Pipeline
 }
 
+const RENDER_WIDTH: u32 = 480;
+const RENDER_HEIGHT: u32 = 270;
+
 impl Renderer {
     pub fn new(
-        mut ctx: Context,
+        ctx: Context,
         shader_registry: &mut ShaderRegistry,
         window: Arc<Window>,
-        event_loop: &EventLoop<()>,
     ) -> Result<Self, vk::Result> {
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
         let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
@@ -127,7 +129,7 @@ impl Renderer {
             .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
         let mut per_frame_pool = Pool::new(ctx.device.clone(), per_frame_layout.clone(), 1)?;
-        let output_image = Image::new(&ctx, ctx.swapchain.extent.width, ctx.swapchain.extent.height, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
+        let output_image = Image::new(&ctx, RENDER_WIDTH, RENDER_HEIGHT, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
         let output_texture = Texture::from_image(&ctx, output_image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
         let camera_buffer = Buffer::new(&ctx, vec![0_u8; 32], vk::BufferUsageFlags::UNIFORM_BUFFER)?;
         let per_frame_set = per_frame_pool.allocate()?;
@@ -182,15 +184,8 @@ impl Renderer {
             &self.window,
         )?;
 
-        
-        let output_image = Image::new(&self.ctx, self.ctx.swapchain.extent.width, self.ctx.swapchain.extent.height, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
-        self.output_texture = Texture::from_image(&self.ctx, output_image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
-        self.per_frame_set.update_texture(&self.ctx.device, 0, &self.output_texture, vk::ImageLayout::GENERAL);
-
         Ok(())
     }
-
-    const BATCH_SIZE: (f32, f32) = (64.0, 64.0);
 
     pub fn render(&mut self, camera: &Camera) {
         camera.update_buffer(&mut self.camera_buffer); 
@@ -236,7 +231,7 @@ impl Renderer {
                     source_stage: vk::PipelineStageFlags::TOP_OF_PIPE, 
                     destination_stage: vk::PipelineStageFlags::TRANSFER 
                 })
-                .dispatch((self.ctx.swapchain.extent.width as f32 / Self::BATCH_SIZE.0).ceil() as u32, (self.ctx.swapchain.extent.height as f32 / Self::BATCH_SIZE.1).ceil() as u32, 1)
+                .dispatch(RENDER_WIDTH / 16, (RENDER_HEIGHT as f32 / 16.0).ceil() as u32, 1)
                 .transition_image_layout(&self.output_texture.image, &TransitionLayoutOptions { 
                     old: vk::ImageLayout::GENERAL, 
                     new: vk::ImageLayout::TRANSFER_SRC_OPTIMAL, 
@@ -245,7 +240,7 @@ impl Renderer {
                     source_stage: vk::PipelineStageFlags::COMPUTE_SHADER, 
                     destination_stage: vk::PipelineStageFlags::TRANSFER 
                 })
-                .copy_image(&self.output_texture.image, &self.ctx.swapchain.images[image_index as usize], vk::ImageLayout::TRANSFER_SRC_OPTIMAL, vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageAspectFlags::COLOR)
+                .blit_image(&self.output_texture.image, &self.ctx.swapchain.images[image_index as usize], vk::ImageLayout::TRANSFER_SRC_OPTIMAL, vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageAspectFlags::COLOR, vk::Filter::NEAREST)
                 .transition_image_layout(&self.ctx.swapchain.images[image_index as usize], &TransitionLayoutOptions { 
                     old: vk::ImageLayout::TRANSFER_DST_OPTIMAL, 
                     new: vk::ImageLayout::PRESENT_SRC_KHR, 

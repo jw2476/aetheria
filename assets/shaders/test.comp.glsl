@@ -10,7 +10,7 @@ layout(set = 0, binding = 1) uniform Camera {
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-vec3 SUN_DIRECTION = vec3(0.0, 1.0, 1.0);
+vec3 SUN_DIRECTION = vec3(0.0, 4.0, 1.0);
 float AMBIENT_STRENGTH = 0.2;
 float INFINITY = 1/0;
 
@@ -60,24 +60,30 @@ struct Ray {
 	vec3 direction;
 };
 
+vec2 viewport = vec2(480, 270);
+
 void main() {
- 	vec2 pixelPos = vec2(gl_GlobalInvocationID.x * 4, gl_GlobalInvocationID.y * 4);
+ 	vec2 pixelPos = vec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y) - viewport/2;
 	Ray ray;
-	ray.origin = vec3(pixelPos, 0.0) + camera.eye;
-	ray.direction = vec3(0, 0, 1);
+	ray.direction = normalize(camera.target - camera.eye);
+	vec3 u = normalize(cross(ray.direction, vec3(0, 1, 0)));
+	vec3 v = normalize(cross(ray.direction, u));
+	ray.origin = camera.eye + u*pixelPos.x + -v*pixelPos.y;
 
 	Sphere spheres[3];
-	spheres[0].center = vec3(1920/2, 1080/2, 100);
-	spheres[0].radius = 600.0;
+	spheres[0].center = vec3(0, 0, 0);
+	spheres[0].radius = 100.0;
 	spheres[0].color = vec4(1.0);
-	spheres[1].center = vec3(400.0, 300.0, 50);
+	spheres[1].center = vec3(100.0, 75.0, 50);
 	spheres[1].radius = 50.0;
 	spheres[1].color = vec4(1.0, 0.0, 1.0, 1.0);
-	spheres[2].center = vec3(1500.0, 800.0, 25);
+	spheres[2].center = vec3(-100.0, 200.0, 25);
 	spheres[2].radius = 25.0;
 	spheres[2].color = vec4(0.0, 1.0, 0.0, 1.0);
 
 	vec4 color = vec4(0.0);
+
+	float minT = INFINITY;
 
 	for (int i = 0; i < 3; i++) {
 		vec3 originToCenter = ray.origin - spheres[i].center;
@@ -93,8 +99,10 @@ void main() {
 		float sun = max(dot(normal, normalize(-SUN_DIRECTION)), 0.0);
 		float brightness = AMBIENT_STRENGTH + sun;
 		
-		color = color * float(discriminant < 0);
-		color += spheres[i].color * brightness * float(discriminant >= 0);
+		bool overwrite = discriminant >= 0 && t < minT;
+		color *= float(!overwrite);
+		color += spheres[i].color * brightness * float(overwrite);
+		minT = min((INFINITY * float(!overwrite)) + t, minT);
 	}
 
 
@@ -109,9 +117,5 @@ void main() {
 
 	mat3 invert = mat3(vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0));
 	
-	for (int x = 0; x < 4; x++) {
-		for (int y = 0; y < 4; y++) {
-			imageStore(outColor, ivec2(gl_GlobalInvocationID.xy * 4 + vec2(x, y)), vec4(invert * outputColor.rgb, outputColor.a));
-		}
-	}
+	imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), outputColor);
 }

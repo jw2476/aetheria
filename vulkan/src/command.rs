@@ -189,20 +189,19 @@ impl BufferBuilder {
         self
     }
 
-    pub fn copy_image(self, from: &Image, to: &Image, from_layout: vk::ImageLayout, to_layout: vk::ImageLayout, aspect: vk::ImageAspectFlags) -> Self {
+    pub fn blit_image(self, from: &Image, to: &Image, from_layout: vk::ImageLayout, to_layout: vk::ImageLayout, aspect: vk::ImageAspectFlags, filter: vk::Filter) -> Self {
         unsafe {
             let subresource = vk::ImageSubresourceLayers::builder()
                 .aspect_mask(aspect)
                 .mip_level(0)
                 .base_array_layer(0)
                 .layer_count(1);
-            let copy_info = vk::ImageCopy::builder()
+            let copy_info = vk::ImageBlit::builder()
                 .src_subresource(*subresource)
-                .src_offset(vk::Offset3D::default())
+                .src_offsets([vk::Offset3D::default(), vk::Offset3D { x: from.width as i32, y: from.height as i32, z: 1 }])
                 .dst_subresource(*subresource)
-                .dst_offset(vk::Offset3D::default())
-                .extent(vk::Extent3D { width: from.width, height: from.height, depth: 1 });
-            self.device.cmd_copy_image(**self, from.image, from_layout, to.image, to_layout, &[*copy_info]);
+                .dst_offsets([vk::Offset3D::default(), vk::Offset3D { x: to.width as i32, y: to.height as i32, z: 1 }]);
+            self.device.cmd_blit_image(**self, from.image, from_layout, to.image, to_layout, &[*copy_info], filter);
         }
         
         self
