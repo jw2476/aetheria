@@ -11,8 +11,8 @@ layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 vec3 SUN_DIRECTION = vec3(0.0, 4.0, 1.0);
 float AMBIENT_STRENGTH = 0.2;
 float INFINITY = 1/0;
-int BOUNCES = 2;
-int RAYS_PER_PIXEL = 300;
+int BOUNCES = 3;
+int RAYS_PER_PIXEL = 100;
 
 vec3 PALETTE[32] = {
 vec3(0.5234, 0.0658, 0.0242),
@@ -176,11 +176,11 @@ void main() {
 
 	materials[2].albedo = vec3(0.6, 0.6, 0.6);
 	materials[2].emission = 0.0;
-	materials[2].roughness = 0.4;
-	materials[2].metalness = 0.2;
+	materials[2].roughness = 1.0;
+	materials[2].metalness = 0.0;
 
 	Sphere spheres[5];
-	spheres[0].center = vec3(0, 0, 0);
+	spheres[0].center = vec3(300, 0, 0);
 	spheres[0].radius = 50.0;
 	spheres[0].material = 0;
 
@@ -188,8 +188,8 @@ void main() {
 	spheres[1].radius = 50.0;
 	spheres[1].material = 1;
 
-	spheres[2].center = vec3(-100.0, 50.0, 25);
-	spheres[2].radius = 25.0;
+	spheres[2].center = vec3(0, 1000, 0);
+	spheres[2].radius = 970.0;
 	spheres[2].material = 2;
 
 	spheres[3].center = vec3(100, -300.0, 50);
