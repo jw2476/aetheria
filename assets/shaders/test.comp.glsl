@@ -1,5 +1,3 @@
-COMPUTE
-
 #version 450
 
 layout(set = 0, binding = 0) uniform writeonly image2D outColor;
@@ -13,6 +11,8 @@ layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 vec3 SUN_DIRECTION = vec3(0.0, 4.0, 1.0);
 float AMBIENT_STRENGTH = 0.2;
 float INFINITY = 1/0;
+int BOUNCES = 2;
+int RAYS_PER_PIXEL = 300;
 
 vec3 PALETTE[32] = {
 	vec3(0.7451, 0.2902, 0.1843),
@@ -52,7 +52,8 @@ vec3 PALETTE[32] = {
 struct Sphere {
 	vec3 center;
 	float radius;
-	vec4 color;
+	vec3 albedo;
+	float emission;
 };
 
 struct Ray {
@@ -60,7 +61,83 @@ struct Ray {
 	vec3 direction;
 };
 
+struct HitPayload {
+	bool hit;
+	int sphere;
+	vec3 position;
+};
+
 vec2 viewport = vec2(480, 270);
+
+// between -1.0 and 1.0
+float random(vec2 s) {
+	vec2 seed = vec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y) + s; 
+    	return (fract(sin(dot(seed.xy, vec2(12.9898,78.233))) * 43758.5453123) * 2) - 1;
+}
+
+vec3 random_unit_sphere(float seed) {
+	return normalize(vec3(random(vec2(seed, seed)), random(vec2(seed, seed + 1)), random(vec2(seed, seed + 2))));
+}
+
+HitPayload trace_ray(Ray ray, Sphere spheres[3]) {
+	float minT = INFINITY;
+	HitPayload payload;
+	payload.hit = false;
+	payload.sphere = 0;
+	payload.position = vec3(0.0);
+
+	for (int i = 0; i < 3; i++) {
+		vec3 originToCenter = ray.origin - spheres[i].center;
+		float a = dot(ray.direction, ray.direction);
+		float half_b = dot(originToCenter, ray.direction);
+		float c = dot(originToCenter, originToCenter) - spheres[i].radius*spheres[i].radius;
+		float discriminant = half_b*half_b - a*c;
+		
+		float t = (-half_b - sqrt(abs(discriminant))) / a;
+		vec3 hitPoint = ray.origin + ray.direction*t;
+
+		bool overwrite = discriminant >= 0 && t < minT && t >= 0; // Ray hit + closest object so far + in front of camera
+		if (overwrite) {
+			payload.hit = true;
+			payload.position = hitPoint;
+			payload.sphere = i;
+			minT = t;
+		}
+	}
+	
+	return payload;
+}
+
+vec3 per_pixel(Ray ray, Sphere spheres[3]) {
+	vec3 totalColor = vec3(0.0);
+	for (int numRay = 0; numRay < RAYS_PER_PIXEL; numRay++) {
+		Ray r = ray;
+		vec3 color = vec3(1.0);
+		float light = 0.0;
+		for (int i = 0; i < BOUNCES; i++) {
+			HitPayload hit = trace_ray(r, spheres);
+			if (!hit.hit) {
+				color *= vec3(0.5294, 0.8078, 0.9216);
+				light += 0.7;
+				break;
+			}
+
+			Sphere sphere = spheres[hit.sphere];
+			vec3 normal = normalize(hit.position - sphere.center);
+			color *= sphere.albedo;
+			light += sphere.emission;
+
+			r.origin = hit.position + normal;
+			r.direction = normalize(random_unit_sphere(numRay * BOUNCES + i) + normal);
+		}
+		totalColor += (color * light) / RAYS_PER_PIXEL;
+	}
+	return totalColor;
+}
+
+float getPaletteDistance(vec3 a, vec3 b) {
+	return length(a - b) * (1 - (0.5 * dot(normalize(a), normalize(b) + 0.5)));
+}
 
 void main() {
  	vec2 pixelPos = vec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y) - viewport/2;
@@ -72,50 +149,29 @@ void main() {
 
 	Sphere spheres[3];
 	spheres[0].center = vec3(0, 0, 0);
-	spheres[0].radius = 100.0;
-	spheres[0].color = vec4(1.0);
-	spheres[1].center = vec3(100.0, 75.0, 50);
+	spheres[0].radius = 50.0;
+	spheres[0].albedo = vec3(1.0);
+	spheres[0].emission = 3.0;
+	spheres[1].center = vec3(100.0, 0.0, 150);
 	spheres[1].radius = 50.0;
-	spheres[1].color = vec4(1.0, 0.0, 1.0, 1.0);
-	spheres[2].center = vec3(-100.0, 200.0, 25);
+	spheres[1].albedo = vec3(1.0, 0.0, 1.0);
+	spheres[1].emission = 0.0;
+	spheres[2].center = vec3(-100.0, 50.0, 25);
 	spheres[2].radius = 25.0;
-	spheres[2].color = vec4(0.0, 1.0, 0.0, 1.0);
+	spheres[2].albedo = vec3(0.0, 1.0, 0.0);
+	spheres[2].emission = 0.0;
 
-	vec4 color = vec4(0.0);
+	vec3 color = per_pixel(ray, spheres);
 
-	float minT = INFINITY;
-
-	for (int i = 0; i < 3; i++) {
-		vec3 originToCenter = ray.origin - spheres[i].center;
-		float a = dot(ray.direction, ray.direction);
-		float half_b = dot(originToCenter, ray.direction);
-		float c = dot(originToCenter, originToCenter) - spheres[i].radius*spheres[i].radius;
-		float discriminant = half_b*half_b - a*c;
-		
-		float t = (-half_b - sqrt(abs(discriminant))) / a;
-		vec3 hitPoint = ray.origin + ray.direction*t;
-		vec3 normal = normalize(hitPoint - spheres[i].center);
-
-		float sun = max(dot(normal, normalize(-SUN_DIRECTION)), 0.0);
-		float brightness = AMBIENT_STRENGTH + sun;
-		
-		bool overwrite = discriminant >= 0 && t < minT;
-		color *= float(!overwrite);
-		color += spheres[i].color * brightness * float(overwrite);
-		minT = min((INFINITY * float(!overwrite)) + t, minT);
-	}
-
-
-	vec4 outputColor;
-    	float minPaletteLength = INFINITY;
+	vec4 outputColor = vec4(color, 1.0);
+    	float minPaletteDistance = INFINITY;
     	for (int i = 0; i < 32; i++) {
-		if (length(PALETTE[i] - color.rgb) < minPaletteLength) {
-	 		minPaletteLength = length(PALETTE[i] - color.rgb);
-			outputColor = vec4(PALETTE[i], color.a);
+		float paletteDistance = getPaletteDistance(PALETTE[i], color.rgb);
+		if (paletteDistance < minPaletteDistance) {
+	 		minPaletteDistance = paletteDistance;
+			outputColor = vec4(PALETTE[i], 1.0);
 	 	}
-    	}
+    	}	
 
-	mat3 invert = mat3(vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0));
-	
 	imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), outputColor);
 }

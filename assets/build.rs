@@ -44,18 +44,13 @@ fn main() {
         file.read_to_end(&mut buf).unwrap();
 
         let source = String::from_utf8(buf).unwrap();
-
-        let kind = if source.starts_with("VERTEX") {
-            shaderc::ShaderKind::Vertex
-        } else if source.starts_with("FRAGMENT") {
-            shaderc::ShaderKind::Fragment
-        } else if source.starts_with("COMPUTE") {
-            shaderc::ShaderKind::Compute
-        } else {
-            panic!("Unknown shader type in file {}", input.display())
+        
+        let kind = match input.file_stem().unwrap().to_str().unwrap().split(".").last().unwrap() {
+            "vert" => shaderc::ShaderKind::Vertex,
+            "frag" => shaderc::ShaderKind::Fragment,
+            "comp" => shaderc::ShaderKind::Compute,
+            shader_type => panic!("Unexpected shader type: {}", shader_type)
         };
-
-        let source = source.lines().skip(1).collect::<Vec<&str>>().join("\n");
 
         let spirv = compiler
             .compile_into_spirv(

@@ -135,7 +135,7 @@ fn get_coord() -> f32 {
 
 
 const CAMERA_SENSITIVITY: f32 = 250.0;
-const MOVEMENT_SENSITIVITY: f32 = 10.0;
+const MOVEMENT_SENSITIVITY: f32 = 1.0;
 
 fn main() {
     tracing_subscriber::fmt::init();
