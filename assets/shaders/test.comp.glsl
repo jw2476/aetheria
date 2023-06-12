@@ -173,48 +173,52 @@ vec3 get_brdf(Material material, Ray incoming, Ray outgoing, vec3 normal) {
 	//return vec3(g);
 }	
 
-vec3 per_pixel(Ray ray, Sphere spheres[5], Material materials[3]) {
+vec3 per_pixel(Ray incoming, Sphere spheres[5], Material materials[3]) {
 	vec3 totalColor = vec3(0.0);
-	for (int numRay = 0; numRay < RAYS_PER_PIXEL; numRay++) {
-		Ray incoming = ray;
-		vec3 color = vec3(1.0);
-		float light = 0.0;
-		for (int i = 0; i < BOUNCES; i++) {
-			HitPayload hit = trace_ray(incoming, spheres);
-			
-			Sphere sphere = spheres[hit.sphere];
-			Material material = materials[sphere.material];
+	HitPayload hit = trace_ray(incoming, spheres);
+	if (!hit.hit) { return vec3(0.0, 0.0, 0.0); }
+	
+	Sphere sphere = spheres[hit.sphere];
+	Material material = materials[sphere.material];
 
-			if (!hit.hit) {
-				// Do not affect average by misses
-				light = 1.0;
-				color = totalColor;
-				break;
-			}
+	if (material.emission != 0) {
+		return material.albedo * material.emission;
+	}
 
-			if (material.emission != 0) {
-				light = material.emission;
-				break;
-			}
+	vec3 normal = normalize(hit.position - sphere.center);
 
-			vec3 normal = normalize(hit.position - sphere.center);
-
+	int numRays = 0;
+	for (int i = 0; i < 5; i++) {
+		if (materials[spheres[i].material].emission != 0) {
 			Ray outgoing;
 			outgoing.origin = hit.position + normal;
-			vec3 scatter = normalize(random_unit_sphere(numRay * BOUNCES + i) + normal);
-			vec3 reflection = reflect(-incoming.direction, normal);
-			outgoing.direction = normalize(mix(reflection, scatter, material.roughness));
+			outgoing.direction = normalize(spheres[i].center - outgoing.origin);
 
-			color *= get_brdf(material, incoming, outgoing, normal);
-			incoming = outgoing;
+			vec3 color = get_brdf(material, incoming, outgoing, normal);
+
+			HitPayload lightHit = trace_ray(outgoing, spheres);
+
+			if (!lightHit.hit) {
+				continue;
+			}
+
+			Sphere lightSphere = spheres[lightHit.sphere];
+			Material lightMaterial = materials[lightSphere.material];
+
+			float distance = length(hit.position - outgoing.origin);
+			float light = lightMaterial.emission / (distance*distance);
+
+			totalColor += (color * light);
+			numRays++;
 		}
-		totalColor += (color * light) / RAYS_PER_PIXEL;
+
 	}
-	return clamp(totalColor, vec3(0.0), vec3(1.0));
+
+	return clamp(totalColor / numRays, vec3(0.0), vec3(1.0));
 }
 
 float getPaletteDistance(vec3 a, vec3 b) {
-	return length(a - b) * (1 - (0.5 * dot(normalize(a), normalize(b) + 0.5)));
+	return length(a - b) * (1 - (0.95 * dot(normalize(a), normalize(b))));
 }
 
 void main() {
@@ -227,7 +231,7 @@ void main() {
 
 	Material materials[3];
 	materials[0].albedo = vec3(1.0, 1.0, 1.0);
-	materials[0].emission = 10.0;
+	materials[0].emission = 3.0;
 	materials[0].roughness = 1.0;
 	materials[0].metalness = 1.0;
 
@@ -242,7 +246,7 @@ void main() {
 	materials[2].metalness = 0.0;
 
 	Sphere spheres[5];
-	spheres[0].center = vec3(300, 0, 0);
+	spheres[0].center = vec3(300 * sin(time.time), 0, 0);
 	spheres[0].radius = 50.0;
 	spheres[0].material = 0;
 
@@ -254,9 +258,9 @@ void main() {
 	spheres[2].radius = 970.0;
 	spheres[2].material = 2;
 
-	spheres[3].center = vec3(100, -300.0, 50);
+	spheres[3].center = vec3(100 * cos(time.time), -300.0, 50);
 	spheres[3].radius = 25.0;
-	spheres[3].material = 2;
+	spheres[3].material = 0;
 
 	spheres[4].center = vec3(30.0, 50.0, 12);
 	spheres[4].radius = 25.0;
