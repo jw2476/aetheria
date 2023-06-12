@@ -25,6 +25,13 @@ impl Time {
         (self.current_frame - self.last_frame).as_secs_f32()
     }
 
+    pub fn update_buffer(&self, buffer: &mut Buffer) {
+        let delta = self.delta_seconds();
+        let data = &[self.time, delta];
+        let data = cast_slice::<f32, u8>(data);
+        buffer.upload(data);
+    }
+
     pub fn frame_finished(&mut self) {
         let delta = self.delta_seconds();
         self.time += delta;

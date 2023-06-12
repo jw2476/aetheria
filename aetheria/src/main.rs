@@ -185,7 +185,7 @@ fn main() {
                 if keyboard.is_key_down(VirtualKeyCode::S) { camera.target -= camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
                 if keyboard.is_key_down(VirtualKeyCode::A) { camera.target += camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
                 if keyboard.is_key_down(VirtualKeyCode::D) { camera.target -= camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
-                renderer.render(&camera);
+                renderer.render(&camera, &time);
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();

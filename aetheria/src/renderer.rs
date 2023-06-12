@@ -104,6 +104,7 @@ pub struct Renderer {
     per_frame_pool: Pool,
     output_texture: Texture,
     camera_buffer: Buffer,
+    time_buffer: Buffer,
     per_frame_set: Set,
 
     render_pipeline: compute::Pipeline
@@ -127,14 +128,17 @@ impl Renderer {
         let per_frame_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::STORAGE_IMAGE)
             .add(vk::DescriptorType::UNIFORM_BUFFER)
+            .add(vk::DescriptorType::UNIFORM_BUFFER)
             .build()?;
         let mut per_frame_pool = Pool::new(ctx.device.clone(), per_frame_layout.clone(), 1)?;
         let output_image = Image::new(&ctx, RENDER_WIDTH, RENDER_HEIGHT, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC)?;
         let output_texture = Texture::from_image(&ctx, output_image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
         let camera_buffer = Buffer::new(&ctx, vec![0_u8; 32], vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+        let time_buffer = Buffer::new(&ctx, vec![0_u8; 8], vk::BufferUsageFlags::UNIFORM_BUFFER)?;
         let per_frame_set = per_frame_pool.allocate()?;
         per_frame_set.update_texture(&ctx.device, 0, &output_texture, vk::ImageLayout::GENERAL);
         per_frame_set.update_buffer(&ctx.device, 1, &camera_buffer);
+        per_frame_set.update_buffer(&ctx.device, 2, &time_buffer);
 
         let shader = shader_registry.load(&ctx.device, "test.comp.glsl");
         let render_pipeline = compute::Pipeline::new(&ctx.device, shader.clone(), &[per_frame_layout.clone()])?; 
@@ -148,6 +152,7 @@ impl Renderer {
             per_frame_pool,
             output_texture,
             camera_buffer,
+            time_buffer,
             per_frame_set,
             render_pipeline
         };
@@ -187,8 +192,9 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn render(&mut self, camera: &Camera) {
+    pub fn render(&mut self, camera: &Camera, time: &Time) {
         camera.update_buffer(&mut self.camera_buffer); 
+        time.update_buffer(&mut self.time_buffer);
 
         unsafe {
             let in_flight = self.in_flight.clone();

@@ -5,13 +5,17 @@ layout(set = 0, binding = 1) uniform Camera {
 	vec3 eye;
 	vec3 target;
 } camera;
+layout(set = 0, binding = 2) uniform Time {
+	float time;
+	float delta;
+} time;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 vec3 SUN_DIRECTION = vec3(0.0, 4.0, 1.0);
 float AMBIENT_STRENGTH = 0.2;
 float INFINITY = 1/0;
-int BOUNCES = 3;
+int BOUNCES = 10;
 int RAYS_PER_PIXEL = 100;
 
 vec3 PALETTE[32] = {
@@ -74,6 +78,7 @@ struct HitPayload {
 };
 
 vec2 viewport = vec2(480, 270);
+const float PI = 3.14159265359;
 
 float _random(float s) {
     	return fract(sin(dot(vec2(s), vec2(12.9898,78.233))) * 43758.5453123);
@@ -81,7 +86,7 @@ float _random(float s) {
 
 // between -1.0 and 1.0
 float random(vec2 s) {
-	vec2 seed = vec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y) + s; 
+	vec2 seed = vec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y) + s + time.time; 
     	return (_random(fract(sin(dot(seed.xy, vec2(12.9898,78.233))) * 43758.5453123)) * 2) - 1;
 }
 
@@ -118,33 +123,90 @@ HitPayload trace_ray(Ray ray, Sphere spheres[5]) {
 	return payload;
 }
 
+float distributionGGX(vec3 normal, vec3 halfway, float roughness) {
+    float a2     = roughness*roughness;
+    float NdotH  = max(dot(normal, halfway), 0.0);
+    float NdotH2 = NdotH*NdotH;
+	
+    float nom    = a2;
+    float denom  = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom        = PI * denom * denom;
+	
+    return nom / denom;
+}
+
+float geometrySchlickGGX(float NdotV, float k) {
+    float nom   = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+	
+    return nom / denom;
+}
+  
+float geometrySmith(vec3 normal, Ray incoming, Ray outgoing, float roughness) {
+    float k = (roughness*roughness)/2.0;
+    float NdotV = max(dot(normal, outgoing.direction), 0.0);
+    float NdotL = max(dot(normal, -incoming.direction), 0.0);
+    float ggx1 = geometrySchlickGGX(NdotV, k);
+    float ggx2 = geometrySchlickGGX(NdotL, k);
+	
+    return ggx1*ggx2;
+}
+
+vec3 fresnelSchlick(vec3 normal, vec3 halfway, vec3 albedo, float metalness) {
+    vec3 F0 = mix(vec3(0.04), albedo, metalness);
+    return F0 + (1.0 - F0) * pow(1.0 - dot(normal, halfway), 5.0);
+}
+
+vec3 get_brdf(Material material, Ray incoming, Ray outgoing, vec3 normal) {
+	vec3 halfway = normalize(-incoming.direction + outgoing.direction);
+	float ndf = distributionGGX(normal, halfway, material.roughness);
+	float g = geometrySmith(normal, incoming, outgoing, material.roughness);
+	vec3 f = fresnelSchlick(normal, halfway, material.albedo, material.metalness);
+	vec3 numerator = ndf * g * f;
+	float denominator = 4.0 * max(dot(normal, -incoming.direction), 0.0) * max(dot(normal, outgoing.direction), 0.0) + 0.0001;
+	vec3 specular = numerator / denominator;
+	vec3 kSpecular = f;
+	vec3 kDiffuse = vec3(1.0) - kSpecular;
+	kDiffuse *= 1.0 - material.metalness;
+
+	return (kDiffuse * material.albedo / PI + specular) * max(dot(normal, outgoing.direction), 0.0);
+	//return vec3(g);
+}	
+
 vec3 per_pixel(Ray ray, Sphere spheres[5], Material materials[3]) {
 	vec3 totalColor = vec3(0.0);
 	for (int numRay = 0; numRay < RAYS_PER_PIXEL; numRay++) {
-		Ray r = ray;
+		Ray incoming = ray;
 		vec3 color = vec3(1.0);
 		float light = 0.0;
 		for (int i = 0; i < BOUNCES; i++) {
-			HitPayload hit = trace_ray(r, spheres);
-			if (!hit.hit) {
-				if (length(color) == 1.0) {
-					color = vec3(0.0, 0.0, 0.0);
-				} else {
-					light += 0.5;
-				} 
-				break;
-			}
+			HitPayload hit = trace_ray(incoming, spheres);
 			
 			Sphere sphere = spheres[hit.sphere];
 			Material material = materials[sphere.material];
-			vec3 normal = normalize(hit.position - sphere.center);
-			color *= mix(material.albedo, vec3(1.0), material.metalness);
-			light += material.emission;
 
-			r.origin = hit.position + normal;
+			if (!hit.hit) {
+				// Do not affect average by misses
+				light = 1.0;
+				color = totalColor;
+				break;
+			}
+
+			if (material.emission != 0) {
+				light = material.emission;
+				break;
+			}
+
+			vec3 normal = normalize(hit.position - sphere.center);
+
+			Ray outgoing;
+			outgoing.origin = hit.position + normal;
 			vec3 scatter = normalize(random_unit_sphere(numRay * BOUNCES + i) + normal);
-			vec3 reflection = reflect(ray.direction, normal);
-			r.direction = mix(reflection, scatter, material.roughness);
+			vec3 reflection = reflect(-incoming.direction, normal);
+			outgoing.direction = normalize(mix(reflection, scatter, material.roughness));
+
+			color *= get_brdf(material, incoming, outgoing, normal);
+			incoming = outgoing;
 		}
 		totalColor += (color * light) / RAYS_PER_PIXEL;
 	}
@@ -171,7 +233,7 @@ void main() {
 
 	materials[1].albedo = vec3(0.0, 1.0, 0.0);
 	materials[1].emission = 0.0;
-	materials[1].roughness = 0.9;
+	materials[1].roughness = 1.0;
 	materials[1].metalness = 0.0;
 
 	materials[2].albedo = vec3(0.6, 0.6, 0.6);
@@ -194,7 +256,7 @@ void main() {
 
 	spheres[3].center = vec3(100, -300.0, 50);
 	spheres[3].radius = 25.0;
-	spheres[3].material = 0;
+	spheres[3].material = 2;
 
 	spheres[4].center = vec3(30.0, 50.0, 12);
 	spheres[4].radius = 25.0;
