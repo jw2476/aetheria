@@ -10,60 +10,74 @@ layout(set = 0, binding = 2) uniform Time {
 	float delta;
 } time;
 
-layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
-
-vec3 SUN_DIRECTION = vec3(0.0, 4.0, 1.0);
-float AMBIENT_STRENGTH = 0.2;
-float INFINITY = 1/0;
-int BOUNCES = 10;
-int RAYS_PER_PIXEL = 100;
-
-vec3 PALETTE[32] = {
-vec3(0.5234, 0.0658, 0.0242),
-vec3(0.6870, 0.1835, 0.0528),
-vec3(0.8277, 0.6661, 0.4098),
-vec3(0.7818, 0.3889, 0.1701),
-vec3(0.4878, 0.1604, 0.0781),
-vec3(0.1734, 0.0446, 0.0370),
-vec3(0.0446, 0.0161, 0.0265),
-vec3(0.3686, 0.0152, 0.0290),
-vec3(0.7818, 0.0399, 0.0546),
-vec3(0.9323, 0.1835, 0.0119),
-vec3(0.9914, 0.4313, 0.0303),
-vec3(0.9914, 0.8046, 0.1193),
-vec3(0.1247, 0.5795, 0.0718),
-vec3(0.0446, 0.2549, 0.0619),
-vec3(0.0152, 0.1062, 0.0511),
-vec3(0.0060, 0.0415, 0.0446),
-vec3(0.0029, 0.0738, 0.2549),
-vec3(0.0000, 0.3250, 0.7155),
-vec3(0.0210, 0.8122, 0.9158),
-vec3(1.0000, 1.0000, 1.0000),
-vec3(0.5356, 0.6055, 0.7227),
-vec3(0.2632, 0.3345, 0.4647),
-vec3(0.1011, 0.1420, 0.2508),
-vec3(0.0385, 0.0546, 0.1332),
-vec3(0.0152, 0.0199, 0.0546),
-vec3(0.0055, 0.0037, 0.0143),
-vec3(1.0000, 0.0000, 0.0546),
-vec3(0.1390, 0.0356, 0.1511),
-vec3(0.4704, 0.0781, 0.2508),
-vec3(0.9240, 0.1801, 0.1975),
-vec3(0.8122, 0.4820, 0.3112),
-vec3(0.5480, 0.2388, 0.1420)
+struct Vertex {
+	vec3 position;
+	vec3 normal;
 };
 
-struct Sphere {
-	vec3 center;
-	float radius;
+layout(set = 1, binding = 0) buffer Vertices {
+	Vertex vertices[];	
+} vertices;
+
+struct Mesh {
+	int first_vertex;
+	int num_vertices;
 	int material;
 };
+
+layout(set = 1, binding = 1) buffer Meshes {
+	int numMeshes;
+	Mesh meshes[];
+} meshes;
 
 struct Material {
 	vec3 albedo;
 	float emission;
 	float roughness;
 	float metalness;
+};
+
+layout(set = 1, binding = 2) buffer Materials {
+	Material materials[];
+} materials;
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+float INFINITY = 1/0;
+
+vec3 PALETTE[32] = {
+	vec3(0.5234, 0.0658, 0.0242),
+	vec3(0.6870, 0.1835, 0.0528),
+	vec3(0.8277, 0.6661, 0.4098),
+	vec3(0.7818, 0.3889, 0.1701),
+	vec3(0.4878, 0.1604, 0.0781),
+	vec3(0.1734, 0.0446, 0.0370),
+	vec3(0.0446, 0.0161, 0.0265),
+	vec3(0.3686, 0.0152, 0.0290),
+	vec3(0.7818, 0.0399, 0.0546),
+	vec3(0.9323, 0.1835, 0.0119),
+	vec3(0.9914, 0.4313, 0.0303),
+	vec3(0.9914, 0.8046, 0.1193),
+	vec3(0.1247, 0.5795, 0.0718),
+	vec3(0.0446, 0.2549, 0.0619),
+	vec3(0.0152, 0.1062, 0.0511),
+	vec3(0.0060, 0.0415, 0.0446),
+	vec3(0.0029, 0.0738, 0.2549),
+	vec3(0.0000, 0.3250, 0.7155),
+	vec3(0.0210, 0.8122, 0.9158),
+	vec3(1.0000, 1.0000, 1.0000),
+	vec3(0.5356, 0.6055, 0.7227),
+	vec3(0.2632, 0.3345, 0.4647),
+	vec3(0.1011, 0.1420, 0.2508),
+	vec3(0.0385, 0.0546, 0.1332),
+	vec3(0.0152, 0.0199, 0.0546),
+	vec3(0.0055, 0.0037, 0.0143),
+	vec3(1.0000, 0.0000, 0.0546),
+	vec3(0.1390, 0.0356, 0.1511),
+	vec3(0.4704, 0.0781, 0.2508),
+	vec3(0.9240, 0.1801, 0.1975),
+	vec3(0.8122, 0.4820, 0.3112),
+	vec3(0.5480, 0.2388, 0.1420)
 };
 
 struct Ray {
@@ -73,8 +87,14 @@ struct Ray {
 
 struct HitPayload {
 	bool hit;
-	int sphere;
+	int mesh;
 	vec3 position;
+};
+
+struct Triangle {
+	Vertex v0;
+	Vertex v1;
+	Vertex v2;
 };
 
 vec2 viewport = vec2(480, 270);
@@ -94,32 +114,46 @@ vec3 random_unit_sphere(float seed) {
 	return normalize(vec3(random(vec2(seed, seed)), random(vec2(seed, seed + 1)), random(vec2(seed, seed + 2))));
 }
 
-HitPayload trace_ray(Ray ray, Sphere spheres[5]) {
+struct TriangleHit {
+	bool hit;
+	vec3 position;
+};
+
+float max3(vec3 v) {
+	return max(max(v.x, v.y), v.z);
+}
+
+TriangleHit triangle_hit(Ray ray, Triangle triangle) {
+	vec3 edge1 = triangle.v1.position - triangle.v0.position;
+	vec3 edge2 = triangle.v2.position - triangle.v0.position;
+	vec3 normal = normalize(cross(edge1, edge2));
+	float normalMax = max3(normal);
+	vec3 free = vec3(bvec3(normal.x == normalMax, normal.y == normalMax, normal.z == normalMax));
+	mat4 transform = inverse(mat4(
+		vec4(edge1, 0),
+		vec4(edge2, 0),
+		vec4(free, 0),
+		vec4(triangle.v0.position, 1)
+	));
+
+	Ray r;
+	r.origin = vec3(transform * vec4(ray.origin, 1.0));
+	r.direction = vec3(transform * vec4(ray.direction, 1.0));
+	float t = -(r.origin.z/r.direction.z);
+
+	vec3 baryHit = r.origin + t * r.direction;
+
+	TriangleHit hit;
+	hit.hit = t >= 0 && 0 <= baryHit.x && baryHit.x <= 1 && 0 <= baryHit.y && baryHit.y <= 1 && baryHit.x + baryHit.y <= 1;
+	hit.position = ray.origin + t * ray.direction;
+	return hit;
+}
+
+/*HitPayload trace_ray(Ray ray) {
 	float minT = INFINITY;
 	HitPayload payload;
 	payload.hit = false;
-	payload.sphere = 0;
-	payload.position = vec3(0.0);
 
-	for (int i = 0; i < 5; i++) {
-		vec3 originToCenter = ray.origin - spheres[i].center;
-		float a = dot(ray.direction, ray.direction);
-		float half_b = dot(originToCenter, ray.direction);
-		float c = dot(originToCenter, originToCenter) - spheres[i].radius*spheres[i].radius;
-		float discriminant = half_b*half_b - a*c;
-		
-		float t = (-half_b - sqrt(abs(discriminant))) / a;
-		vec3 hitPoint = ray.origin + ray.direction*t;
-
-		bool overwrite = discriminant >= 0 && t < minT && t >= 0; // Ray hit + closest object so far + in front of camera
-		if (overwrite) {
-			payload.hit = true;
-			payload.position = hitPoint;
-			payload.sphere = i;
-			minT = t;
-		}
-	}
-	
 	return payload;
 }
 
@@ -170,16 +204,15 @@ vec3 get_brdf(Material material, Ray incoming, Ray outgoing, vec3 normal) {
 	kDiffuse *= 1.0 - material.metalness;
 
 	return (kDiffuse * material.albedo / PI + specular) * max(dot(normal, outgoing.direction), 0.0);
-	//return vec3(g);
 }	
 
-vec3 per_pixel(Ray incoming, Sphere spheres[5], Material materials[3]) {
+vec3 per_pixel(Ray incoming) {
 	vec3 totalColor = vec3(0.0);
 	HitPayload hit = trace_ray(incoming, spheres);
 	if (!hit.hit) { return vec3(0.0, 0.0, 0.0); }
 	
-	Sphere sphere = spheres[hit.sphere];
-	Material material = materials[sphere.material];
+	Mesh mesh = meshes[hit.sphere];
+	Material material = materials[mesh.material];
 
 	if (material.emission != 0) {
 		return material.albedo * material.emission;
@@ -219,7 +252,7 @@ vec3 per_pixel(Ray incoming, Sphere spheres[5], Material materials[3]) {
 
 float getPaletteDistance(vec3 a, vec3 b) {
 	return length(a - b) * (1 - (0.95 * dot(normalize(a), normalize(b))));
-}
+}*/
 
 void main() {
  	vec2 pixelPos = vec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y) - viewport/2;
@@ -228,45 +261,15 @@ void main() {
 	vec3 u = normalize(cross(ray.direction, vec3(0, 1, 0)));
 	vec3 v = normalize(cross(ray.direction, u));
 	ray.origin = camera.eye + u*pixelPos.x + -v*pixelPos.y;
+	
+	Triangle triangle;
+	triangle.v0.position = vec3(0, 0, 0);
+	triangle.v1.position = vec3(0, 0, 100);
+	triangle.v2.position = vec3(100, 0, 100);
 
-	Material materials[3];
-	materials[0].albedo = vec3(1.0, 1.0, 1.0);
-	materials[0].emission = 3.0;
-	materials[0].roughness = 1.0;
-	materials[0].metalness = 1.0;
+	TriangleHit hit = triangle_hit(ray, triangle);
 
-	materials[1].albedo = vec3(0.0, 1.0, 0.0);
-	materials[1].emission = 0.0;
-	materials[1].roughness = 1.0;
-	materials[1].metalness = 0.0;
-
-	materials[2].albedo = vec3(0.6, 0.6, 0.6);
-	materials[2].emission = 0.0;
-	materials[2].roughness = 1.0;
-	materials[2].metalness = 0.0;
-
-	Sphere spheres[5];
-	spheres[0].center = vec3(300 * sin(time.time), 0, 0);
-	spheres[0].radius = 50.0;
-	spheres[0].material = 0;
-
-	spheres[1].center = vec3(100.0, 0.0, 150);
-	spheres[1].radius = 50.0;
-	spheres[1].material = 1;
-
-	spheres[2].center = vec3(0, 1000, 0);
-	spheres[2].radius = 970.0;
-	spheres[2].material = 2;
-
-	spheres[3].center = vec3(100 * cos(time.time), -300.0, 50);
-	spheres[3].radius = 25.0;
-	spheres[3].material = 0;
-
-	spheres[4].center = vec3(30.0, 50.0, 12);
-	spheres[4].radius = 25.0;
-	spheres[4].material = 1;
-
-	vec3 color = per_pixel(ray, spheres, materials);
+	/*vec3 color = per_pixel(ray);
 
 	vec4 outputColor = vec4(color, 1.0);
     	float minPaletteDistance = INFINITY;
@@ -276,7 +279,7 @@ void main() {
 	 		minPaletteDistance = paletteDistance;
 			outputColor = vec4(PALETTE[i], 1.0);
 	 	}
-    	}	
+    	}*/	
 
-	imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), outputColor);
+	imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), vec4(float(hit.hit) * hit.position.xz / vec2(100), 0.0, 1.0));
 }
