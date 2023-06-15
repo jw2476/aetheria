@@ -18,13 +18,17 @@ layout(set = 1, binding = 0) buffer Vertices {
 	Vertex vertices[];	
 } vertices;
 
+layout(set = 1, binding = 1) buffer Indicies {
+	int indicies[];
+} indicies;
+
 struct Mesh {
-	int first_vertex;
-	int num_vertices;
+	int first_index;
+	int num_indicies;
 	int material;
 };
 
-layout(set = 1, binding = 1) buffer Meshes {
+layout(set = 1, binding = 2) buffer Meshes {
 	int numMeshes;
 	Mesh meshes[];
 } meshes;
@@ -36,13 +40,14 @@ struct Material {
 	float metalness;
 };
 
-layout(set = 1, binding = 2) buffer Materials {
+layout(set = 1, binding = 3) buffer Materials {
 	Material materials[];
 } materials;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 float INFINITY = 1/0;
+float EPSILON = 0.000001;
 
 vec3 PALETTE[32] = {
 	vec3(0.5234, 0.0658, 0.0242),
@@ -121,34 +126,18 @@ struct TriangleHit {
 	float t;
 };
 
-float max3(vec3 v) {
-	return max(max(v.x, v.y), v.z);
-}
-
 TriangleHit triangle_hit(Ray ray, Triangle triangle) {
-	vec3 edge1 = triangle.v1.position - triangle.v0.position;
-	vec3 edge2 = triangle.v2.position - triangle.v0.position;
-	vec3 normal = normalize(cross(edge1, edge2));
-	float normalMax = max3(normal);
-	vec3 free = vec3(bvec3(normal.x == normalMax, normal.y == normalMax, normal.z == normalMax));
-	mat4 transform = inverse(mat4(
-		vec4(edge1, 0),
-		vec4(edge2, 0),
-		vec4(free, 0),
-		vec4(triangle.v0.position, 1)
-	));
+	vec3 a = inverse(mat3(
+		-ray.direction, 
+		triangle.v0.position - triangle.v2.position, 
+		triangle.v1.position - triangle.v2.position)
+	) * (ray.origin - triangle.v2.position);
 
-	Ray r;
-	r.origin = vec3(transform * vec4(ray.origin, 1.0));
-	r.direction = vec3(transform * vec4(ray.direction, 1.0));
-	float t = -(r.origin.z/r.direction.z);
-
-	vec3 baryHit = r.origin + t * r.direction;
-
+	vec4 b = vec4(a, 1.0 - a.y - a.z);
 	TriangleHit hit;
-	hit.hit = t >= 0 && 0 <= baryHit.x && baryHit.x <= 1 && 0 <= baryHit.y && baryHit.y <= 1 && baryHit.x + baryHit.y <= 1;
-	hit.position = ray.origin + t * ray.direction;
-	hit.t = t;
+	hit.hit = all(greaterThanEqual(b, vec4(0.0))) && all(lessThanEqual(b.yzw, vec3(1.0)));
+	hit.position = ray.origin + b.x * ray.direction;
+	hit.t = b.x;
 	return hit;
 }
 
@@ -159,16 +148,16 @@ HitPayload trace_ray(Ray ray) {
 
 	for (int meshIdx = 0; meshIdx < meshes.numMeshes; meshIdx++) {
 		Mesh mesh = meshes.meshes[meshIdx];
-		for (int vertexIdx = mesh.first_vertex; vertexIdx < mesh.first_vertex + mesh.num_vertices; vertexIdx += 3) {
+		for (int indexIdx = mesh.first_index; indexIdx < (mesh.first_index + mesh.num_indicies); indexIdx += 3) {
 			Triangle triangle;
-			triangle.v0 = vertices.vertices[vertexIdx];
-			triangle.v1 = vertices.vertices[vertexIdx + 1];
-			triangle.v2 = vertices.vertices[vertexIdx + 2];
+			triangle.v0 = vertices.vertices[indicies.indicies[indexIdx]];
+			triangle.v1 = vertices.vertices[indicies.indicies[indexIdx + 1]];
+			triangle.v2 = vertices.vertices[indicies.indicies[indexIdx + 2]];
 			
 			TriangleHit hit = triangle_hit(ray, triangle);
-			bool overwrite = hit.hit && hit.t < minT && hit.t > 0;
+			bool overwrite = hit.hit && hit.t < minT;
 			minT = min(minT, hit.t);
-			payload.hit = payload.hit || overwrite;
+			payload.hit = payload.hit || hit.hit;
 			payload.position = mix(payload.position, hit.position, float(overwrite));
 			vec3 normal = cross(triangle.v1.position - triangle.v0.position, triangle.v2.position - triangle.v0.position);
 			payload.normal = mix(payload.normal, normal, float(overwrite));

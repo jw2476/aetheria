@@ -1,5 +1,5 @@
 use ash::vk;
-use assets::{ShaderRegistry, Vertex};
+use assets::{ShaderRegistry, Vertex, Mesh};
 use bytemuck::{cast_slice, Zeroable, Pod, cast_slice_mut};
 use egui::mutex::Mutex;
 use egui::TexturesDelta;
@@ -111,6 +111,7 @@ pub struct Renderer {
     geometry_pool: Pool,
     geometry_set: Set,
     vertex_buffer: Buffer,
+    index_buffer: Buffer,
     mesh_buffer: Buffer,
     material_buffer: Buffer,
 
@@ -122,9 +123,9 @@ const RENDER_HEIGHT: u32 = 270;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
-struct Mesh {
-    first_vertex: i32,
-    num_vertices: i32,
+struct MeshData {
+    first_index: i32,
+    num_indices: i32,
     material: i32
 }
 
@@ -142,6 +143,7 @@ impl Renderer {
         ctx: Context,
         shader_registry: &mut ShaderRegistry,
         window: Arc<Window>,
+        mesh: &Mesh
     ) -> Result<Self, vk::Result> {
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
         let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
@@ -168,28 +170,27 @@ impl Renderer {
                 .add(vk::DescriptorType::STORAGE_BUFFER)
                 .add(vk::DescriptorType::STORAGE_BUFFER)
                 .add(vk::DescriptorType::STORAGE_BUFFER)
+                .add(vk::DescriptorType::STORAGE_BUFFER)
                 .build()?;
         let mut geometry_pool = Pool::new(ctx.device.clone(), geometry_layout.clone(), 1)?;
         let geometry_set = geometry_pool.allocate()?;
 
-        let vertices = vec![
-            Vertex { pos: Vec3::new(0.0, 0.0, 0.0), ..Default::default() },
-            Vertex { pos: Vec3::new(0.0, 0.0, 100.0), ..Default::default() },
-            Vertex { pos: Vec3::new(100.0, 0.0, 100.0), ..Default::default() }
-        ];
-        let vertex_buffer = Buffer::new(&ctx, cast_slice::<Vertex, u8>(&vertices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
-        let mesh = Mesh { first_vertex: 0, num_vertices: 3, material: 0 };
-        let mut mesh_bytes = cast_slice::<Mesh, u8>(&[mesh]).to_vec();
+        let vertex_buffer = Buffer::new(&ctx, cast_slice::<Vertex, u8>(&mesh.vertices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+        let index_buffer = Buffer::new(&ctx, cast_slice::<u32, u8>(&mesh.indices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+
+        let mesh_data = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 0 };
+        let mut mesh_bytes = cast_slice::<MeshData, u8>(&[mesh_data]).to_vec();
         let mut mesh_buffer = cast_slice::<i32, u8>(&[1]).to_vec();
         mesh_buffer.append(&mut mesh_bytes);
         let mesh_buffer = Buffer::new(&ctx, mesh_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
-        let material = Material { albedo: Vec3::new(1.0, 1.0, 1.0), emission: 1.0, roughness: 1.0, metalness: 0.0 };
 
+        let material = Material { albedo: Vec3::new(1.0, 1.0, 1.0), emission: 1.0, roughness: 1.0, metalness: 0.0 };
         let material_buffer = Buffer::new(&ctx, cast_slice::<Material, u8>(&[material]), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
         geometry_set.update_buffer(&ctx.device, 0, &vertex_buffer);
-        geometry_set.update_buffer(&ctx.device, 1, &mesh_buffer);
-        geometry_set.update_buffer(&ctx.device, 2, &material_buffer);
+        geometry_set.update_buffer(&ctx.device, 1, &index_buffer);
+        geometry_set.update_buffer(&ctx.device, 2, &mesh_buffer);
+        geometry_set.update_buffer(&ctx.device, 3, &material_buffer);
 
         let shader = shader_registry.load(&ctx.device, "test.comp.glsl");
         let render_pipeline = compute::Pipeline::new(&ctx.device, shader.clone(), &[per_frame_layout.clone(), geometry_layout.clone()])?; 
@@ -205,6 +206,7 @@ impl Renderer {
             geometry_pool,
             geometry_set,
             vertex_buffer,
+            index_buffer,
             mesh_buffer,
             material_buffer,
             output_texture,

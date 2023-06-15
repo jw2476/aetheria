@@ -147,7 +147,9 @@ fn main() {
     let mut mesh_registry = MeshRegistry::new();
     let mut shader_registry = ShaderRegistry::new();
 
-    let mut renderer = Renderer::new(ctx, &mut shader_registry, window.clone()).unwrap();
+    let rocks = mesh_registry.load(&ctx, "rocks.obj");
+
+    let mut renderer = Renderer::new(ctx, &mut shader_registry, window.clone(), &rocks).unwrap();
     let mut camera = Camera::new(490.0, 270.0).unwrap();
     let mut time = Time::new().unwrap();
     let mut keyboard = Keyboard::new();

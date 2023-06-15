@@ -19,7 +19,7 @@ impl Camera {
     const DAMPING: f32 = 0.2;
 
     pub fn new(width: f32, height: f32) -> Result<Self, vk::Result> {
-        let theta = 45.0_f32.to_radians();
+        let theta = 0_f32.to_radians();
         let target = Vec3::new(0.0, 0.0, 0.0);
 
         let camera = Self {

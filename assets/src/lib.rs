@@ -45,8 +45,8 @@ pub struct Vertex {
 }
 
 pub struct Mesh {
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u32>
 }
 
 pub struct MeshRegistry {
@@ -79,7 +79,7 @@ impl MeshRegistry {
                     .map(|mesh| { 
                         let positions = mesh.positions
                             .chunks_exact(3)
-                            .map(|slice| Vec3::from_slice(slice))
+                            .map(|slice| (Vec3::from_slice(slice) + Vec3::new(1.0, 1.0, 1.0)) * 100.0)
                             .collect::<Vec<Vec3>>();
 
                         let vertices = positions.iter()
@@ -87,15 +87,9 @@ impl MeshRegistry {
                             .map(|pos| Vertex { pos, ..Default::default() })
                             .collect::<Vec<Vertex>>();
 
-                        let vertex_buffer = Buffer::new(
-                            ctx,
-                            cast_slice(&vertices),
-                            vk::BufferUsageFlags::VERTEX_BUFFER,
-                        ).unwrap();
-                        let index_buffer =
-                            Buffer::new(ctx, cast_slice(&mesh.indices), vk::BufferUsageFlags::INDEX_BUFFER).unwrap();
+                        let indices: Vec<u32> = mesh.indices.chunks_exact(3).flat_map(|slice| vec![slice[0], slice[2], slice[1]]).collect();
 
-                        Mesh { vertex_buffer, index_buffer }
+                        Mesh { vertices, indices }
                     }).unwrap();
 
                 let mesh = Arc::new(mesh);
