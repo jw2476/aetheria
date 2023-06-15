@@ -18,7 +18,7 @@ bytemuck = { version = "1.13", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 gpu-allocator = "0.22"
-glam = { version = "0.23", features = ["bytemuck"] }
+glam = { version = "0.24", features = ["bytemuck"] }
 qoi = "0.4"
 image = "0.24"
 egui = "0.21"

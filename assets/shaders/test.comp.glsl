@@ -12,7 +12,6 @@ layout(set = 0, binding = 2) uniform Time {
 
 struct Vertex {
 	vec3 position;
-	vec3 normal;
 };
 
 layout(set = 1, binding = 0) buffer Vertices {
@@ -87,8 +86,10 @@ struct Ray {
 
 struct HitPayload {
 	bool hit;
-	int mesh;
+	vec3 normal;
+	int material;
 	vec3 position;
+	float t;
 };
 
 struct Triangle {
@@ -117,6 +118,7 @@ vec3 random_unit_sphere(float seed) {
 struct TriangleHit {
 	bool hit;
 	vec3 position;
+	float t;
 };
 
 float max3(vec3 v) {
@@ -146,18 +148,38 @@ TriangleHit triangle_hit(Ray ray, Triangle triangle) {
 	TriangleHit hit;
 	hit.hit = t >= 0 && 0 <= baryHit.x && baryHit.x <= 1 && 0 <= baryHit.y && baryHit.y <= 1 && baryHit.x + baryHit.y <= 1;
 	hit.position = ray.origin + t * ray.direction;
+	hit.t = t;
 	return hit;
 }
 
-/*HitPayload trace_ray(Ray ray) {
+HitPayload trace_ray(Ray ray) {
 	float minT = INFINITY;
 	HitPayload payload;
 	payload.hit = false;
 
+	for (int meshIdx = 0; meshIdx < meshes.numMeshes; meshIdx++) {
+		Mesh mesh = meshes.meshes[meshIdx];
+		for (int vertexIdx = mesh.first_vertex; vertexIdx < mesh.first_vertex + mesh.num_vertices; vertexIdx += 3) {
+			Triangle triangle;
+			triangle.v0 = vertices.vertices[vertexIdx];
+			triangle.v1 = vertices.vertices[vertexIdx + 1];
+			triangle.v2 = vertices.vertices[vertexIdx + 2];
+			
+			TriangleHit hit = triangle_hit(ray, triangle);
+			bool overwrite = hit.hit && hit.t < minT && hit.t > 0;
+			minT = min(minT, hit.t);
+			payload.hit = payload.hit || overwrite;
+			payload.position = mix(payload.position, hit.position, float(overwrite));
+			vec3 normal = cross(triangle.v1.position - triangle.v0.position, triangle.v2.position - triangle.v0.position);
+			payload.normal = mix(payload.normal, normal, float(overwrite));
+			payload.material = payload.material * int(!overwrite) + mesh.material * int(overwrite);
+		}
+	}
+
 	return payload;
 }
 
-float distributionGGX(vec3 normal, vec3 halfway, float roughness) {
+/*float distributionGGX(vec3 normal, vec3 halfway, float roughness) {
     float a2     = roughness*roughness;
     float NdotH  = max(dot(normal, halfway), 0.0);
     float NdotH2 = NdotH*NdotH;
@@ -262,12 +284,7 @@ void main() {
 	vec3 v = normalize(cross(ray.direction, u));
 	ray.origin = camera.eye + u*pixelPos.x + -v*pixelPos.y;
 	
-	Triangle triangle;
-	triangle.v0.position = vec3(0, 0, 0);
-	triangle.v1.position = vec3(0, 0, 100);
-	triangle.v2.position = vec3(100, 0, 100);
-
-	TriangleHit hit = triangle_hit(ray, triangle);
+	HitPayload hit = trace_ray(ray);
 
 	/*vec3 color = per_pixel(ray);
 
@@ -281,5 +298,5 @@ void main() {
 	 	}
     	}*/	
 
-	imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), vec4(float(hit.hit) * hit.position.xz / vec2(100), 0.0, 1.0));
+	imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), vec4(float(hit.hit)));
 }

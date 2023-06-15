@@ -1,6 +1,6 @@
 use ash::vk;
-use assets::{Mesh, MeshRegistry, ShaderRegistry};
-use bytemuck::cast_slice;
+use assets::{ShaderRegistry, Vertex};
+use bytemuck::{cast_slice, Zeroable, Pod, cast_slice_mut};
 use egui::mutex::Mutex;
 use egui::TexturesDelta;
 use glam::{Vec4, Vec3, Quat};
@@ -102,16 +102,40 @@ pub struct Renderer {
 
     per_frame_layout: SetLayout,
     per_frame_pool: Pool,
+    per_frame_set: Set,
     output_texture: Texture,
     camera_buffer: Buffer,
     time_buffer: Buffer,
-    per_frame_set: Set,
+    
+    geometry_layout: SetLayout,
+    geometry_pool: Pool,
+    geometry_set: Set,
+    vertex_buffer: Buffer,
+    mesh_buffer: Buffer,
+    material_buffer: Buffer,
 
     render_pipeline: compute::Pipeline
 }
 
 const RENDER_WIDTH: u32 = 480;
 const RENDER_HEIGHT: u32 = 270;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+struct Mesh {
+    first_vertex: i32,
+    num_vertices: i32,
+    material: i32
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+struct Material {
+    albedo: Vec3,
+    emission: f32,
+    roughness: f32,
+    metalness: f32
+}
 
 impl Renderer {
     pub fn new(
@@ -140,8 +164,35 @@ impl Renderer {
         per_frame_set.update_buffer(&ctx.device, 1, &camera_buffer);
         per_frame_set.update_buffer(&ctx.device, 2, &time_buffer);
 
+        let geometry_layout = SetLayoutBuilder::new(&ctx.device)
+                .add(vk::DescriptorType::STORAGE_BUFFER)
+                .add(vk::DescriptorType::STORAGE_BUFFER)
+                .add(vk::DescriptorType::STORAGE_BUFFER)
+                .build()?;
+        let mut geometry_pool = Pool::new(ctx.device.clone(), geometry_layout.clone(), 1)?;
+        let geometry_set = geometry_pool.allocate()?;
+
+        let vertices = vec![
+            Vertex { pos: Vec3::new(0.0, 0.0, 0.0), ..Default::default() },
+            Vertex { pos: Vec3::new(0.0, 0.0, 100.0), ..Default::default() },
+            Vertex { pos: Vec3::new(100.0, 0.0, 100.0), ..Default::default() }
+        ];
+        let vertex_buffer = Buffer::new(&ctx, cast_slice::<Vertex, u8>(&vertices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+        let mesh = Mesh { first_vertex: 0, num_vertices: 3, material: 0 };
+        let mut mesh_bytes = cast_slice::<Mesh, u8>(&[mesh]).to_vec();
+        let mut mesh_buffer = cast_slice::<i32, u8>(&[1]).to_vec();
+        mesh_buffer.append(&mut mesh_bytes);
+        let mesh_buffer = Buffer::new(&ctx, mesh_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
+        let material = Material { albedo: Vec3::new(1.0, 1.0, 1.0), emission: 1.0, roughness: 1.0, metalness: 0.0 };
+
+        let material_buffer = Buffer::new(&ctx, cast_slice::<Material, u8>(&[material]), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+
+        geometry_set.update_buffer(&ctx.device, 0, &vertex_buffer);
+        geometry_set.update_buffer(&ctx.device, 1, &mesh_buffer);
+        geometry_set.update_buffer(&ctx.device, 2, &material_buffer);
+
         let shader = shader_registry.load(&ctx.device, "test.comp.glsl");
-        let render_pipeline = compute::Pipeline::new(&ctx.device, shader.clone(), &[per_frame_layout.clone()])?; 
+        let render_pipeline = compute::Pipeline::new(&ctx.device, shader.clone(), &[per_frame_layout.clone(), geometry_layout.clone()])?; 
 
         let renderer = Self {
             ctx,
@@ -150,6 +201,12 @@ impl Renderer {
             in_flight,
             per_frame_layout,
             per_frame_pool,
+            geometry_layout,
+            geometry_pool,
+            geometry_set,
+            vertex_buffer,
+            mesh_buffer,
+            material_buffer,
             output_texture,
             camera_buffer,
             time_buffer,
@@ -221,6 +278,7 @@ impl Renderer {
                 .unwrap()
                 .bind_compute_pipeline(self.render_pipeline.clone())
                 .bind_descriptor_set(0, &self.per_frame_set)
+                .bind_descriptor_set(1, &self.geometry_set)
                 .transition_image_layout(&self.output_texture.image, &TransitionLayoutOptions { 
                     old: vk::ImageLayout::UNDEFINED, 
                     new: vk::ImageLayout::GENERAL, 

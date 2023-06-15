@@ -38,11 +38,10 @@ impl ShaderRegistry {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable, Default)]
 pub struct Vertex {
     pub pos: Vec3,
-    pub uv: Vec2,
-    pub normal: Vec3,
+    pub _padding: f32 
 }
 
 pub struct Mesh {
@@ -83,19 +82,10 @@ impl MeshRegistry {
                             .map(|slice| Vec3::from_slice(slice))
                             .collect::<Vec<Vec3>>();
 
-                        let uvs = mesh.texcoords
-                            .chunks_exact(2)
-                            .map(|slice| Vec2::from_slice(slice))
-                            .collect::<Vec<Vec2>>();
-                        let normals = mesh.normals
-                            .chunks_exact(3)
-                            .map(|slice| Vec3::from_slice(slice))
-                            .collect::<Vec<Vec3>>();
-
-                        let vertices = std::iter::zip(positions, std::iter::zip(uvs, normals))
-                            .map(|(pos, (uv, normal))| Vertex { pos, uv, normal })
+                        let vertices = positions.iter()
+                            .cloned()
+                            .map(|pos| Vertex { pos, ..Default::default() })
                             .collect::<Vec<Vertex>>();
-
 
                         let vertex_buffer = Buffer::new(
                             ctx,

@@ -44,7 +44,7 @@ dependencies = [
  "egui",
  "egui-winit",
  "epaint",
- "glam 0.23.0",
+ "glam 0.24.0",
  "gltf",
  "gpu-allocator",
  "hecs",
