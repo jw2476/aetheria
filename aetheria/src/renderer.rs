@@ -130,12 +130,13 @@ struct MeshData {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 struct Material {
     albedo: Vec3,
     emission: f32,
     roughness: f32,
-    metalness: f32
+    metalness: f32,
+    _padding: [f32; 2]
 }
 
 impl Renderer {
@@ -178,14 +179,16 @@ impl Renderer {
         let vertex_buffer = Buffer::new(&ctx, cast_slice::<Vertex, u8>(&mesh.vertices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
         let index_buffer = Buffer::new(&ctx, cast_slice::<u32, u8>(&mesh.indices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let mesh_data = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 0 };
-        let mut mesh_bytes = cast_slice::<MeshData, u8>(&[mesh_data]).to_vec();
-        let mut mesh_buffer = cast_slice::<i32, u8>(&[1]).to_vec();
+        let glowy_mesh = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 0 };
+        let green_mesh = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 1 };
+        let mut mesh_bytes = cast_slice::<MeshData, u8>(&[glowy_mesh, green_mesh]).to_vec();
+        let mut mesh_buffer = cast_slice::<i32, u8>(&[2]).to_vec();
         mesh_buffer.append(&mut mesh_bytes);
         let mesh_buffer = Buffer::new(&ctx, mesh_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let material = Material { albedo: Vec3::new(1.0, 1.0, 1.0), emission: 1.0, roughness: 1.0, metalness: 0.0 };
-        let material_buffer = Buffer::new(&ctx, cast_slice::<Material, u8>(&[material]), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+        let glowy_material = Material { albedo: Vec3::new(1.0, 1.0, 1.0), emission: 1.0, roughness: 1.0, metalness: 0.0, ..Default::default() };
+        let green_material = Material { albedo: Vec3::new(0.0, 1.0, 0.0), emission: 0.0, roughness: 1.0, metalness: 0.0, ..Default::default() };
+        let material_buffer = Buffer::new(&ctx, cast_slice::<Material, u8>(&[glowy_material, green_material]), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
         geometry_set.update_buffer(&ctx.device, 0, &vertex_buffer);
         geometry_set.update_buffer(&ctx.device, 1, &index_buffer);
