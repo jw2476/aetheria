@@ -39,7 +39,7 @@ impl Camera {
     }
 
     pub fn update_buffer(&self, buffer: &mut Buffer) {
-        let mut eye = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), self.actual_theta) * Vec3::new(0.0, 500.0 * 2.0.pow(-0.5), 500.0);
+        let mut eye = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), self.actual_theta) * Vec3::new(0.0, 500.0 * 2.0_f32.powf(-0.5), 500.0);
         eye += self.actual_target;
 
         let vp = [Self::pad_vec3(eye), Self::pad_vec3(self.actual_target)]

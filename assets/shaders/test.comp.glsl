@@ -35,7 +35,6 @@ layout(set = 1, binding = 2) buffer Meshes {
 
 struct Material {
 	vec3 albedo;
-	float emission;
 	float roughness;
 	float metalness;
 };
@@ -44,10 +43,23 @@ layout(set = 1, binding = 3) buffer Materials {
 	Material materials[];
 } materials;
 
+
+struct Light {
+	vec3 position;
+	float strength;
+	vec3 color;
+};
+
+layout(set = 1, binding = 4) buffer Lights {
+	int numLights;
+	Light lights[];
+} lights;
+
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 float INFINITY = 1.0/0.0;
 float EPSILON = 0.000001;
+int RIS_M = 5;
 
 vec3 PALETTE[32] = {
 	vec3(0.5234, 0.0658, 0.0242),
@@ -115,6 +127,11 @@ float random(vec2 s) {
     	return (_random(fract(sin(dot(seed.xy, vec2(12.9898,78.233))) * 43758.5453123)) * 2) - 1;
 }
 
+float random_zero_one(vec2 s) {	
+	vec2 seed = vec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y) + s + time.time; 
+    	return _random(fract(sin(dot(seed.xy, vec2(12.9898,78.233))) * 43758.5453123));
+}
+
 vec3 random_unit_sphere(float seed) {
 	return normalize(vec3(random(vec2(seed, seed)), random(vec2(seed, seed + 1)), random(vec2(seed, seed + 2))));
 }
@@ -157,9 +174,9 @@ HitPayload trace_ray(Ray ray) {
 			triangle.v1 = vertices.vertices[indicies.indicies[indexIdx + 1]];
 			triangle.v2 = vertices.vertices[indicies.indicies[indexIdx + 2]];
 
-			triangle.v0.position += vec3(0.0, 0.0, 200.0) * meshIdx;
-			triangle.v1.position += vec3(0.0, 0.0, 200.0) * meshIdx;
-			triangle.v2.position += vec3(0.0, 0.0, 200.0) * meshIdx;
+			triangle.v0.position += vec3(0.0, 0.0, -200.0) * meshIdx;
+			triangle.v1.position += vec3(0.0, 0.0, -200.0) * meshIdx;
+			triangle.v2.position += vec3(0.0, 0.0, -200.0) * meshIdx;
 			
 			TriangleHit hit = triangle_hit(ray, triangle);
 			bool overwrite = hit.hit && hit.t < minT;
@@ -227,25 +244,30 @@ vec3 get_brdf(Material material, Ray incoming, Ray outgoing, vec3 normal) {
 }	
 
 vec3 per_pixel(Ray incoming) {
-	vec3 totalColor = vec3(0.0);
 	HitPayload hit = trace_ray(incoming);
 	if (!hit.hit) { return vec3(0.0, 0.0, 0.0); }
 
 	Material material = materials.materials[hit.material];
-	return material.albedo;
-
-	if (material.emission != 0) {
-		return material.albedo * material.emission;
-	}
-
+	
 	Ray outgoing;
 	outgoing.origin = hit.position + hit.normal;
-	outgoing.direction = vec3(-1, 0, 0);
 
-	HitPayload hit2 = trace_ray(outgoing);
-	Material material2 = materials.materials[hit2.material];
+	int n = 0;
+	vec3 totalColor = vec3(0.0);
 
-	return material2.emission * material2.albedo * material.albedo;
+	for (int i = 0; i < lights.numLights; i++) {
+		Light light = lights.lights[i];
+		float distance = length(light.position - hit.position);
+		
+		outgoing.direction = normalize(light.position - hit.position); 
+		HitPayload hit2 = trace_ray(outgoing);
+
+		bool lightVisible = !hit2.hit;
+		n += int(lightVisible);
+		totalColor += (float(lightVisible) * light.color * light.strength * get_brdf(material, incoming, outgoing, hit.normal)) / (distance*distance);
+	}
+
+	return totalColor / max(n, 1);
 }
 
 float getPaletteDistance(vec3 a, vec3 b) {
@@ -263,14 +285,14 @@ void main() {
 	vec3 color = per_pixel(ray);
 	vec4 outputColor = vec4(color, 1.0);
 
-    	/*float minPaletteDistance = INFINITY;
+    	float minPaletteDistance = INFINITY;
     	for (int i = 0; i < 32; i++) {
 		float paletteDistance = getPaletteDistance(PALETTE[i], color.rgb);
 		if (paletteDistance < minPaletteDistance) {
 	 		minPaletteDistance = paletteDistance;
 			outputColor = vec4(PALETTE[i], 1.0);
 	 	}
-    	}*/	
+    	}	
 
 	imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), outputColor);
 }

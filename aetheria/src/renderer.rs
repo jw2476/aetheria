@@ -114,6 +114,7 @@ pub struct Renderer {
     index_buffer: Buffer,
     mesh_buffer: Buffer,
     material_buffer: Buffer,
+    light_buffer: Buffer,
 
     render_pipeline: compute::Pipeline
 }
@@ -133,10 +134,18 @@ struct MeshData {
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 struct Material {
     albedo: Vec3,
-    emission: f32,
     roughness: f32,
     metalness: f32,
-    _padding: [f32; 2]
+    _padding: [f32; 3]
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+struct Light {
+    position: Vec3,
+    strength: f32,
+    color: Vec3,
+    _padding: [f32; 1]
 }
 
 impl Renderer {
@@ -172,6 +181,7 @@ impl Renderer {
                 .add(vk::DescriptorType::STORAGE_BUFFER)
                 .add(vk::DescriptorType::STORAGE_BUFFER)
                 .add(vk::DescriptorType::STORAGE_BUFFER)
+                .add(vk::DescriptorType::STORAGE_BUFFER)
                 .build()?;
         let mut geometry_pool = Pool::new(ctx.device.clone(), geometry_layout.clone(), 1)?;
         let geometry_set = geometry_pool.allocate()?;
@@ -179,21 +189,27 @@ impl Renderer {
         let vertex_buffer = Buffer::new(&ctx, cast_slice::<Vertex, u8>(&mesh.vertices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
         let index_buffer = Buffer::new(&ctx, cast_slice::<u32, u8>(&mesh.indices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let glowy_mesh = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 0 };
-        let green_mesh = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 1 };
-        let mut mesh_bytes = cast_slice::<MeshData, u8>(&[glowy_mesh, green_mesh]).to_vec();
-        let mut mesh_buffer = cast_slice::<i32, u8>(&[2]).to_vec();
+        let green_mesh = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 0 };
+        let mut mesh_bytes = cast_slice::<MeshData, u8>(&[green_mesh]).to_vec();
+        let mut mesh_buffer = cast_slice::<i32, u8>(&[1]).to_vec();
         mesh_buffer.append(&mut mesh_bytes);
         let mesh_buffer = Buffer::new(&ctx, mesh_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let glowy_material = Material { albedo: Vec3::new(1.0, 1.0, 1.0), emission: 1.0, roughness: 1.0, metalness: 0.0, ..Default::default() };
-        let green_material = Material { albedo: Vec3::new(0.0, 1.0, 0.0), emission: 0.0, roughness: 1.0, metalness: 0.0, ..Default::default() };
-        let material_buffer = Buffer::new(&ctx, cast_slice::<Material, u8>(&[glowy_material, green_material]), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+        let green_material = Material { albedo: Vec3::new(0.0, 1.0, 0.0), roughness: 1.0, metalness: 0.0, ..Default::default() };
+        let material_buffer = Buffer::new(&ctx, cast_slice::<Material, u8>(&[green_material]), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+
+        let light1 = Light { position: Vec3::new(400.0, 400.0, 400.0), strength: 400.0 * 400.0 * 10.0, color: Vec3::new(1.0, 1.0, 1.0), ..Default::default() };
+        let light2 = Light { position: Vec3::new(400.0, 400.0, -400.0), strength: 800.0 * 400.0, color: Vec3::new(0.0, 1.0, 0.0), ..Default::default() };
+        let mut light_data = cast_slice::<Light, u8>(&[light1, light2]).to_vec();
+        let mut light_buffer = cast_slice::<i32, u8>(&[2, 0, 0, 0]).to_vec();
+        light_buffer.append(&mut light_data);
+        let light_buffer = Buffer::new(&ctx, light_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
         geometry_set.update_buffer(&ctx.device, 0, &vertex_buffer);
         geometry_set.update_buffer(&ctx.device, 1, &index_buffer);
         geometry_set.update_buffer(&ctx.device, 2, &mesh_buffer);
         geometry_set.update_buffer(&ctx.device, 3, &material_buffer);
+        geometry_set.update_buffer(&ctx.device, 4, &light_buffer);
 
         let shader = shader_registry.load(&ctx.device, "test.comp.glsl");
         let render_pipeline = compute::Pipeline::new(&ctx.device, shader.clone(), &[per_frame_layout.clone(), geometry_layout.clone()])?; 
@@ -212,6 +228,7 @@ impl Renderer {
             index_buffer,
             mesh_buffer,
             material_buffer,
+            light_buffer,
             output_texture,
             camera_buffer,
             time_buffer,
