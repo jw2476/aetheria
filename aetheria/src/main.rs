@@ -148,6 +148,7 @@ impl Sun {
         self.theta = theta;
         self.light.position = Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), self.theta) * self.noon_pos;
         self.light.color = Vec3::new(0.7 + 0.1 * self.theta.sin().powf(2.0), 0.2 + 0.8 * self.theta.cos().powf(2.0), 0.8 * self.theta.cos().powf(2.0));
+        self.light.strength = self.light.position.length().powf(2.0) * 3.5 * self.light.position.normalize().dot(Vec3::new(0.0, 1.0, 0.0)).powf(1.0/9.0);
     }
 
     pub fn frame_finished(&mut self, time: &Time) {
