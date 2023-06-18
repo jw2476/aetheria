@@ -276,7 +276,7 @@ vec3 per_pixel(Ray incoming) {
 }
 
 float getPaletteDistance(vec3 a, vec3 b) {
-	return length(a - b) * (1 - (0.95 * dot(normalize(a), normalize(b))));
+	return length(a - b);
 }
 
 void main() {
@@ -287,7 +287,7 @@ void main() {
 	vec3 v = normalize(cross(ray.direction, u));
 	ray.origin = camera.eye + u*pixelPos.x + v*pixelPos.y;
 	
-	vec3 color = per_pixel(ray);
+	vec3 color = clamp(per_pixel(ray), vec3(0), vec3(1));
 	vec4 outputColor = vec4(color, 1.0);
 
     	float minPaletteDistance = INFINITY;

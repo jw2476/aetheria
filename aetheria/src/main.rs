@@ -21,7 +21,7 @@ use camera::Camera;
 use time::Time;
 use transform::Transform;
 use vulkan::Context;
-use renderer::Renderer;
+use renderer::{Renderer, Renderable, RenderObject};
 use winit::{event_loop::ControlFlow, event::{VirtualKeyCode, MouseButton}};
 use glam::{Vec3, Quat, Vec4};
 use input::{Keyboard, Mouse};
@@ -42,7 +42,7 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
 }
 
 
-/*struct Tree {
+struct Tree {
     pub transform: Transform,
     trunk: RenderObject,
     foliage: RenderObject,
@@ -52,12 +52,12 @@ impl Tree {
     pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Tree, vk::Result> {
         let trunk = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("tree.trunk.obj")?
-            .set_color(Vec4::new(0.9150942, 0.6063219, 0.4359647, 1.0))
+            .set_color(Vec3::new(0.9150942, 0.6063219, 0.4359647))
             .set_transform(transform.clone())
             .build()?;
         let foliage = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("tree.foliage.obj")?
-            .set_color(Vec4::new(0.2588235, 0.7921569, 0.6034038, 1.0))
+            .set_color(Vec3::new(0.2588235, 0.7921569, 0.6034038))
             .set_transform(transform.clone())
             .build()?;
 
@@ -69,12 +69,8 @@ impl Tree {
     }
 
     pub fn update_transform(&mut self) -> Result<(), vk::Result> {
-        let mut trunk = self.trunk.transform.lock();
-        let mut foliage = self.foliage.transform.lock();
-        trunk.transform = self.transform.clone();
-        trunk.update()?;
-        foliage.transform = self.transform.clone();
-        foliage.update()?;
+        self.trunk.transform = self.transform.clone();
+        self.foliage.transform = self.transform.clone();
         Ok(())
     }
 }
@@ -94,7 +90,7 @@ impl Rock {
     pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Self, vk::Result> {
         let rock = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("rocks.obj")?
-            .set_color(Vec4::new(0.6916608, 0.8617874, 0.9339623, 1.0))
+            .set_color(Vec3::new(0.6916608, 0.8617874, 0.9339623))
             .set_transform(transform.clone())
             .build()?;
         Ok(Self { transform, rock })
@@ -116,7 +112,7 @@ impl Grass {
     pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Self, vk::Result> {
         let grass = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("grass.obj")?
-            .set_color(Vec4::new(0.2588235, 0.7921569, 0.6034038, 1.0))
+            .set_color(Vec3::new(0.2588235, 0.7921569, 0.6034038))
             .set_transform(transform.clone())
             .build()?;
         Ok(Self { transform, grass })
@@ -127,7 +123,7 @@ impl Renderable for Grass {
     fn get_objects(&self) -> Vec<&RenderObject> {
         vec![&self.grass]
     }
-}*/
+}
 
 fn get_coord() -> f32 {
     (rand::random::<f32>() - 0.5) * 25.0
@@ -147,13 +143,14 @@ fn main() {
     let mut mesh_registry = MeshRegistry::new();
     let mut shader_registry = ShaderRegistry::new();
 
-    let tree = mesh_registry.load(&ctx, "grass.obj");
-
-    let mut renderer = Renderer::new(ctx, &mut shader_registry, window.clone(), &tree).unwrap();
+    let mut renderer = Renderer::new(ctx, &mut shader_registry, window.clone()).unwrap();
     let mut camera = Camera::new(480.0, 270.0).unwrap();
     let mut time = Time::new().unwrap();
     let mut keyboard = Keyboard::new();
     let mut mouse = Mouse::new();
+
+    let tree = Tree::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
+    let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -187,7 +184,7 @@ fn main() {
                 if keyboard.is_key_down(VirtualKeyCode::S) { camera.target += camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
                 if keyboard.is_key_down(VirtualKeyCode::A) { camera.target -= camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
                 if keyboard.is_key_down(VirtualKeyCode::D) { camera.target += camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
-                renderer.render(&camera, &time);
+                renderer.render(&[&tree, &grass], &camera, &time);
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();

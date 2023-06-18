@@ -1,5 +1,5 @@
 use ash::vk;
-use assets::{ShaderRegistry, Vertex, Mesh};
+use assets::{ShaderRegistry, Vertex, Mesh, MeshRegistry};
 use bytemuck::{cast_slice, Zeroable, Pod, cast_slice_mut};
 use egui::mutex::Mutex;
 use egui::TexturesDelta;
@@ -26,11 +26,11 @@ use crate::include_bytes_align_as;
 use crate::time::Time;
 use crate::transform::Transform;
 
-/*pub struct RenderObjectBuilder<'a> {
+pub struct RenderObjectBuilder<'a> {
     renderer: &'a mut Renderer,
     mesh_registry: &'a mut MeshRegistry,
     mesh: Option<Arc<Mesh>>,
-    color: Option<Vec4>,
+    color: Option<Vec3>,
     transform: Option<Transform>
 }
 
@@ -40,7 +40,7 @@ impl RenderObjectBuilder<'_> {
          Ok(self)
     }
     
-    pub fn set_color(&mut self, color: Vec4) -> &mut Self {
+    pub fn set_color(&mut self, color: Vec3) -> &mut Self {
         self.color = Some(color);
         self
     }
@@ -55,14 +55,13 @@ impl RenderObjectBuilder<'_> {
             panic!("Tried to create RenderObject with no mesh");
         }
 
-        let material = Arc::new(Material::new(self.renderer, self.color.unwrap_or_else(|| Vec4::new(1.0, 1.0, 1.0, 1.0)))?);
+        let material = Material { albedo: self.color.unwrap_or_else(|| Vec3::new(1.0, 1.0, 1.0)), roughness: 1.0, metalness: 0.0, ..Default::default() };
         let transform = self.transform.clone().unwrap_or(Transform::IDENTITY);
-        let transform_gpu = TransformGPU::new(self.renderer, transform)?;
 
         Ok(RenderObject {
             mesh: self.mesh.clone().unwrap(),
             material,
-            transform: Arc::new(Mutex::new(transform_gpu))
+            transform
         })
     }
 }
@@ -70,8 +69,8 @@ impl RenderObjectBuilder<'_> {
 #[derive(Clone)]
 pub struct RenderObject {
     mesh: Arc<Mesh>,
-    material: Arc<Material>,
-    pub transform: Arc<Mutex<TransformGPU>>
+    material: Material,
+    pub transform: Transform
 }
 
 impl RenderObject {
@@ -88,7 +87,7 @@ impl RenderObject {
 
 pub trait Renderable {
     fn get_objects(&self) -> Vec<&RenderObject>;
-}*/
+}
 
 const PIXEL_WIDTH: u32 = 480;
 const PIXEL_HEIGHT: u32 = 270;
@@ -110,6 +109,7 @@ pub struct Renderer {
     geometry_layout: SetLayout,
     geometry_pool: Pool,
     geometry_set: Set,
+    light_buffer: Buffer,
 
     render_pipeline: compute::Pipeline
 }
@@ -150,7 +150,6 @@ impl Renderer {
         ctx: Context,
         shader_registry: &mut ShaderRegistry,
         window: Arc<Window>,
-        mesh: &Mesh
     ) -> Result<Self, vk::Result> {
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
         let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
@@ -183,29 +182,12 @@ impl Renderer {
         let mut geometry_pool = Pool::new(ctx.device.clone(), geometry_layout.clone(), 1)?;
         let geometry_set = geometry_pool.allocate()?;
 
-        let vertex_buffer = Buffer::new(&ctx, cast_slice::<Vertex, u8>(&mesh.vertices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
-        let index_buffer = Buffer::new(&ctx, cast_slice::<u32, u8>(&mesh.indices.iter().flat_map(|index| [*index, 0, 0, 0]).collect::<Vec<u32>>()), vk::BufferUsageFlags::STORAGE_BUFFER)?;
-
-        let transform = Transform { translation: Vec3::new(0.0, -400.0, 0.0), rotation: Quat::IDENTITY, scale: Vec3::ONE };
-        let green_mesh = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 0, transform: transform.get_matrix().to_cols_array(), ..Default::default() };
-        let mut mesh_bytes = cast_slice::<MeshData, u8>(&[green_mesh]).to_vec();
-        let mut mesh_buffer = cast_slice::<i32, u8>(&[1, 0, 0, 0]).to_vec();
-        mesh_buffer.append(&mut mesh_bytes);
-        let mesh_buffer = Buffer::new(&ctx, mesh_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
-
-        let green_material = Material { albedo: Vec3::new(0.0, 1.0, 0.0), roughness: 1.0, metalness: 0.0, ..Default::default() };
-        let material_buffer = Buffer::new(&ctx, cast_slice::<Material, u8>(&[green_material]), vk::BufferUsageFlags::STORAGE_BUFFER)?;
-
-        let light1 = Light { position: Vec3::new(400.0, 400.0, 400.0), strength: 400.0 * 400.0 * 3.0, color: Vec3::new(1.0, 1.0, 1.0), ..Default::default() };
+        let light1 = Light { position: Vec3::new(400.0, 400.0, 400.0), strength: 400.0 * 400.0 * 3.0, color: Vec3::new(0.8, 1.0, 0.5), ..Default::default() };
         let mut light_data = cast_slice::<Light, u8>(&[light1]).to_vec();
         let mut light_buffer = cast_slice::<i32, u8>(&[1, 0, 0, 0]).to_vec();
         light_buffer.append(&mut light_data);
         let light_buffer = Buffer::new(&ctx, light_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        geometry_set.update_buffer(&ctx.device, 0, &vertex_buffer);
-        geometry_set.update_buffer(&ctx.device, 1, &index_buffer);
-        geometry_set.update_buffer(&ctx.device, 2, &mesh_buffer);
-        geometry_set.update_buffer(&ctx.device, 3, &material_buffer);
         geometry_set.update_buffer(&ctx.device, 4, &light_buffer);
 
         let shader = shader_registry.load(&ctx.device, "test.comp.glsl");
@@ -221,6 +203,7 @@ impl Renderer {
             geometry_layout,
             geometry_pool,
             geometry_set,
+            light_buffer,
             output_texture,
             camera_buffer,
             time_buffer,
@@ -263,14 +246,44 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn render(&mut self, camera: &Camera, time: &Time) {
-        camera.update_buffer(&mut self.camera_buffer); 
-        time.update_buffer(&mut self.time_buffer);
-
+    pub fn render(&mut self, renderables: &[&dyn Renderable], camera: &Camera, time: &Time) {
         unsafe {
             let in_flight = self.in_flight.clone();
 
             let acquire_result = self.ctx.start_frame(in_flight);
+
+            camera.update_buffer(&mut self.camera_buffer); 
+            time.update_buffer(&mut self.time_buffer);
+            let objects = renderables.iter().flat_map(|renderable| renderable.get_objects()).collect::<Vec<&RenderObject>>();
+
+            let mut meshes: Vec<MeshData> = Vec::new();
+            let mut vertices: Vec<Vertex> = Vec::new();
+            let mut indices: Vec<i32> = Vec::new();
+            let mut materials: Vec<Material> = Vec::new();
+
+            for (i, object) in objects.iter().enumerate() {
+                let transform = object.transform.get_matrix().to_cols_array();
+                let mesh = MeshData { first_index: indices.len() as i32, num_indices: object.mesh.indices.len() as i32, material: i as i32, transform, ..Default::default() };
+                meshes.push(mesh);
+                indices.append(&mut object.mesh.indices.iter().copied().map(|index| index as i32 + vertices.len() as i32).collect::<Vec<i32>>());
+                vertices.append(&mut object.mesh.vertices.clone());
+                materials.push(object.material);
+            }
+
+            let mut mesh_data = cast_slice::<i32, u8>(&[meshes.len() as i32, 0, 0, 0]).to_vec();
+            mesh_data.append(&mut cast_slice::<MeshData, u8>(&meshes).to_vec());
+
+            let indices = indices.iter().copied().flat_map(|index| [index, 0, 0, 0]).collect::<Vec<i32>>();
+            let vertex_buffer = Buffer::new(&self.ctx, cast_slice::<Vertex, u8>(&vertices), vk::BufferUsageFlags::STORAGE_BUFFER).unwrap();
+            let index_buffer = Buffer::new(&self.ctx, cast_slice::<i32, u8>(&indices), vk::BufferUsageFlags::STORAGE_BUFFER).unwrap();
+            let mesh_buffer = Buffer::new(&self.ctx, mesh_data, vk::BufferUsageFlags::STORAGE_BUFFER).unwrap();
+            let material_buffer = Buffer::new(&self.ctx, cast_slice::<Material, u8>(&materials), vk::BufferUsageFlags::STORAGE_BUFFER).unwrap();
+
+            self.geometry_set.update_buffer(&self.ctx.device, 0, &vertex_buffer);
+            self.geometry_set.update_buffer(&self.ctx.device, 1, &index_buffer);
+            self.geometry_set.update_buffer(&self.ctx.device, 2, &mesh_buffer);
+            self.geometry_set.update_buffer(&self.ctx.device, 3, &material_buffer);
+            self.geometry_set.update_buffer(&self.ctx.device, 4, &self.light_buffer);
 
             let image_index = match acquire_result {
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
