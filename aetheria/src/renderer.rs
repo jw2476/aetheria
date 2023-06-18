@@ -3,7 +3,7 @@ use assets::{ShaderRegistry, Vertex, Mesh};
 use bytemuck::{cast_slice, Zeroable, Pod, cast_slice_mut};
 use egui::mutex::Mutex;
 use egui::TexturesDelta;
-use glam::{Vec4, Vec3, Quat};
+use glam::{Vec4, Vec3, Quat, Mat4};
 use vulkan::command::TransitionLayoutOptions;
 use std::collections::HashMap;
 use std::ops::DerefMut;
@@ -110,11 +110,6 @@ pub struct Renderer {
     geometry_layout: SetLayout,
     geometry_pool: Pool,
     geometry_set: Set,
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
-    mesh_buffer: Buffer,
-    material_buffer: Buffer,
-    light_buffer: Buffer,
 
     render_pipeline: compute::Pipeline
 }
@@ -123,11 +118,13 @@ const RENDER_WIDTH: u32 = 480;
 const RENDER_HEIGHT: u32 = 270;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 struct MeshData {
     first_index: i32,
     num_indices: i32,
-    material: i32
+    material: i32,
+    _padding: [f32; 1],
+    transform: [f32; 16],
 }
 
 #[repr(C)]
@@ -187,21 +184,21 @@ impl Renderer {
         let geometry_set = geometry_pool.allocate()?;
 
         let vertex_buffer = Buffer::new(&ctx, cast_slice::<Vertex, u8>(&mesh.vertices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
-        let index_buffer = Buffer::new(&ctx, cast_slice::<u32, u8>(&mesh.indices), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+        let index_buffer = Buffer::new(&ctx, cast_slice::<u32, u8>(&mesh.indices.iter().flat_map(|index| [*index, 0, 0, 0]).collect::<Vec<u32>>()), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let green_mesh = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 0 };
+        let transform = Transform { translation: Vec3::new(0.0, -400.0, 0.0), rotation: Quat::IDENTITY, scale: Vec3::ONE };
+        let green_mesh = MeshData { first_index: 0, num_indices: mesh.indices.len() as i32, material: 0, transform: transform.get_matrix().to_cols_array(), ..Default::default() };
         let mut mesh_bytes = cast_slice::<MeshData, u8>(&[green_mesh]).to_vec();
-        let mut mesh_buffer = cast_slice::<i32, u8>(&[1]).to_vec();
+        let mut mesh_buffer = cast_slice::<i32, u8>(&[1, 0, 0, 0]).to_vec();
         mesh_buffer.append(&mut mesh_bytes);
         let mesh_buffer = Buffer::new(&ctx, mesh_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
         let green_material = Material { albedo: Vec3::new(0.0, 1.0, 0.0), roughness: 1.0, metalness: 0.0, ..Default::default() };
         let material_buffer = Buffer::new(&ctx, cast_slice::<Material, u8>(&[green_material]), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let light1 = Light { position: Vec3::new(400.0, 400.0, 400.0), strength: 400.0 * 400.0 * 10.0, color: Vec3::new(1.0, 1.0, 1.0), ..Default::default() };
-        let light2 = Light { position: Vec3::new(400.0, 400.0, -400.0), strength: 800.0 * 400.0, color: Vec3::new(0.0, 1.0, 0.0), ..Default::default() };
-        let mut light_data = cast_slice::<Light, u8>(&[light1, light2]).to_vec();
-        let mut light_buffer = cast_slice::<i32, u8>(&[2, 0, 0, 0]).to_vec();
+        let light1 = Light { position: Vec3::new(400.0, 400.0, 400.0), strength: 400.0 * 400.0 * 3.0, color: Vec3::new(1.0, 1.0, 1.0), ..Default::default() };
+        let mut light_data = cast_slice::<Light, u8>(&[light1]).to_vec();
+        let mut light_buffer = cast_slice::<i32, u8>(&[1, 0, 0, 0]).to_vec();
         light_buffer.append(&mut light_data);
         let light_buffer = Buffer::new(&ctx, light_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
@@ -224,11 +221,6 @@ impl Renderer {
             geometry_layout,
             geometry_pool,
             geometry_set,
-            vertex_buffer,
-            index_buffer,
-            mesh_buffer,
-            material_buffer,
-            light_buffer,
             output_texture,
             camera_buffer,
             time_buffer,

@@ -14,11 +14,11 @@ struct Vertex {
 	vec3 position;
 };
 
-layout(set = 1, binding = 0) buffer Vertices {
+layout(std140, set = 1, binding = 0) buffer Vertices {
 	Vertex vertices[];	
 } vertices;
 
-layout(set = 1, binding = 1) buffer Indicies {
+layout(std140, set = 1, binding = 1) buffer Indicies {
 	int indicies[];
 } indicies;
 
@@ -26,9 +26,10 @@ struct Mesh {
 	int first_index;
 	int num_indicies;
 	int material;
+	mat4 transform;
 };
 
-layout(set = 1, binding = 2) buffer Meshes {
+layout(std140, set = 1, binding = 2) buffer Meshes {
 	int numMeshes;
 	Mesh meshes[];
 } meshes;
@@ -39,7 +40,7 @@ struct Material {
 	float metalness;
 };
 
-layout(set = 1, binding = 3) buffer Materials {
+layout(std140, set = 1, binding = 3) buffer Materials {
 	Material materials[];
 } materials;
 
@@ -50,7 +51,7 @@ struct Light {
 	vec3 color;
 };
 
-layout(set = 1, binding = 4) buffer Lights {
+layout(std140, set = 1, binding = 4) buffer Lights {
 	int numLights;
 	Light lights[];
 } lights;
@@ -157,6 +158,11 @@ TriangleHit triangle_hit(Ray ray, Triangle triangle) {
 	return hit;
 }
 
+Vertex vertex_transform(Vertex v, mat4 transform) {
+	v.position = vec3(transform * vec4(v.position, 1.0));
+	return v;
+}
+
 HitPayload trace_ray(Ray ray) {
 	HitPayload payload;
 	payload.hit = false;
@@ -173,10 +179,9 @@ HitPayload trace_ray(Ray ray) {
 			triangle.v0 = vertices.vertices[indicies.indicies[indexIdx]];
 			triangle.v1 = vertices.vertices[indicies.indicies[indexIdx + 1]];
 			triangle.v2 = vertices.vertices[indicies.indicies[indexIdx + 2]];
-
-			triangle.v0.position += vec3(0.0, 0.0, -200.0) * meshIdx;
-			triangle.v1.position += vec3(0.0, 0.0, -200.0) * meshIdx;
-			triangle.v2.position += vec3(0.0, 0.0, -200.0) * meshIdx;
+			triangle.v0 = vertex_transform(triangle.v0, mesh.transform);
+			triangle.v1 = vertex_transform(triangle.v1, mesh.transform);
+			triangle.v2 = vertex_transform(triangle.v2, mesh.transform);
 			
 			TriangleHit hit = triangle_hit(ray, triangle);
 			bool overwrite = hit.hit && hit.t < minT;
