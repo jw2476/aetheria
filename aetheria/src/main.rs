@@ -147,6 +147,7 @@ impl Sun {
     pub fn update_theta(&mut self, theta: f32) {
         self.theta = theta;
         self.light.position = Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), self.theta) * self.noon_pos;
+        self.light.color = Vec3::new(0.7 + 0.1 * self.theta.sin().powf(2.0), 0.2 + 0.8 * self.theta.cos().powf(2.0), 0.8 * self.theta.cos().powf(2.0));
     }
 
     pub fn frame_finished(&mut self, time: &Time) {
@@ -183,8 +184,7 @@ fn main() {
 
 
     let mut sun = Sun::new(Vec3::new(0.0, 10000.0, 0.0), 0.0, Vec3::new(0.8, 1.0, 0.5));
-    sun.light.strength = sun.light.position.length().powf(2.0) * 1.8;
-
+    sun.light.strength = sun.light.position.length().powf(2.0) * 3.5;
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
             return;
