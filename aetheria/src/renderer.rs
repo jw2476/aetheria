@@ -109,7 +109,6 @@ pub struct Renderer {
     geometry_layout: SetLayout,
     geometry_pool: Pool,
     geometry_set: Set,
-    light_buffer: Buffer,
 
     render_pipeline: compute::Pipeline
 }
@@ -137,12 +136,18 @@ struct Material {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
-struct Light {
-    position: Vec3,
-    strength: f32,
-    color: Vec3,
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct Light {
+    pub position: Vec3,
+    pub strength: f32,
+    pub color: Vec3,
     _padding: [f32; 1]
+}
+
+impl Light {
+    pub fn new(position: Vec3, strength: f32, color: Vec3) -> Self {
+        Self { position, strength, color, _padding: [0.0] }
+    }
 }
 
 impl Renderer {
@@ -182,14 +187,6 @@ impl Renderer {
         let mut geometry_pool = Pool::new(ctx.device.clone(), geometry_layout.clone(), 1)?;
         let geometry_set = geometry_pool.allocate()?;
 
-        let light1 = Light { position: Vec3::new(400.0, 400.0, 400.0), strength: 400.0 * 400.0 * 3.0, color: Vec3::new(0.8, 1.0, 0.5), ..Default::default() };
-        let mut light_data = cast_slice::<Light, u8>(&[light1]).to_vec();
-        let mut light_buffer = cast_slice::<i32, u8>(&[1, 0, 0, 0]).to_vec();
-        light_buffer.append(&mut light_data);
-        let light_buffer = Buffer::new(&ctx, light_buffer, vk::BufferUsageFlags::STORAGE_BUFFER)?;
-
-        geometry_set.update_buffer(&ctx.device, 4, &light_buffer);
-
         let shader = shader_registry.load(&ctx.device, "test.comp.glsl");
         let render_pipeline = compute::Pipeline::new(&ctx.device, shader.clone(), &[per_frame_layout.clone(), geometry_layout.clone()])?; 
 
@@ -203,7 +200,6 @@ impl Renderer {
             geometry_layout,
             geometry_pool,
             geometry_set,
-            light_buffer,
             output_texture,
             camera_buffer,
             time_buffer,
@@ -246,7 +242,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn render(&mut self, renderables: &[&dyn Renderable], camera: &Camera, time: &Time) {
+    pub fn render(&mut self, renderables: &[&dyn Renderable], lights: &[Light], camera: &Camera, time: &Time) {
         unsafe {
             let in_flight = self.in_flight.clone();
 
@@ -279,11 +275,17 @@ impl Renderer {
             let mesh_buffer = Buffer::new(&self.ctx, mesh_data, vk::BufferUsageFlags::STORAGE_BUFFER).unwrap();
             let material_buffer = Buffer::new(&self.ctx, cast_slice::<Material, u8>(&materials), vk::BufferUsageFlags::STORAGE_BUFFER).unwrap();
 
+
+            let mut light_data = cast_slice::<Light, u8>(lights).to_vec();
+            let mut light_buffer = cast_slice::<i32, u8>(&[lights.len() as i32, 0, 0, 0]).to_vec();
+            light_buffer.append(&mut light_data);
+            let light_buffer = Buffer::new(&self.ctx, light_buffer, vk::BufferUsageFlags::STORAGE_BUFFER).unwrap();
+
             self.geometry_set.update_buffer(&self.ctx.device, 0, &vertex_buffer);
             self.geometry_set.update_buffer(&self.ctx.device, 1, &index_buffer);
             self.geometry_set.update_buffer(&self.ctx.device, 2, &mesh_buffer);
             self.geometry_set.update_buffer(&self.ctx.device, 3, &material_buffer);
-            self.geometry_set.update_buffer(&self.ctx.device, 4, &self.light_buffer);
+            self.geometry_set.update_buffer(&self.ctx.device, 4, &light_buffer);
 
             let image_index = match acquire_result {
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {

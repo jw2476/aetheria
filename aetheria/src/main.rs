@@ -13,7 +13,7 @@ mod camera;
 mod transform;
 mod input;
 
-use std::sync::Arc;
+use std::{sync::Arc, ops::Deref};
 use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry};
 use bytemuck::cast_slice;
@@ -21,7 +21,7 @@ use camera::Camera;
 use time::Time;
 use transform::Transform;
 use vulkan::Context;
-use renderer::{Renderer, Renderable, RenderObject};
+use renderer::{Renderer, Renderable, RenderObject, Light};
 use winit::{event_loop::ControlFlow, event::{VirtualKeyCode, MouseButton}};
 use glam::{Vec3, Quat, Vec4};
 use input::{Keyboard, Mouse};
@@ -133,6 +133,35 @@ fn get_coord() -> f32 {
 const CAMERA_SENSITIVITY: f32 = 250.0;
 const MOVEMENT_SENSITIVITY: f32 = 1.0;
 
+struct Sun {
+    noon_pos: Vec3,
+    pub light: Light,
+    theta: f32
+}
+
+impl Sun {
+    pub fn new(noon_pos: Vec3, strength: f32, color: Vec3) -> Self {
+        Self { noon_pos, light: Light::new(noon_pos, strength, color), theta: 0.0 }
+    }
+
+    pub fn update_theta(&mut self, theta: f32) {
+        self.theta = theta;
+        self.light.position = Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), self.theta) * self.noon_pos;
+    }
+
+    pub fn frame_finished(&mut self, time: &Time) {
+        self.update_theta(self.theta + (time.delta_seconds() * (std::f32::consts::PI / 15.0)));
+    }
+}
+
+impl Deref for Sun {
+    type Target = Light;
+
+    fn deref(&self) -> &Self::Target {
+        &self.light
+    }
+}
+
 fn main() {
     tracing_subscriber::fmt::init();
 
@@ -151,6 +180,10 @@ fn main() {
 
     let tree = Tree::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
     let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
+
+
+    let mut sun = Sun::new(Vec3::new(0.0, 10000.0, 0.0), 0.0, Vec3::new(0.8, 1.0, 0.5));
+    sun.light.strength = sun.light.position.length().powf(2.0) * 1.8;
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -184,11 +217,16 @@ fn main() {
                 if keyboard.is_key_down(VirtualKeyCode::S) { camera.target += camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
                 if keyboard.is_key_down(VirtualKeyCode::A) { camera.target -= camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
                 if keyboard.is_key_down(VirtualKeyCode::D) { camera.target += camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
-                renderer.render(&[&tree, &grass], &camera, &time);
+
+                if keyboard.is_key_pressed(VirtualKeyCode::Up) { sun.light.strength *= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
+                if keyboard.is_key_pressed(VirtualKeyCode::Down) { sun.light.strength /= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
+
+                renderer.render(&[&tree, &grass], &[*sun], &camera, &time);
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();
                 mouse.frame_finished();
+                sun.frame_finished(&time);
             }
             _ => ()
         };

@@ -36,7 +36,7 @@ impl Time {
         let delta = self.delta_seconds();
         self.time += delta;
 
-        println!("FPS: {}", 1.0 / self.delta_seconds());
+        //println!("FPS: {}", 1.0 / self.delta_seconds());
 
         self.last_frame = self.current_frame;
         self.current_frame = Instant::now();
