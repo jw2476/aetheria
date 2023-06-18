@@ -12,6 +12,7 @@ layout(set = 0, binding = 2) uniform Time {
 
 struct Vertex {
 	vec3 position;
+	vec3 normal;
 };
 
 layout(std140, set = 1, binding = 0) buffer Vertices {
@@ -140,6 +141,7 @@ vec3 random_unit_sphere(float seed) {
 struct TriangleHit {
 	bool hit;
 	vec3 position;
+	vec3 normal;
 	float t;
 };
 
@@ -154,6 +156,7 @@ TriangleHit triangle_hit(Ray ray, Triangle triangle) {
 	TriangleHit hit;
 	hit.hit = all(greaterThanEqual(b, vec4(0.0))) && all(lessThanEqual(b.yzw, vec3(1.0)));
 	hit.position = ray.origin + b.x * ray.direction;
+	hit.normal = triangle.v0.normal * b.y + triangle.v1.normal * b.z + triangle.v2.normal * b.w;
 	hit.t = b.x;
 	return hit;
 }
@@ -191,7 +194,7 @@ HitPayload trace_ray(Ray ray) {
 				payload.hit = hit.hit;
 				payload.material = mesh.material;
 				payload.position = hit.position;
-				payload.normal = -normalize(cross(triangle.v0.position - triangle.v2.position, triangle.v1.position - triangle.v2.position));
+				payload.normal = normalize(hit.normal);
 			}
 		}
 	}
