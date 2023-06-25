@@ -18,6 +18,7 @@ use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
+use rand::Rng;
 use time::Time;
 use transform::Transform;
 use vulkan::Context;
@@ -149,10 +150,11 @@ impl Sun {
         self.light.position = Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), self.theta) * self.noon_pos;
         self.light.color = Vec3::new(0.7 + 0.1 * self.theta.sin().powf(2.0), 0.2 + 0.8 * self.theta.cos().powf(2.0), 0.8 * self.theta.cos().powf(2.0));
         self.light.strength = self.light.position.length().powf(2.0) * 3.5 * self.light.position.normalize().dot(Vec3::new(0.0, 1.0, 0.0)).powf(1.0/9.0);
+        self.light.strength = self.light.strength.max(0.0);
     }
 
     pub fn frame_finished(&mut self, time: &Time) {
-        self.update_theta(self.theta + (time.delta_seconds() * (std::f32::consts::PI / 15.0)));
+        self.update_theta(self.theta + (time.delta_seconds() * (std::f32::consts::PI / 60.0)));
     }
 }
 
@@ -179,13 +181,21 @@ fn main() {
     let mut time = Time::new().unwrap();
     let mut keyboard = Keyboard::new();
     let mut mouse = Mouse::new();
+    let mut rng = rand::thread_rng();
 
-    let tree = Tree::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
+    let mut trees: Vec<Tree> = Vec::new();
+
+    for _ in 0..10 {
+        let translation = Vec3::new(rng.gen_range(-400.0..400.0), 0.0, rng.gen_range(-400.0..400.0));
+        let transform = Transform { translation, rotation: Quat::IDENTITY, scale: Vec3::new(0.5, 0.5, 0.5) };
+        trees.push(Tree::load(&mut renderer, &mut mesh_registry, transform).unwrap()); 
+    }
+
     let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
 
-
     let mut sun = Sun::new(Vec3::new(0.0, 10000.0, 0.0), 0.0, Vec3::new(0.8, 1.0, 0.5));
-    sun.light.strength = sun.light.position.length().powf(2.0) * 3.5;
+    let firefly = Light::new(Vec3::new(0.0, 50.0, 100.0), 20000.0, Vec3::new(0.2, 1.0, 0.4));
+
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
             return;
@@ -222,7 +232,7 @@ fn main() {
                 if keyboard.is_key_pressed(VirtualKeyCode::Up) { sun.light.strength *= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
                 if keyboard.is_key_pressed(VirtualKeyCode::Down) { sun.light.strength /= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
 
-                renderer.render(&[&tree, &grass], &[*sun], &camera, &time);
+                renderer.render(&[&grass, &trees], &[*sun, firefly], &camera, &time, &mesh_registry);
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();

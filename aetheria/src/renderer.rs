@@ -89,6 +89,12 @@ pub trait Renderable {
     fn get_objects(&self) -> Vec<&RenderObject>;
 }
 
+impl<T : Renderable> Renderable for Vec<T> {
+    fn get_objects(&self) -> Vec<&RenderObject> {
+        self.iter().flat_map(|item| item.get_objects()).collect::<Vec<&RenderObject>>()
+    }
+} 
+
 const PIXEL_WIDTH: u32 = 480;
 const PIXEL_HEIGHT: u32 = 270;
 
@@ -123,6 +129,10 @@ struct MeshData {
     num_indices: i32,
     material: i32,
     _padding: [f32; 1],
+    min_aabb: [f32; 3],
+    _padding2: [f32; 1],
+    max_aabb: [f32; 3],
+    _padding3: [f32; 1],
     transform: [f32; 16],
 }
 
@@ -242,7 +252,24 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn render(&mut self, renderables: &[&dyn Renderable], lights: &[Light], camera: &Camera, time: &Time) {
+    fn calculate_box(object: &RenderObject) -> (Vec3, Vec3) {
+        let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+        for vertex in &object.mesh.vertices {
+            let v = object.transform.get_matrix() * Vec4::new(vertex.pos.x, vertex.pos.y, vertex.pos.z, 1.0);
+            min.x = min.x.min(v.x);
+            min.y = min.y.min(v.y);
+            min.z = min.z.min(v.z);
+
+            max.x = max.x.max(v.x);
+            max.y = max.y.max(v.y);
+            max.z = max.z.max(v.z);
+        };
+
+        return (min, max);
+    }
+
+    pub fn render(&mut self, renderables: &[&dyn Renderable], lights: &[Light], camera: &Camera, time: &Time, mesh_registry: &MeshRegistry) {
         unsafe {
             let in_flight = self.in_flight.clone();
 
@@ -257,12 +284,27 @@ impl Renderer {
             let mut indices: Vec<i32> = Vec::new();
             let mut materials: Vec<Material> = Vec::new();
 
+            let mut mesh_to_index: HashMap<*const Mesh, i32> = HashMap::new();
+
+            for mesh in &mesh_registry.get_meshes() {
+                mesh_to_index.insert(Arc::as_ptr(&mesh), indices.len() as i32);
+                indices.append(&mut mesh.indices.iter().copied().map(|index| index as i32 + vertices.len() as i32).collect::<Vec<i32>>());
+                vertices.append(&mut mesh.vertices.clone());
+            }
+
             for (i, object) in objects.iter().enumerate() {
+                let (min_aabb, max_aabb) = Self::calculate_box(&object);
+
                 let transform = object.transform.get_matrix().to_cols_array();
-                let mesh = MeshData { first_index: indices.len() as i32, num_indices: object.mesh.indices.len() as i32, material: i as i32, transform, ..Default::default() };
+                let mesh = MeshData { 
+                    first_index: *mesh_to_index.get(&Arc::as_ptr(&object.mesh)).expect("Can't find index in mesh_to_index"), 
+                    num_indices: object.mesh.indices.len() as i32, 
+                    material: i as i32, transform, 
+                    min_aabb: min_aabb.to_array(), 
+                    max_aabb: max_aabb.to_array(), 
+                    ..Default::default() 
+                };
                 meshes.push(mesh);
-                indices.append(&mut object.mesh.indices.iter().copied().map(|index| index as i32 + vertices.len() as i32).collect::<Vec<i32>>());
-                vertices.append(&mut object.mesh.vertices.clone());
                 materials.push(object.material);
             }
 

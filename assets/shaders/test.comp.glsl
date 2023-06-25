@@ -27,6 +27,8 @@ struct Mesh {
 	int first_index;
 	int num_indicies;
 	int material;
+	vec3 minAABB;
+	vec3 maxAABB;
 	mat4 transform;
 };
 
@@ -108,6 +110,7 @@ struct HitPayload {
 	vec3 normal;
 	int material;
 	vec3 position;
+	float t;
 };
 
 struct Triangle {
@@ -166,6 +169,16 @@ Vertex vertex_transform(Vertex v, mat4 transform) {
 	return v;
 }
 
+bool intersects_box(Ray ray, vec3 bmin, vec3 bmax) {
+	float tx1 = (bmin.x - ray.origin.x) / ray.direction.x, tx2 = (bmax.x - ray.origin.x) / ray.direction.x;
+	float tmin = min( tx1, tx2 ), tmax = max( tx1, tx2 );
+	float ty1 = (bmin.y - ray.origin.y) / ray.direction.y, ty2 = (bmax.y - ray.origin.y) / ray.direction.y;
+	tmin = max( tmin, min( ty1, ty2 ) ), tmax = min( tmax, max( ty1, ty2 ) );
+	float tz1 = (bmin.z - ray.origin.z) / ray.direction.z, tz2 = (bmax.z - ray.origin.z) / ray.direction.z;
+	tmin = max( tmin, min( tz1, tz2 ) ), tmax = min( tmax, max( tz1, tz2 ) );
+	return tmax >= tmin && tmax > 0;
+}
+
 HitPayload trace_ray(Ray ray) {
 	HitPayload payload;
 	payload.hit = false;
@@ -177,6 +190,9 @@ HitPayload trace_ray(Ray ray) {
 
 	for (int meshIdx = 0; meshIdx < meshes.numMeshes; meshIdx++) {
 		Mesh mesh = meshes.meshes[meshIdx];
+		
+		if (!intersects_box(ray, mesh.minAABB, mesh.maxAABB)) { continue; }
+
 		for (int indexIdx = mesh.first_index; indexIdx < (mesh.first_index + mesh.num_indicies); indexIdx += 3) {
 			Triangle triangle;
 			triangle.v0 = vertices.vertices[indicies.indicies[indexIdx]];
@@ -189,16 +205,15 @@ HitPayload trace_ray(Ray ray) {
 			TriangleHit hit = triangle_hit(ray, triangle);
 			bool overwrite = hit.hit && hit.t < minT;
 
-			if (overwrite) {
-				minT = hit.t;
-				payload.hit = hit.hit;
-				payload.material = mesh.material;
-				payload.position = hit.position;
-				payload.normal = normalize(hit.normal);
-			}
+			minT = minT * float(!overwrite) + min(hit.t, minT) * float(overwrite);
+			payload.hit = payload.hit || hit.hit;
+			payload.material = payload.material * int(!overwrite) + mesh.material * int(overwrite);
+			payload.position = mix(payload.position, hit.position, float(overwrite));
+			payload.normal = mix(payload.normal, normalize(hit.normal), float(overwrite));
 		}
 	}
 
+	payload.t = minT;
 	return payload;
 }
 
@@ -260,22 +275,24 @@ vec3 per_pixel(Ray incoming) {
 	Ray outgoing;
 	outgoing.origin = hit.position + hit.normal;
 
-	int n = 0;
 	vec3 totalColor = vec3(0.0);
 
 	for (int i = 0; i < lights.numLights; i++) {
 		Light light = lights.lights[i];
 		float distance = length(light.position - hit.position);
-		
-		outgoing.direction = normalize(light.position - hit.position); 
-		HitPayload hit2 = trace_ray(outgoing);
 
-		bool lightVisible = !hit2.hit;
-		n += int(lightVisible);
-		totalColor += (float(lightVisible) * light.color * light.strength * get_brdf(material, incoming, outgoing, hit.normal)) / (distance*distance);
+		outgoing.direction = normalize(light.position - hit.position); 
+
+		vec3 color = (light.color * light.strength * get_brdf(material, incoming, outgoing, hit.normal)) / (distance*distance);
+
+		if (length(color) < 0.01) { continue; }
+
+		HitPayload hit2 = trace_ray(outgoing);
+		bool lightVisible = !hit2.hit || (hit2.t > distance);
+		totalColor += color * float(lightVisible);
 	}
 
-	return clamp(totalColor / max(n, 1), vec3(0.0), vec3(1.0));
+	return clamp(totalColor / max(lights.numLights, 1), vec3(0.0), vec3(1.0));
 }
 
 float getPaletteDistance(vec3 a, vec3 b) {

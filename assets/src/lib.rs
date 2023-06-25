@@ -62,6 +62,10 @@ impl MeshRegistry {
         }
     }
 
+    pub fn get_meshes(&self) -> Vec<Arc<Mesh>> {
+        self.registry.values().filter_map(|weak| weak.upgrade()).collect()
+    }
+
     pub fn load(&mut self, ctx: &Context, path: &str) -> Arc<Mesh> {
         let registry_value = self.registry.get(&path.to_owned()).map(|weak| weak.upgrade()).flatten();
 
