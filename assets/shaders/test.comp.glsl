@@ -300,7 +300,9 @@ vec3 per_pixel(Ray incoming) {
 		totalColor += color * float(lightVisible);
 	}
 
-	return clamp(totalColor / max(lights.numLights, 1), vec3(0.0), vec3(1.0));
+	vec3 color = totalColor / max(lights.numLights, 1);
+	if (length(color) > 1.0) { return normalize(color); }
+	return color;
 }
 
 float getPaletteDistance(vec3 a, vec3 b) {

@@ -136,6 +136,7 @@ const PLAYER_SPEED: f32 = 100.0;
 const JUMP_HEIGHT: f32 = 100.0;
 const JUMP_SPEED: f32 = 4.0;
 const DASH_DISTANCE: f32 = 100.0;
+const FIREFLY_SPEED: f32 = 1.0;
 
 struct Sun {
     noon_pos: Vec3,
@@ -145,7 +146,7 @@ struct Sun {
 
 impl Sun {
     pub fn new(noon_pos: Vec3, strength: f32, color: Vec3) -> Self {
-        Self { noon_pos, light: Light::new(noon_pos, strength, color), theta: 0.0 }
+        Self { noon_pos, light: Light::new(noon_pos, strength, color), theta: 3.0 * std::f32::consts::PI / 2.0 }
     }
 
     pub fn update_theta(&mut self, theta: f32) {
@@ -220,6 +221,47 @@ impl Renderable for Player {
     }
 }
 
+
+struct Firefly {
+    light: Light,
+    velocity: Vec3,
+
+}
+
+impl Firefly {
+    pub fn new(position: Vec3, color: Vec3) -> Self {
+        let light = Light::new(position, 20000.0, color);
+        
+        let mut rng = rand::thread_rng();
+        let velocity = Vec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)).normalize_or_zero();
+        Self { light, velocity }
+    }
+
+    pub fn frame_finished(&mut self, sun: &Sun) { 
+        if sun.theta > (std::f32::consts::PI / 3.0) && sun.theta < (std::f32::consts::PI * (5.0 / 3.0)) {
+            self.light.strength = 20000.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
+        } else {
+            self.light.strength = 0.0
+        }
+
+        self.light.position += self.velocity * FIREFLY_SPEED;
+
+        let mut rng = rand::thread_rng();
+        let random_vec3 = Vec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)).normalize_or_zero();
+        self.velocity = (self.velocity + random_vec3 * 0.1).normalize_or_zero(); 
+
+        self.light.position.y = self.position.y.clamp(50.0, 100.0);
+
+    }
+}
+
+impl Deref for Firefly {
+    type Target = Light;
+    fn deref(&self) -> &Self::Target {
+        &self.light
+    }
+}
+
 fn main() {
     tracing_subscriber::fmt::init();
 
@@ -244,11 +286,11 @@ fn main() {
         let transform = Transform { translation, rotation: Quat::IDENTITY, scale: Vec3::new(0.5, 0.5, 0.5) };
         trees.push(Tree::load(&mut renderer, &mut mesh_registry, transform).unwrap()); 
     }
-
+    
     let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
 
-    let mut sun = Sun::new(Vec3::new(0.0, 10000.0, 0.0), 0.0, Vec3::new(0.8, 1.0, 0.5));
-    let mut firefly = Light::new(Vec3::new(0.0, 50.0, 100.0), 20000.0, Vec3::new(0.2, 1.0, 0.4));
+    let mut sun = Sun::new(Vec3::new(0.0, 1000000.0, 0.0), 0.0, Vec3::new(0.8, 1.0, 0.5));
+    let mut firefly = Firefly::new(Vec3::new(0.0, 50.0, 100.0), Vec3::new(0.2, 1.0, 0.4));
    
     let mut player = { 
         let transform = Transform { translation: Vec3::new(0.0, 10.0, 0.0), rotation: Quat::IDENTITY, scale: Vec3::new(0.1, 0.1, 0.1) };
@@ -287,22 +329,17 @@ fn main() {
                 if keyboard.is_key_pressed(VirtualKeyCode::Up) { sun.light.strength *= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
                 if keyboard.is_key_pressed(VirtualKeyCode::Down) { sun.light.strength /= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
 
-                renderer.render(&[&grass, &trees, &player], &[*sun, firefly], &camera, &time, &mesh_registry);
+                renderer.render(&[&grass, &trees, &player], &[*sun, *firefly], &camera, &time, &mesh_registry);
 
                 let viewport = Vec2::new(window.inner_size().width as f32, window.inner_size().height as f32);
                 player.frame_finished(&keyboard, &mouse, &camera, &time, viewport);
+                firefly.frame_finished(&sun);
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();
                 mouse.frame_finished();
                 sun.frame_finished(&time);
                 camera.target = player.get_transform().translation;
-                if sun.theta > (std::f32::consts::PI / 3.0) && sun.theta < (std::f32::consts::PI * (5.0 / 3.0)) {
-                    firefly.strength = 20000.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
-                } else {
-                    firefly.strength = 0.0
-                }
-
             }
             _ => ()
         };
