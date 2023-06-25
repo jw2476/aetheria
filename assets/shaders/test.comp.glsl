@@ -204,8 +204,16 @@ HitPayload trace_ray(Ray ray) {
 			
 			TriangleHit hit = triangle_hit(ray, triangle);
 			bool overwrite = hit.hit && hit.t < minT;
-
-			minT = minT * float(!overwrite) + min(hit.t, minT) * float(overwrite);
+				
+			if (overwrite) {
+				minT = hit.t;
+				payload.hit = true;
+				payload.material = mesh.material;
+				payload.position = hit.position;
+				payload.normal = normalize(hit.normal);
+			}
+			
+			minT = minT * float(!overwrite) + hit.t * float(overwrite);
 			payload.hit = payload.hit || hit.hit;
 			payload.material = payload.material * int(!overwrite) + mesh.material * int(overwrite);
 			payload.position = mix(payload.position, hit.position, float(overwrite));
