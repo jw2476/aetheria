@@ -13,7 +13,7 @@ mod camera;
 mod transform;
 mod input;
 
-use std::{sync::Arc, ops::Deref, time::Instant};
+use std::{sync::Arc, ops::Deref, time::Instant, f32::consts::PI};
 use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry};
 use bytemuck::cast_slice;
@@ -145,15 +145,17 @@ struct Sun {
 }
 
 impl Sun {
-    pub fn new(noon_pos: Vec3, strength: f32, color: Vec3) -> Self {
-        Self { noon_pos, light: Light::new(noon_pos, strength, color), theta: 3.0 * std::f32::consts::PI / 2.0 }
+    pub fn new(noon_pos: Vec3, color: Vec3) -> Self {
+        let mut sun = Self { noon_pos, light: Light::new(noon_pos, 0.0, color), theta: 0.0 };
+        sun.update_theta(sun.theta);
+        sun
     }
 
     pub fn update_theta(&mut self, theta: f32) {
-        self.theta = theta;
+        self.theta = theta % (std::f32::consts::PI * 2.0);
         self.light.position = Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), self.theta) * self.noon_pos;
         self.light.color = Vec3::new(0.7 + 0.1 * self.theta.sin().powf(2.0), 0.2 + 0.8 * self.theta.cos().powf(2.0), 0.8 * self.theta.cos().powf(2.0));
-        self.light.strength = self.light.position.length().powf(2.0) * 7.5 * self.light.position.normalize().dot(Vec3::new(0.0, 1.0, 0.0)).powf(1.0/9.0);
+        self.light.strength = self.light.position.length().powf(2.0) * 5.0 * self.light.position.normalize().dot(Vec3::new(0.0, 1.0, 0.0)).powf(1.0/9.0);
         self.light.strength = self.light.strength.max(0.0);
     }
 
@@ -225,7 +227,7 @@ impl Renderable for Player {
 struct Firefly {
     light: Light,
     velocity: Vec3,
-
+    origin: Vec3
 }
 
 impl Firefly {
@@ -234,12 +236,12 @@ impl Firefly {
         
         let mut rng = rand::thread_rng();
         let velocity = Vec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)).normalize_or_zero();
-        Self { light, velocity }
+        Self { light, velocity, origin: position }
     }
 
     pub fn frame_finished(&mut self, sun: &Sun) { 
         if sun.theta > (std::f32::consts::PI / 3.0) && sun.theta < (std::f32::consts::PI * (5.0 / 3.0)) {
-            self.light.strength = 20000.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
+            self.light.strength = 10000.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
         } else {
             self.light.strength = 0.0
         }
@@ -248,9 +250,11 @@ impl Firefly {
 
         let mut rng = rand::thread_rng();
         let random_vec3 = Vec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)).normalize_or_zero();
-        self.velocity = (self.velocity + random_vec3 * 0.1).normalize_or_zero(); 
+        let origin_direction = (self.origin - self.light.position).normalize_or_zero();
+        let origin_bias = ((self.origin - self.light.position).length() - 100.0) / 100.0;
+        self.velocity = (self.velocity + random_vec3 * 0.1 + origin_direction * origin_bias).normalize_or_zero(); 
 
-        self.light.position.y = self.position.y.clamp(50.0, 100.0);
+        self.light.position.y = self.position.y.clamp(25.0, 75.0);
 
     }
 }
@@ -289,8 +293,14 @@ fn main() {
     
     let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
 
-    let mut sun = Sun::new(Vec3::new(0.0, 1000000.0, 0.0), 0.0, Vec3::new(0.8, 1.0, 0.5));
-    let mut firefly = Firefly::new(Vec3::new(0.0, 50.0, 100.0), Vec3::new(0.2, 1.0, 0.4));
+    let mut sun = Sun::new(Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
+
+    let mut fireflies = Vec::new();
+
+    for _ in 0..10 {
+        let position = Vec3::new(rng.gen_range(-400.0..400.0), 50.0, rng.gen_range(-400.0..400.0));
+        fireflies.push(Firefly::new(position, Vec3::new(0.2, 1.0, 0.4)));
+    }
    
     let mut player = { 
         let transform = Transform { translation: Vec3::new(0.0, 10.0, 0.0), rotation: Quat::IDENTITY, scale: Vec3::new(0.1, 0.1, 0.1) };
@@ -329,11 +339,13 @@ fn main() {
                 if keyboard.is_key_pressed(VirtualKeyCode::Up) { sun.light.strength *= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
                 if keyboard.is_key_pressed(VirtualKeyCode::Down) { sun.light.strength /= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
 
-                renderer.render(&[&grass, &trees, &player], &[*sun, *firefly], &camera, &time, &mesh_registry);
+                let mut lights = fireflies.iter().map(|firefly| **firefly).collect::<Vec<Light>>();
+                lights.push(*sun);
+                renderer.render(&[&grass, &trees, &player], &lights, &camera, &time, &mesh_registry);
 
                 let viewport = Vec2::new(window.inner_size().width as f32, window.inner_size().height as f32);
                 player.frame_finished(&keyboard, &mouse, &camera, &time, viewport);
-                firefly.frame_finished(&sun);
+                fireflies.iter_mut().for_each(|firefly| firefly.frame_finished(&sun));
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();

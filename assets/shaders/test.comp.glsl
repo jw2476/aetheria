@@ -300,7 +300,7 @@ vec3 per_pixel(Ray incoming) {
 		totalColor += color * float(lightVisible);
 	}
 
-	vec3 color = totalColor / max(lights.numLights, 1);
+	vec3 color = totalColor;
 	if (length(color) > 1.0) { return normalize(color); }
 	return color;
 }
