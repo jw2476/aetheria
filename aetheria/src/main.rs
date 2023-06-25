@@ -13,7 +13,7 @@ mod camera;
 mod transform;
 mod input;
 
-use std::{sync::Arc, ops::Deref};
+use std::{sync::Arc, ops::Deref, time::Instant};
 use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry};
 use bytemuck::cast_slice;
@@ -24,7 +24,7 @@ use transform::Transform;
 use vulkan::Context;
 use renderer::{Renderer, Renderable, RenderObject, Light};
 use winit::{event_loop::ControlFlow, event::{VirtualKeyCode, MouseButton}};
-use glam::{Vec3, Quat, Vec4};
+use glam::{Vec3, Quat, Vec4, Vec2};
 use input::{Keyboard, Mouse};
 
 struct Indices(Vec<u32>);
@@ -132,7 +132,10 @@ fn get_coord() -> f32 {
 
 
 const CAMERA_SENSITIVITY: f32 = 250.0;
-const MOVEMENT_SENSITIVITY: f32 = 1.0;
+const PLAYER_SPEED: f32 = 100.0;
+const JUMP_HEIGHT: f32 = 100.0;
+const JUMP_SPEED: f32 = 4.0;
+const DASH_DISTANCE: f32 = 100.0;
 
 struct Sun {
     noon_pos: Vec3,
@@ -149,7 +152,7 @@ impl Sun {
         self.theta = theta;
         self.light.position = Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), self.theta) * self.noon_pos;
         self.light.color = Vec3::new(0.7 + 0.1 * self.theta.sin().powf(2.0), 0.2 + 0.8 * self.theta.cos().powf(2.0), 0.8 * self.theta.cos().powf(2.0));
-        self.light.strength = self.light.position.length().powf(2.0) * 3.5 * self.light.position.normalize().dot(Vec3::new(0.0, 1.0, 0.0)).powf(1.0/9.0);
+        self.light.strength = self.light.position.length().powf(2.0) * 7.5 * self.light.position.normalize().dot(Vec3::new(0.0, 1.0, 0.0)).powf(1.0/9.0);
         self.light.strength = self.light.strength.max(0.0);
     }
 
@@ -163,6 +166,57 @@ impl Deref for Sun {
 
     fn deref(&self) -> &Self::Target {
         &self.light
+    }
+}
+
+struct Player {
+    player: RenderObject,
+    jump_t: f32
+}
+
+impl Player {
+    pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Self, vk::Result> {
+       let player = RenderObject::builder(renderer, mesh_registry)
+           .set_mesh("player.obj")?
+           .set_color(Vec3::new(1.0, 1.0, 1.0))
+           .set_transform(transform)
+           .build()?;
+
+        Ok(Self { player, jump_t: 0.0 })
+    }
+
+    pub fn update_transform<F: Fn(&mut Transform)>(&mut self, predicate: F) {
+        predicate(&mut self.player.transform);
+    }
+
+    pub fn get_transform(&self) -> Transform {
+        self.player.transform.clone()
+    }
+
+    pub fn frame_finished(&mut self, keyboard: &Keyboard, mouse: &Mouse, camera: &Camera, time: &Time, viewport: Vec2) {
+        if keyboard.is_key_pressed(VirtualKeyCode::Space) && self.jump_t == 0.0 { self.jump_t = std::f32::consts::PI - 0.0001; }
+        println!("{}", self.jump_t);
+        self.player.transform.translation.y = self.jump_t.sin().powf(0.6) * JUMP_HEIGHT;
+        self.jump_t -= time.delta_seconds() * JUMP_SPEED;
+        self.jump_t = self.jump_t.max(0.0);
+
+        if keyboard.is_key_pressed(VirtualKeyCode::Q) {
+            let mouse_direction = (mouse.position - (viewport/2.0)).normalize_or_zero();
+            let mouse_direction = camera.get_rotation() * Vec3::new(mouse_direction.x, 0.0, mouse_direction.y);
+            self.player.transform.translation += mouse_direction * DASH_DISTANCE;
+        }
+
+        let z = keyboard.is_key_down(VirtualKeyCode::S) as i32 - keyboard.is_key_down(VirtualKeyCode::W) as i32;
+        let x = keyboard.is_key_down(VirtualKeyCode::D) as i32 - keyboard.is_key_down(VirtualKeyCode::A) as i32;
+        if x == 0 && z == 0 { return; }
+        let delta = Vec3::new(x as f32, 0.0, z as f32).normalize() * PLAYER_SPEED * time.delta_seconds();
+        self.player.transform.translation += camera.get_rotation() * delta;  
+    }
+}
+
+impl Renderable for Player {
+    fn get_objects(&self) -> Vec<&RenderObject> {
+        vec![&self.player]
     }
 }
 
@@ -194,7 +248,12 @@ fn main() {
     let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
 
     let mut sun = Sun::new(Vec3::new(0.0, 10000.0, 0.0), 0.0, Vec3::new(0.8, 1.0, 0.5));
-    let firefly = Light::new(Vec3::new(0.0, 50.0, 100.0), 20000.0, Vec3::new(0.2, 1.0, 0.4));
+    let mut firefly = Light::new(Vec3::new(0.0, 50.0, 100.0), 20000.0, Vec3::new(0.2, 1.0, 0.4));
+   
+    let mut player = { 
+        let transform = Transform { translation: Vec3::new(0.0, 10.0, 0.0), rotation: Quat::IDENTITY, scale: Vec3::new(0.1, 0.1, 0.1) };
+        Player::load(&mut renderer, &mut mesh_registry, transform).unwrap()
+    };
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -224,20 +283,26 @@ fn main() {
             winit::event::Event::MainEventsCleared => {
                 if keyboard.is_key_down(VirtualKeyCode::Escape) { control_flow.set_exit() }
                 if mouse.is_button_down(MouseButton::Right) { camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY }
-                if keyboard.is_key_down(VirtualKeyCode::W) { camera.target -= camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
-                if keyboard.is_key_down(VirtualKeyCode::S) { camera.target += camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
-                if keyboard.is_key_down(VirtualKeyCode::A) { camera.target -= camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
-                if keyboard.is_key_down(VirtualKeyCode::D) { camera.target += camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
 
                 if keyboard.is_key_pressed(VirtualKeyCode::Up) { sun.light.strength *= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
                 if keyboard.is_key_pressed(VirtualKeyCode::Down) { sun.light.strength /= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
 
-                renderer.render(&[&grass, &trees], &[*sun, firefly], &camera, &time, &mesh_registry);
+                renderer.render(&[&grass, &trees, &player], &[*sun, firefly], &camera, &time, &mesh_registry);
+
+                let viewport = Vec2::new(window.inner_size().width as f32, window.inner_size().height as f32);
+                player.frame_finished(&keyboard, &mouse, &camera, &time, viewport);
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();
                 mouse.frame_finished();
                 sun.frame_finished(&time);
+                camera.target = player.get_transform().translation;
+                if sun.theta > (std::f32::consts::PI / 3.0) && sun.theta < (std::f32::consts::PI * (5.0 / 3.0)) {
+                    firefly.strength = 20000.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
+                } else {
+                    firefly.strength = 0.0
+                }
+
             }
             _ => ()
         };

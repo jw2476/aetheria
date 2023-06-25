@@ -41,6 +41,7 @@ impl Keyboard {
 #[derive(Default)]
 pub struct Mouse {
     pub delta: Vec2,
+    pub position: Vec2,
     down: HashSet<winit::event::MouseButton>,
     pressed: HashSet<winit::event::MouseButton>
 }
@@ -65,6 +66,10 @@ impl Mouse {
                     winit::event::ElementState::Pressed => { self.down.insert(*button); self.pressed.insert(*button) },
                     winit::event::ElementState::Released => self.down.remove(button)
                 };
+            }
+
+            if let winit::event::WindowEvent::CursorMoved { position, ..} = event {
+                self.position = Vec2::new(position.x as f32, position.y as f32);
             }
         }
 
