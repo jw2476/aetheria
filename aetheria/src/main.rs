@@ -197,18 +197,21 @@ impl Player {
     }
 
     pub fn frame_finished(&mut self, keyboard: &Keyboard, mouse: &Mouse, camera: &Camera, time: &Time, viewport: Vec2) {
-        if keyboard.is_key_pressed(VirtualKeyCode::Space) && self.jump_t == 0.0 { self.jump_t = std::f32::consts::PI - 0.0001; }
-        println!("{}", self.jump_t);
-        self.player.transform.translation.y = self.jump_t.sin().powf(0.6) * JUMP_HEIGHT;
-        self.jump_t -= time.delta_seconds() * JUMP_SPEED;
-        self.jump_t = self.jump_t.max(0.0);
-
-        if keyboard.is_key_pressed(VirtualKeyCode::Q) {
+        // Dash
+        if keyboard.is_key_pressed(VirtualKeyCode::Space) && self.jump_t >= (PI / 4.0) { 
             let mouse_direction = (mouse.position - (viewport/2.0)).normalize_or_zero();
             let mouse_direction = camera.get_rotation() * Vec3::new(mouse_direction.x, 0.0, mouse_direction.y);
             self.player.transform.translation += mouse_direction * DASH_DISTANCE;
         }
 
+        // Jump
+        if keyboard.is_key_pressed(VirtualKeyCode::Space) && self.jump_t == 0.0 { self.jump_t = std::f32::consts::PI - 0.0001; }
+
+        self.player.transform.translation.y = self.jump_t.sin().powf(0.6) * JUMP_HEIGHT;
+        self.jump_t -= time.delta_seconds() * JUMP_SPEED;
+        self.jump_t = self.jump_t.max(0.0);
+
+        // Movement
         let z = keyboard.is_key_down(VirtualKeyCode::S) as i32 - keyboard.is_key_down(VirtualKeyCode::W) as i32;
         let x = keyboard.is_key_down(VirtualKeyCode::D) as i32 - keyboard.is_key_down(VirtualKeyCode::A) as i32;
         if x == 0 && z == 0 { return; }
@@ -239,14 +242,14 @@ impl Firefly {
         Self { light, velocity, origin: position }
     }
 
-    pub fn frame_finished(&mut self, sun: &Sun) { 
+    pub fn frame_finished(&mut self, sun: &Sun, time: &Time) { 
         if sun.theta > (std::f32::consts::PI / 3.0) && sun.theta < (std::f32::consts::PI * (5.0 / 3.0)) {
             self.light.strength = 10000.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
         } else {
             self.light.strength = 0.0
         }
 
-        self.light.position += self.velocity * FIREFLY_SPEED;
+        self.light.position += self.velocity * FIREFLY_SPEED * time.delta_seconds();
 
         let mut rng = rand::thread_rng();
         let random_vec3 = Vec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)).normalize_or_zero();
@@ -345,7 +348,7 @@ fn main() {
 
                 let viewport = Vec2::new(window.inner_size().width as f32, window.inner_size().height as f32);
                 player.frame_finished(&keyboard, &mouse, &camera, &time, viewport);
-                fireflies.iter_mut().for_each(|firefly| firefly.frame_finished(&sun));
+                fireflies.iter_mut().for_each(|firefly| firefly.frame_finished(&sun, &time));
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();
