@@ -224,16 +224,23 @@ impl Renderable for Player {
 struct Firefly {
     light: Light,
     velocity: Vec3,
-    origin: Vec3
+    origin: Vec3,
+    firefly: RenderObject
 }
 
 impl Firefly {
-    pub fn new(position: Vec3, color: Vec3) -> Self {
+    pub fn new(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, position: Vec3, color: Vec3) -> Result<Self, vk::Result> {
         let light = Light::new(position, 0.0, color);
+
+        let firefly = RenderObject::builder(renderer, mesh_registry)
+            .set_mesh("firefly.obj")?
+            .set_color(Vec3::new(0.0, 0.0, 0.0))
+            .set_transform(Transform { translation: position, rotation: Quat::IDENTITY, scale: Vec3::ONE })
+            .build()?;
         
         let mut rng = rand::thread_rng();
         let velocity = Vec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)).normalize_or_zero();
-        Self { light, velocity, origin: position }
+        Ok(Self { firefly, light, velocity, origin: position })
     }
 
     pub fn frame_finished(&mut self, sun: &Sun, time: &Time) { 
@@ -251,15 +258,21 @@ impl Firefly {
         let origin_bias = ((self.origin - self.light.position).length() - 100.0) / 100.0;
         self.velocity = (self.velocity + random_vec3 * 0.1 + origin_direction * origin_bias).normalize_or_zero(); 
 
-        self.light.position.y = self.position.y.clamp(5.0, 15.0);
-
+        self.light.position.y = self.light.position.y.clamp(5.0, 15.0);
+        self.firefly.transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0);
     }
 }
 
-impl Deref for Firefly {
-    type Target = Light;
-    fn deref(&self) -> &Self::Target {
+impl AsRef<Light> for Firefly {
+    fn as_ref(&self) -> &Light {
         &self.light
+    }
+}
+
+impl Renderable for Firefly {
+    fn get_objects(&self) -> Vec<&RenderObject> {
+        if (self.light.strength != 0.0) { vec![&self.firefly] }
+        else { vec![] }
     }
 }
 
@@ -297,7 +310,7 @@ fn main() {
 
     for _ in 0..10 {
         let position = Vec3::new(rng.gen_range(-400.0..400.0), 10.0, rng.gen_range(-400.0..400.0));
-        fireflies.push(Firefly::new(position, Vec3::new(0.2, 1.0, 0.4)));
+        fireflies.push(Firefly::new(&mut renderer, &mut mesh_registry, position, Vec3::new(0.2, 1.0, 0.4)).unwrap());
     }
    
     let mut player = { 
@@ -337,9 +350,9 @@ fn main() {
                 if keyboard.is_key_pressed(VirtualKeyCode::Up) { sun.light.strength *= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
                 if keyboard.is_key_pressed(VirtualKeyCode::Down) { sun.light.strength /= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
 
-                let mut lights = fireflies.iter().map(|firefly| **firefly).collect::<Vec<Light>>();
+                let mut lights = fireflies.iter().map(|firefly| *firefly.as_ref()).collect::<Vec<Light>>();
                 lights.push(*sun);
-                renderer.render(&[&grass, &trees, &player], &lights, &camera, &time, &mesh_registry);
+                renderer.render(&[&grass, &trees, &player, &fireflies], &lights, &camera, &time, &mesh_registry);
 
                 let viewport = Vec2::new(window.inner_size().width as f32, window.inner_size().height as f32);
                 player.frame_finished(&keyboard, &mouse, &camera, &time, viewport);
