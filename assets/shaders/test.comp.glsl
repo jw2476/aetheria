@@ -275,6 +275,8 @@ vec3 get_brdf(Material material, Ray incoming, Ray outgoing, vec3 normal) {
 	return (kDiffuse * material.albedo / PI + specular) * max(dot(normal, outgoing.direction), 0.0);
 }	
 
+float STEPS = 5;
+
 vec3 per_pixel(Ray incoming) {
 	HitPayload hit = trace_ray(incoming);
 	if (!hit.hit) { return vec3(0.0, 0.0, 0.0); }
