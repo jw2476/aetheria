@@ -63,6 +63,7 @@ layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 float INFINITY = 1.0/0.0;
 float EPSILON = 0.000001;
+float AMBIENT = 0.2;
 int RIS_M = 5;
 
 vec3 PALETTE[32] = {
@@ -213,11 +214,11 @@ HitPayload trace_ray(Ray ray) {
 				payload.normal = normalize(hit.normal);
 			}
 			
-			minT = minT * float(!overwrite) + hit.t * float(overwrite);
+			/*minT = minT * float(!overwrite) + hit.t * float(overwrite);
 			payload.hit = payload.hit || hit.hit;
 			payload.material = payload.material * int(!overwrite) + mesh.material * int(overwrite);
 			payload.position = mix(payload.position, hit.position, float(overwrite));
-			payload.normal = mix(payload.normal, normalize(hit.normal), float(overwrite));
+			payload.normal = mix(payload.normal, normalize(hit.normal), float(overwrite));*/
 		}
 	}
 
@@ -285,23 +286,26 @@ vec3 per_pixel(Ray incoming) {
 
 	vec3 totalColor = vec3(0.0);
 
+	vec3 diffuse = vec3(0.0);
+
 	for (int i = 0; i < lights.numLights; i++) {
 		Light light = lights.lights[i];
 		float distance = length(light.position - hit.position);
 
 		outgoing.direction = normalize(light.position - hit.position); 
 
-		vec3 color = (light.color * light.strength * get_brdf(material, incoming, outgoing, hit.normal)) / (distance*distance);
+		float lightContribution = light.strength / (distance*distance);
+		lightContribution *= max(dot(hit.normal, outgoing.direction), 0.0);
 
-		if (length(color) < 0.01) { continue; }
+		if (lightContribution < 0.01) { continue; }
 
 		HitPayload hit2 = trace_ray(outgoing);
 		bool lightVisible = !hit2.hit || (hit2.t > distance);
-		totalColor += color * float(lightVisible);
+		diffuse += light.color * lightContribution * float(lightVisible);
 	}
 
-	vec3 color = totalColor;
-	if (length(color) > 1.0) { return normalize(color); }
+	vec3 color = material.albedo * (diffuse + AMBIENT);
+	if (length(color) > 1.0) { color = normalize(color); }
 	return color;
 }
 

@@ -126,17 +126,12 @@ impl Renderable for Grass {
     }
 }
 
-fn get_coord() -> f32 {
-    (rand::random::<f32>() - 0.5) * 25.0
-}
-
-
 const CAMERA_SENSITIVITY: f32 = 250.0;
 const PLAYER_SPEED: f32 = 100.0;
 const JUMP_HEIGHT: f32 = 100.0;
 const JUMP_SPEED: f32 = 4.0;
 const DASH_DISTANCE: f32 = 100.0;
-const FIREFLY_SPEED: f32 = 1.0;
+const FIREFLY_SPEED: f32 = 60.0;
 
 struct Sun {
     noon_pos: Vec3,
@@ -155,7 +150,7 @@ impl Sun {
         self.theta = theta % (std::f32::consts::PI * 2.0);
         self.light.position = Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), self.theta) * self.noon_pos;
         self.light.color = Vec3::new(0.7 + 0.1 * self.theta.sin().powf(2.0), 0.2 + 0.8 * self.theta.cos().powf(2.0), 0.8 * self.theta.cos().powf(2.0));
-        self.light.strength = self.light.position.length().powf(2.0) * 5.0 * self.light.position.normalize().dot(Vec3::new(0.0, 1.0, 0.0)).powf(1.0/9.0);
+        self.light.strength = self.light.position.length().powf(2.0) * 0.5 * self.light.position.normalize().dot(Vec3::new(0.0, 1.0, 0.0)).powf(1.0/9.0);
         self.light.strength = self.light.strength.max(0.0);
     }
 
@@ -226,7 +221,6 @@ impl Renderable for Player {
     }
 }
 
-
 struct Firefly {
     light: Light,
     velocity: Vec3,
@@ -235,7 +229,7 @@ struct Firefly {
 
 impl Firefly {
     pub fn new(position: Vec3, color: Vec3) -> Self {
-        let light = Light::new(position, 20000.0, color);
+        let light = Light::new(position, 0.0, color);
         
         let mut rng = rand::thread_rng();
         let velocity = Vec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)).normalize_or_zero();
@@ -244,7 +238,7 @@ impl Firefly {
 
     pub fn frame_finished(&mut self, sun: &Sun, time: &Time) { 
         if sun.theta > (std::f32::consts::PI / 3.0) && sun.theta < (std::f32::consts::PI * (5.0 / 3.0)) {
-            self.light.strength = 10000.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
+            self.light.strength = 1000.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
         } else {
             self.light.strength = 0.0
         }
@@ -257,7 +251,7 @@ impl Firefly {
         let origin_bias = ((self.origin - self.light.position).length() - 100.0) / 100.0;
         self.velocity = (self.velocity + random_vec3 * 0.1 + origin_direction * origin_bias).normalize_or_zero(); 
 
-        self.light.position.y = self.position.y.clamp(25.0, 75.0);
+        self.light.position.y = self.position.y.clamp(5.0, 15.0);
 
     }
 }
@@ -296,12 +290,13 @@ fn main() {
     
     let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
 
+
     let mut sun = Sun::new(Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
 
     let mut fireflies = Vec::new();
 
     for _ in 0..10 {
-        let position = Vec3::new(rng.gen_range(-400.0..400.0), 50.0, rng.gen_range(-400.0..400.0));
+        let position = Vec3::new(rng.gen_range(-400.0..400.0), 10.0, rng.gen_range(-400.0..400.0));
         fireflies.push(Firefly::new(position, Vec3::new(0.2, 1.0, 0.4)));
     }
    
