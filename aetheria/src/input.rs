@@ -31,6 +31,13 @@ impl Keyboard {
                 }
             } 
         } 
+
+        if let winit::event::Event::WindowEvent { event, .. } = event {
+            if let winit::event::WindowEvent::Focused(false) = event {
+                self.down.clear();
+                self.pressed.clear();
+            }
+        }
     }
 
     pub fn frame_finished(&mut self) {

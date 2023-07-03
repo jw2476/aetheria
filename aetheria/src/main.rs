@@ -217,9 +217,10 @@ impl Player {
         // Movement
         let z = keyboard.is_key_down(VirtualKeyCode::S) as i32 - keyboard.is_key_down(VirtualKeyCode::W) as i32;
         let x = keyboard.is_key_down(VirtualKeyCode::D) as i32 - keyboard.is_key_down(VirtualKeyCode::A) as i32;
-        if x == 0 && z == 0 { return; }
-        let delta = Vec3::new(x as f32, 0.0, z as f32).normalize() * PLAYER_SPEED * time.delta_seconds();
-        self.player.transform.translation += camera.get_rotation() * delta; 
+        if x != 0 || z != 0 { 
+            let delta = Vec3::new(x as f32, 0.0, z as f32).normalize() * PLAYER_SPEED * time.delta_seconds();
+            self.player.transform.translation += camera.get_rotation() * delta;
+        }
 
         if old_translation != self.player.transform.translation {
             let packet = ServerboundPacket {
@@ -311,7 +312,7 @@ fn main() {
     println!("Enter server IP: ");
     std::io::stdin().read_line(&mut ip).unwrap();
 
-    if ip.is_empty() { ip = "127.0.0.1".to_owned(); }
+    if ip.trim().is_empty() { ip = "127.0.0.1".to_owned(); }
 
     let remote = SocketAddr::new(IpAddr::V4(ip.trim().parse().unwrap()), 8000);
     let socket = UdpSocket::bind("[::]:0").unwrap();
