@@ -226,7 +226,7 @@ impl Player {
                 opcode: ServerboundOpcode::Move,
                 payload: bytemuck::cast::<Vec3, [u8; 12]>(self.player.transform.translation).to_vec()
             };
-            socket.send(&packet.to_bytes());
+            socket.send(&packet.to_bytes()).unwrap();
         }
     }
 }
@@ -307,7 +307,13 @@ impl Renderable for Firefly {
 fn main() {
     tracing_subscriber::fmt::init();
 
-    let remote = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8000);
+    let mut ip = String::new();
+    println!("Enter server IP: ");
+    std::io::stdin().read_line(&mut ip).unwrap();
+
+    if ip.is_empty() { ip = "127.0.0.1".to_owned(); }
+
+    let remote = SocketAddr::new(IpAddr::V4(ip.trim().parse().unwrap()), 8000);
     let socket = UdpSocket::bind("[::]:0").unwrap();
     socket.connect(remote).unwrap();
     socket.set_nonblocking(true).unwrap();
@@ -390,9 +396,6 @@ fn main() {
             winit::event::Event::MainEventsCleared => {
                 if keyboard.is_key_down(VirtualKeyCode::Escape) { control_flow.set_exit() }
                 if mouse.is_button_down(MouseButton::Right) { camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY }
-
-                if keyboard.is_key_pressed(VirtualKeyCode::Up) { sun.light.strength *= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
-                if keyboard.is_key_pressed(VirtualKeyCode::Down) { sun.light.strength /= 2.0; println!("Multiplier: {}", sun.light.strength / sun.light.position.length()); }
 
                 let mut lights = fireflies.iter().map(|firefly| *firefly.as_ref()).collect::<Vec<Light>>();
                 lights.push(*sun);

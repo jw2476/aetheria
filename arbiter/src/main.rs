@@ -77,6 +77,7 @@ fn handle_packet(server: &mut Server, packet: ServerboundPacket, addr: SocketAdd
     if let ServerboundOpcode::Move = packet.opcode {
         let client = server.connections.get_mut(&addr).expect("No client found with address {addr}");
         client.player_translation = bytemuck::cast::<[u8; 12], Vec3>(packet.payload.clone()[0..12].try_into().unwrap());
+        info!("Updated position for {} to {:?}", client.username, client.player_translation);
         let client = server.connections.get(&addr).expect("No client found with address {addr}");
 
         for peer_addr in server.connections.keys() {
