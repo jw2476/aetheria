@@ -4,7 +4,9 @@ use num_derive::{FromPrimitive, ToPrimitive};
 #[derive(FromPrimitive, ToPrimitive)]
 pub enum ServerboundOpcode {
     Login,
-    Move
+    Move,
+    Heartbeat,
+    Disconnect
 }
 
 pub struct ServerboundPacket {
@@ -15,7 +17,9 @@ pub struct ServerboundPacket {
 #[derive(FromPrimitive, ToPrimitive)]
 pub enum ClientboundOpcode {
     SpawnPlayer,
-    Move
+    Move,
+    DespawnPlayer,
+    NotifyDisconnection
 }
 
 pub struct ClientboundPacket {

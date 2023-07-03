@@ -368,6 +368,7 @@ fn main() {
     };
 
     let mut players: HashMap<String, Player> = HashMap::new();
+    let mut last_heartbeat: Instant = Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -379,6 +380,54 @@ fn main() {
         keyboard.on_event(&event);
         mouse.on_event(&event);
 
+        let mut data = [0; 4096];
+        match socket.recv(&mut data) {
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                println!("Waiting for fd");
+            },
+            Err(e) => panic!("{e}"),
+            Ok(n) => {
+                let packet_size = u64::from_be_bytes(data[0..8].try_into().unwrap());
+                println!("Packet size: {}", n);
+                let packet = &data[8..(packet_size as usize + 8)];
+                let packet = ClientboundPacket {
+                    opcode: ClientboundOpcode::from_u32(u32::from_be_bytes(packet[0..4].try_into().unwrap())).unwrap(),
+                    payload: packet[4..].to_vec()
+                };
+
+                if let ClientboundOpcode::SpawnPlayer = packet.opcode {
+                    info!("Spawning player");
+                    let translation = bytemuck::cast::<[u8; 12], Vec3>(packet.payload[0..12].try_into().unwrap());
+                    let username = String::from_utf8(packet.payload[12..].to_vec()).unwrap();
+                    players.insert(username, Player::load(&mut renderer, &mut mesh_registry, Transform { translation, rotation: Quat::IDENTITY, scale: Vec3::ONE }).unwrap());
+                }
+
+                if let ClientboundOpcode::Move = packet.opcode {
+                    info!("Moving peer player");
+                    let translation = bytemuck::cast::<[u8; 12], Vec3>(packet.payload[0..12].try_into().unwrap());
+                    let username = String::from_utf8(packet.payload[12..].to_vec()).unwrap();
+                    players.get_mut(&username).expect("Peer not found").player.transform.translation = translation;
+                }
+
+                if let ClientboundOpcode::DespawnPlayer = packet.opcode {
+                    info!("Deleting peer player");
+                    let username = String::from_utf8(packet.payload).unwrap();
+                    players.remove(&username);
+                }
+
+                if let ClientboundOpcode::NotifyDisconnection = packet.opcode {
+                    info!("Disconnecting due to server request");
+                    control_flow.set_exit();
+                    return;
+                }
+            }
+        };
+
+        if last_heartbeat.elapsed().as_secs_f32() > 10.0 {
+            heartbeat(&socket).unwrap();
+            last_heartbeat = Instant::now();
+        } 
+
         match event {
             winit::event::Event::WindowEvent { event, .. } => {     
                 match event {
@@ -388,6 +437,7 @@ fn main() {
                         camera.height = size.height as f32;
                     },
                     winit::event::WindowEvent::CloseRequested => {
+                        disconnect(&socket).unwrap();
                         control_flow.set_exit()
                     },
                     _ => ()     
@@ -395,45 +445,12 @@ fn main() {
 
             },
             winit::event::Event::MainEventsCleared => {
-                if keyboard.is_key_down(VirtualKeyCode::Escape) { control_flow.set_exit() }
+                if keyboard.is_key_down(VirtualKeyCode::Escape) { disconnect(&socket).unwrap(); control_flow.set_exit() }
                 if mouse.is_button_down(MouseButton::Right) { camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY }
 
                 let mut lights = fireflies.iter().map(|firefly| *firefly.as_ref()).collect::<Vec<Light>>();
                 lights.push(*sun);
                 renderer.render(&[&grass, &trees, &player, &fireflies, &players.values().cloned().collect::<Vec<Player>>()], &lights, &camera, &time, &mesh_registry);
-
-                let mut data = [0; 4096];
-                match socket.recv(&mut data) {
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        println!("Waiting for fd");
-                    },
-                    Err(e) => panic!("{e}"),
-                    Ok(n) => {
-                        let packet_size = u64::from_be_bytes(data[0..8].try_into().unwrap());
-                        println!("Packet size: {}", n);
-                        let packet = &data[8..(packet_size as usize + 8)];
-                        let packet = ClientboundPacket {
-                            opcode: ClientboundOpcode::from_u32(u32::from_be_bytes(packet[0..4].try_into().unwrap())).unwrap(),
-                            payload: packet[4..].to_vec()
-                        };
-
-                        if let ClientboundOpcode::SpawnPlayer = packet.opcode {
-                            info!("Spawning player");
-                            let translation = bytemuck::cast::<[u8; 12], Vec3>(packet.payload[0..12].try_into().unwrap());
-                            let username = String::from_utf8(packet.payload[12..].to_vec()).unwrap();
-                            players.insert(username, Player::load(&mut renderer, &mut mesh_registry, Transform { translation, rotation: Quat::IDENTITY, scale: Vec3::ONE }).unwrap());
-                        }
-
-                        if let ClientboundOpcode::Move = packet.opcode {
-                            info!("Moving peer player");
-                            let translation = bytemuck::cast::<[u8; 12], Vec3>(packet.payload[0..12].try_into().unwrap());
-                            let username = String::from_utf8(packet.payload[12..].to_vec()).unwrap();
-                            players.get_mut(&username).expect("Peer not found").player.transform.translation = translation;
-                        }
-                    }
-                };
-                println!("Should print this");
-
                 let viewport = Vec2::new(window.inner_size().width as f32, window.inner_size().height as f32);
                 player.frame_finished(&keyboard, &mouse, &camera, &time, viewport, &socket);
                 fireflies.iter_mut().for_each(|firefly| firefly.frame_finished(&sun, &time));
@@ -452,4 +469,22 @@ fn main() {
             unsafe { renderer.device.device_wait_idle().unwrap() };
         }
     });
+}
+
+fn heartbeat(socket: &UdpSocket) -> Result<()> {
+    let packet = ServerboundPacket {
+        opcode: ServerboundOpcode::Heartbeat,
+        payload: Vec::new()
+    };
+    socket.send(&packet.to_bytes())?;
+    Ok(())
+}
+
+fn disconnect(socket: &UdpSocket) -> Result<()> {
+    let packet = ServerboundPacket {
+        opcode: ServerboundOpcode::Disconnect,
+        payload: Vec::new()
+    };
+    socket.send(&packet.to_bytes())?;
+    Ok(())
 }
