@@ -10,6 +10,7 @@ assets = { path = "../assets" }
 gltf = { path = "../gltf" }
 hecs = { path = "../hecs" }
 vulkan = { path = "../vulkan" }
+net = { path = "../net" }
 
 ash = { version = "0.37.2", features = ["linked"] }
 winit = "0.28"
@@ -25,3 +26,5 @@ egui = "0.21"
 egui-winit = "0.21"
 epaint = { version = "0.21", features = ["bytemuck"] }
 rand = "0.8.5"
+anyhow = "1.0.71"
+num-traits = "0.2.15"

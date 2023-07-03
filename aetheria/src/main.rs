@@ -13,7 +13,7 @@ mod camera;
 mod transform;
 mod input;
 
-use std::{sync::Arc, ops::Deref, time::Instant, f32::consts::PI};
+use std::{sync::Arc, ops::Deref, time::Instant, f32::consts::PI, net::{SocketAddr, IpAddr, Ipv4Addr, UdpSocket}, io, collections::HashMap};
 use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry};
 use bytemuck::cast_slice;
@@ -26,6 +26,10 @@ use renderer::{Renderer, Renderable, RenderObject, Light};
 use winit::{event_loop::ControlFlow, event::{VirtualKeyCode, MouseButton}};
 use glam::{Vec3, Quat, Vec4, Vec2};
 use input::{Keyboard, Mouse};
+use anyhow::Result;
+use net::*;
+use num_traits::{FromPrimitive, ToPrimitive};
+use tracing::info;
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -167,6 +171,7 @@ impl Deref for Sun {
     }
 }
 
+#[derive(Clone)]
 struct Player {
     player: RenderObject,
     jump_t: f32
@@ -191,7 +196,9 @@ impl Player {
         self.player.transform.clone()
     }
 
-    pub fn frame_finished(&mut self, keyboard: &Keyboard, mouse: &Mouse, camera: &Camera, time: &Time, viewport: Vec2) {
+    pub fn frame_finished(&mut self, keyboard: &Keyboard, mouse: &Mouse, camera: &Camera, time: &Time, viewport: Vec2, socket: &UdpSocket) {
+        let old_translation = self.player.transform.translation.clone();
+
         // Dash
         if keyboard.is_key_pressed(VirtualKeyCode::Space) && self.jump_t >= (PI / 4.0) { 
             let mouse_direction = (mouse.position - (viewport/2.0)).normalize_or_zero();
@@ -211,7 +218,15 @@ impl Player {
         let x = keyboard.is_key_down(VirtualKeyCode::D) as i32 - keyboard.is_key_down(VirtualKeyCode::A) as i32;
         if x == 0 && z == 0 { return; }
         let delta = Vec3::new(x as f32, 0.0, z as f32).normalize() * PLAYER_SPEED * time.delta_seconds();
-        self.player.transform.translation += camera.get_rotation() * delta;  
+        self.player.transform.translation += camera.get_rotation() * delta; 
+
+        if old_translation != self.player.transform.translation {
+            let packet = ServerboundPacket {
+                opcode: ServerboundOpcode::Move,
+                payload: bytemuck::cast::<Vec3, [u8; 12]>(self.player.transform.translation).to_vec()
+            };
+            socket.send(&packet.to_bytes());
+        }
     }
 }
 
@@ -291,6 +306,20 @@ impl Renderable for Firefly {
 fn main() {
     tracing_subscriber::fmt::init();
 
+    let remote = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8000);
+    let socket = UdpSocket::bind("[::]:0").unwrap();
+    socket.connect(remote).unwrap();
+    socket.set_nonblocking(true).unwrap();
+    let mut username = String::new();
+    println!("Enter your username: ");
+    std::io::stdin().read_line(&mut username).unwrap();
+    let login = ServerboundPacket {
+        opcode: ServerboundOpcode::Login,
+        payload: username.as_bytes().to_vec()
+    };
+    socket.send(&login.to_bytes()).unwrap();
+
+
     let (event_loop, window) = create_window();
     let window = Arc::new(window);
     let ctx = Context::new(&window);
@@ -326,9 +355,11 @@ fn main() {
     }
    
     let mut player = { 
-        let transform = Transform { translation: Vec3::new(0.0, 10.0, 0.0), rotation: Quat::IDENTITY, scale: Vec3::new(0.1, 0.1, 0.1) };
+        let transform = Transform { translation: Vec3::new(0.0, 10.0, 0.0), rotation: Quat::IDENTITY, scale: Vec3::ONE };
         Player::load(&mut renderer, &mut mesh_registry, transform).unwrap()
     };
+
+    let mut players: HashMap<String, Player> = HashMap::new();
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -364,10 +395,42 @@ fn main() {
 
                 let mut lights = fireflies.iter().map(|firefly| *firefly.as_ref()).collect::<Vec<Light>>();
                 lights.push(*sun);
-                renderer.render(&[&grass, &trees, &player, &fireflies], &lights, &camera, &time, &mesh_registry);
+                renderer.render(&[&grass, &trees, &player, &fireflies, &players.values().cloned().collect::<Vec<Player>>()], &lights, &camera, &time, &mesh_registry);
+
+                let mut data = [0; 4096];
+                match socket.recv(&mut data) {
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        println!("Waiting for fd");
+                    },
+                    Err(e) => panic!("{e}"),
+                    Ok(n) => {
+                        let packet_size = u64::from_be_bytes(data[0..8].try_into().unwrap());
+                        println!("Packet size: {}", n);
+                        let packet = &data[8..(packet_size as usize + 8)];
+                        let packet = ClientboundPacket {
+                            opcode: ClientboundOpcode::from_u32(u32::from_be_bytes(packet[0..4].try_into().unwrap())).unwrap(),
+                            payload: packet[4..].to_vec()
+                        };
+
+                        if let ClientboundOpcode::SpawnPlayer = packet.opcode {
+                            info!("Spawning player");
+                            let translation = bytemuck::cast::<[u8; 12], Vec3>(packet.payload[0..12].try_into().unwrap());
+                            let username = String::from_utf8(packet.payload[12..].to_vec()).unwrap();
+                            players.insert(username, Player::load(&mut renderer, &mut mesh_registry, Transform { translation, rotation: Quat::IDENTITY, scale: Vec3::ONE }).unwrap());
+                        }
+
+                        if let ClientboundOpcode::Move = packet.opcode {
+                            info!("Moving peer player");
+                            let translation = bytemuck::cast::<[u8; 12], Vec3>(packet.payload[0..12].try_into().unwrap());
+                            let username = String::from_utf8(packet.payload[12..].to_vec()).unwrap();
+                            players.get_mut(&username).expect("Peer not found").player.transform.translation = translation;
+                        }
+                    }
+                };
+                println!("Should print this");
 
                 let viewport = Vec2::new(window.inner_size().width as f32, window.inner_size().height as f32);
-                player.frame_finished(&keyboard, &mouse, &camera, &time, viewport);
+                player.frame_finished(&keyboard, &mouse, &camera, &time, viewport, &socket);
                 fireflies.iter_mut().for_each(|firefly| firefly.frame_finished(&sun, &time));
                 time.frame_finished();
                 keyboard.frame_finished();

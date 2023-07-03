@@ -1,0 +1,18 @@
+[package]
+name = "arbiter"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+net = { path = "../net" }
+
+anyhow = "1.0.71"
+num-derive = "0.4.0"
+num-traits = "0.2.15"
+tracing = "0.1.37"
+tracing-subscriber = "0.3.17"
+glam = { version = "0.24.1", features = ["bytemuck"] }
+bytemuck = "1.13.1"
+

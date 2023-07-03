@@ -2,9 +2,11 @@
 members = [
   "assets",
   "aetheria",
+  "arbiter",
   "gltf",
   "hecs",
   "hecs/macros",
+  "net",
   "vulkan"
 ]
 
