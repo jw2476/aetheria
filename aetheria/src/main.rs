@@ -13,7 +13,7 @@ mod camera;
 mod transform;
 mod input;
 
-use std::{sync::Arc, ops::Deref, time::Instant, f32::consts::PI, net::{SocketAddr, IpAddr, Ipv4Addr, UdpSocket}, io, collections::HashMap};
+use std::{sync::Arc, ops::Deref, time::{Instant, SystemTime}, f32::consts::PI, net::{SocketAddr, IpAddr, Ipv4Addr, UdpSocket}, io, collections::HashMap};
 use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry};
 use bytemuck::cast_slice;
@@ -145,7 +145,8 @@ struct Sun {
 
 impl Sun {
     pub fn new(noon_pos: Vec3, color: Vec3) -> Self {
-        let mut sun = Self { noon_pos, light: Light::new(noon_pos, 0.0, color), theta: 0.0 };
+        let seconds = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_secs();
+        let mut sun = Self { noon_pos, light: Light::new(noon_pos, 0.0, color), theta: (seconds % 120) as f32 * (PI / 60.0) };
         sun.update_theta(sun.theta);
         sun
     }
@@ -159,7 +160,7 @@ impl Sun {
     }
 
     pub fn frame_finished(&mut self, time: &Time) {
-        self.update_theta(self.theta + (time.delta_seconds() * (std::f32::consts::PI / 60.0)));
+        self.update_theta(self.theta + (time.delta_seconds() * (PI / 60.0)));
     }
 }
 
