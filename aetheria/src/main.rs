@@ -57,12 +57,12 @@ impl Tree {
     pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Tree, vk::Result> {
         let trunk = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("tree.trunk.obj")?
-            .set_color(Vec3::new(0.9150942, 0.6063219, 0.4359647))
+            .set_color(Vec3::new(0.451, 0.243, 0.224))
             .set_transform(transform.clone())
             .build()?;
         let foliage = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("tree.foliage.obj")?
-            .set_color(Vec3::new(0.2588235, 0.7921569, 0.6034038))
+            .set_color(Vec3::new(0.388, 0.780, 0.302))
             .set_transform(transform.clone())
             .build()?;
 
@@ -117,7 +117,7 @@ impl Grass {
     pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Self, vk::Result> {
         let grass = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("grass.obj")?
-            .set_color(Vec3::new(0.2588235, 0.7921569, 0.6034038))
+            .set_color(Vec3::new(0.388, 0.780, 0.302))
             .set_transform(transform.clone())
             .build()?;
         Ok(Self { transform, grass })
@@ -268,7 +268,7 @@ impl Firefly {
 
     pub fn frame_finished(&mut self, sun: &Sun, time: &Time) { 
         if sun.theta > (std::f32::consts::PI / 3.0) && sun.theta < (std::f32::consts::PI * (5.0 / 3.0)) {
-            self.light.strength = 200.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
+            self.light.strength = 300.0 * ((sun.theta / 2.0).sin() - sun.theta.cos()).powf(1.5).min(1.0);
         } else {
             self.light.strength = 0.0
         }
@@ -358,8 +358,8 @@ fn main() {
     let mut fireflies = Vec::new();
 
     for _ in 0..10 {
-        let position = Vec3::new(rng.gen_range(-400.0..400.0), 10.0, rng.gen_range(-400.0..400.0));
-        fireflies.push(Firefly::new(&mut renderer, &mut mesh_registry, position, Vec3::new(0.2, 1.0, 0.4)).unwrap());
+        let position = Vec3::new(rng.gen_range(-400.0..400.0), 50.0, rng.gen_range(-400.0..400.0));
+        fireflies.push(Firefly::new(&mut renderer, &mut mesh_registry, position, Vec3::new(0.745, 0.949, 0.392)).unwrap());
     }
    
     let mut player = { 

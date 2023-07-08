@@ -63,7 +63,7 @@ layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 float INFINITY = 1.0/0.0;
 float EPSILON = 0.000001;
-float AMBIENT = 0.2;
+vec3 AMBIENT = vec3(0.008, 0.024, 0.090);
 int RIS_M = 5;
 
 vec3 PALETTE[32] = {
@@ -275,8 +275,6 @@ vec3 get_brdf(Material material, Ray incoming, Ray outgoing, vec3 normal) {
 	return (kDiffuse * material.albedo / PI + specular) * max(dot(normal, outgoing.direction), 0.0);
 }	
 
-float STEPS = 5;
-
 vec3 per_pixel(Ray incoming) {
 	HitPayload hit = trace_ray(incoming);
 	if (!hit.hit) { return vec3(0.0, 0.0, 0.0); }
@@ -286,8 +284,6 @@ vec3 per_pixel(Ray incoming) {
 	Ray outgoing;
 	outgoing.origin = hit.position + hit.normal;
 
-	vec3 totalColor = vec3(0.0);
-
 	vec3 diffuse = vec3(0.0);
 
 	for (int i = 0; i < lights.numLights; i++) {
@@ -296,23 +292,96 @@ vec3 per_pixel(Ray incoming) {
 
 		outgoing.direction = normalize(light.position - hit.position); 
 
-		float lightContribution = light.strength / (distance*distance);
-		lightContribution *= max(dot(hit.normal, outgoing.direction), 0.0);
+		float lightContribution;
+		lightContribution = light.strength / (distance*distance);
+		lightContribution = min(lightContribution, 1.0);
 
-		if (lightContribution < 0.01) { continue; }
+		if (lightContribution < 0.005) { continue; }
+
+		lightContribution *= max(dot(hit.normal, outgoing.direction), 0.0);
+		lightContribution = round(lightContribution * 4) / 4;
 
 		HitPayload hit2 = trace_ray(outgoing);
 		bool lightVisible = !hit2.hit || (hit2.t > distance);
 		diffuse += light.color * lightContribution * float(lightVisible);
 	}
 
-	vec3 color = material.albedo * (diffuse + AMBIENT);
+	if (length(diffuse) < 0.05) { diffuse = AMBIENT; }
+	vec3 color = material.albedo * diffuse;
+
 	if (length(color) > 1.0) { color = normalize(color); }
 	return color;
 }
 
 float getPaletteDistance(vec3 a, vec3 b) {
 	return length(a - b);
+}
+
+/*vec3 rgbtohsl(vec3 rgb) {
+	float cmax = max(rgb.r, max(rgb.g, rgb.b));
+	float cmin = min(rgb.r, min(rgb.g, rgb.b));
+	float delta = cmax - cmin;
+	float luminance = (cmax + cmin) / 2;
+	float saturation;
+
+	if (cmax == cmin) {
+		saturation = 0.0;
+	} else if (luminance <= 0.5) {
+		saturation = delta/(cmax+cmin);
+	} else if (luminance > 0.5) {
+		saturation = delta/(2.0-cmax-cmin);
+	}
+	
+	float hue;
+	if (cmax == rgb.r) {
+		hue = (rgb.g - rgb.b)/delta;	
+	} else if (cmax == rgb.g) {
+		hue = 2.0 + (rgb.b - rgb.r)/delta;
+	} else {
+		hue = 4.0 + (rgb.r - rgb.b)/delta;
+	}
+
+	return vec3(hue, saturation, luminance);
+}*/
+
+vec3 hsl2rgb(vec3 c)
+{
+	vec3 rgb = clamp( abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0 );
+
+	return c.z + c.y * (rgb-0.5)*(1.0-abs(2.0*c.z-1.0));
+}
+
+vec3 rgb2hsl(vec3 c) {
+	float h = 0.0;
+	float s = 0.0;
+	float l = 0.0;
+	float r = c.r;
+	float g = c.g;
+	float b = c.b;
+	float cMin = min( r, min( g, b ) );
+	float cMax = max( r, max( g, b ) );
+
+	l = ( cMax + cMin ) / 2.0;
+	if ( cMax > cMin ) {
+		float cDelta = cMax - cMin;
+
+		//s = l < .05 ? cDelta / ( cMax + cMin ) : cDelta / ( 2.0 - ( cMax + cMin ) ); Original
+		s = l < .0 ? cDelta / ( cMax + cMin ) : cDelta / ( 2.0 - ( cMax + cMin ) );
+
+		if ( r == cMax ) {
+			h = ( g - b ) / cDelta;
+		} else if ( g == cMax ) {
+			h = 2.0 + ( b - r ) / cDelta;
+		} else {
+			h = 4.0 + ( r - g ) / cDelta;
+		}
+
+		if ( h < 0.0) {
+			h += 6.0;
+		}
+		h = h / 6.0;
+	}
+	return vec3( h, s, l );
 }
 
 void main() {
@@ -326,14 +395,19 @@ void main() {
 	vec3 color = per_pixel(ray);
 	vec4 outputColor = vec4(color, 1.0);
 
-    	float minPaletteDistance = INFINITY;
+    	/*float minPaletteDistance = INFINITY;
     	for (int i = 0; i < 32; i++) {
 		float paletteDistance = getPaletteDistance(PALETTE[i], color.rgb);
 		if (paletteDistance < minPaletteDistance) {
 	 		minPaletteDistance = paletteDistance;
 			outputColor = vec4(PALETTE[i], 1.0);
 	 	}
-    	}
-
+    	}*/
+	
+	/*vec3 hsl = rgb2hsl(color);
+	if (hsl.y < 0.02) { hsl.y = 0.0; } else { hsl.y = 0.8; }
+	if (hsl.z < 0.3) { hsl.z = 0.5; } else if (hsl.z < 0.6) { hsl.z = 0.75; } else { hsl.z = 0.85; }
+	vec4 outputColor = vec4(hsl2rgb(hsl), 1.0);*/
+	
 	imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), outputColor);
 }

@@ -52,8 +52,8 @@ impl Swapchain {
         let present_mode = present_modes
             .iter()
             .copied()
-            .find(|present_mode| *present_mode == vk::PresentModeKHR::FIFO)
-            //.find(|present_mode| *present_mode == vk::PresentModeKHR::MAILBOX)
+            //.find(|present_mode| *present_mode == vk::PresentModeKHR::FIFO)
+            .find(|present_mode| *present_mode == vk::PresentModeKHR::MAILBOX)
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
         let extent = if capabilities.current_extent.width == u32::MAX {
