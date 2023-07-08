@@ -346,7 +346,8 @@ fn main() {
 
     for _ in 0..10 {
         let translation = Vec3::new(rng.gen_range(-400.0..400.0), 0.0, rng.gen_range(-400.0..400.0));
-        let transform = Transform { translation, rotation: Quat::IDENTITY, scale: Vec3::new(0.5, 0.5, 0.5) };
+        let rotation = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), rng.gen_range(-PI..PI));
+        let transform = Transform { translation, rotation, scale: Vec3::new(0.1, 0.1, 0.1) };
         trees.push(Tree::load(&mut renderer, &mut mesh_registry, transform).unwrap()); 
     }
     

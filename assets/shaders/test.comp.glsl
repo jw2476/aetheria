@@ -167,6 +167,7 @@ TriangleHit triangle_hit(Ray ray, Triangle triangle) {
 
 Vertex vertex_transform(Vertex v, mat4 transform) {
 	v.position = vec3(transform * vec4(v.position, 1.0));
+	v.normal = mat3(transpose(inverse(transform))) * v.normal;
 	return v;
 }
 
