@@ -448,6 +448,8 @@ fn main() {
             winit::event::Event::MainEventsCleared => {
                 if keyboard.is_key_down(VirtualKeyCode::Escape) { disconnect(&socket).unwrap(); control_flow.set_exit() }
                 if mouse.is_button_down(MouseButton::Right) { camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY }
+                if keyboard.is_key_pressed(VirtualKeyCode::Left) { sun.theta += PI/6.0 }
+                if keyboard.is_key_pressed(VirtualKeyCode::Right) { sun.theta -= PI/6.0 }
 
                 let mut lights = fireflies.iter().map(|firefly| *firefly.as_ref()).collect::<Vec<Light>>();
                 lights.push(*sun);

@@ -150,6 +150,17 @@ struct TriangleHit {
 };
 
 TriangleHit triangle_hit(Ray ray, Triangle triangle) {
+	
+	TriangleHit hit;
+	hit.hit = false;
+
+	/*vec3 normalDots = vec3(
+		dot(ray.direction, triangle.v0.normal),
+		dot(ray.direction, triangle.v1.normal),
+		dot(ray.direction, triangle.v2.normal)
+	);
+	if (all(greaterThan(normalDots, vec3(0.0)))) { return hit; }*/
+
 	vec3 a = inverse(mat3(
 		-ray.direction, 
 		triangle.v0.position - triangle.v2.position, 
@@ -157,7 +168,6 @@ TriangleHit triangle_hit(Ray ray, Triangle triangle) {
 	) * (ray.origin - triangle.v2.position);
 
 	vec4 b = vec4(a, 1.0 - a.y - a.z);
-	TriangleHit hit;
 	hit.hit = all(greaterThanEqual(b, vec4(0.0))) && all(lessThanEqual(b.yzw, vec3(1.0)));
 	hit.position = ray.origin + b.x * ray.direction;
 	hit.normal = triangle.v0.normal * b.y + triangle.v1.normal * b.z + triangle.v2.normal * b.w;
@@ -297,7 +307,7 @@ vec3 per_pixel(Ray incoming) {
 		lightContribution = light.strength / (distance*distance);
 		lightContribution = min(lightContribution, 1.0);
 
-		if (lightContribution < 0.005) { continue; }
+		if (lightContribution < 0.125) { continue; }
 
 		lightContribution *= max(dot(hit.normal, outgoing.direction), 0.0);
 		lightContribution = round(lightContribution * 4) / 4;
