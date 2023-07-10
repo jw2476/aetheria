@@ -1,11 +1,10 @@
 #version 450
 
-layout(set = 0, binding = 0) uniform writeonly image2D outColor;
-layout(set = 0, binding = 1) uniform Camera {
+layout(set = 0, binding = 0) uniform Camera {
 	vec3 eye;
 	vec3 target;
 } camera;
-layout(set = 0, binding = 2) uniform Time {
+layout(set = 0, binding = 1) uniform Time {
 	float time;
 	float delta;
 } time;
@@ -15,11 +14,12 @@ struct Vertex {
 	vec3 normal;
 };
 
-layout(std140, set = 1, binding = 0) buffer Vertices {
+layout(set = 1, binding = 0) uniform writeonly image2D outColor;
+layout(std140, set = 1, binding = 1) buffer Vertices {
 	Vertex vertices[];	
 } vertices;
 
-layout(std140, set = 1, binding = 1) buffer Indicies {
+layout(std140, set = 1, binding = 2) buffer Indicies {
 	int indicies[];
 } indicies;
 
@@ -32,7 +32,7 @@ struct Mesh {
 	mat4 transform;
 };
 
-layout(std140, set = 1, binding = 2) buffer Meshes {
+layout(std140, set = 1, binding = 3) buffer Meshes {
 	int numMeshes;
 	Mesh meshes[];
 } meshes;
@@ -43,7 +43,7 @@ struct Material {
 	float metalness;
 };
 
-layout(std140, set = 1, binding = 3) buffer Materials {
+layout(std140, set = 1, binding = 4) buffer Materials {
 	Material materials[];
 } materials;
 
@@ -54,7 +54,7 @@ struct Light {
 	vec3 color;
 };
 
-layout(std140, set = 1, binding = 4) buffer Lights {
+layout(std140, set = 1, binding = 5) buffer Lights {
 	int numLights;
 	Light lights[];
 } lights;

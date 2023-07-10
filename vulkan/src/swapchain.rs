@@ -1,6 +1,6 @@
 use super::{Device, Image, Instance, Surface};
 use ash::vk;
-use std::{sync::Arc, ops::Deref};
+use std::{ops::Deref, sync::Arc};
 use winit::window::Window;
 
 #[derive(Debug)]

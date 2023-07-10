@@ -1,17 +1,17 @@
-use num_traits::{FromPrimitive, ToPrimitive};
 use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::{FromPrimitive, ToPrimitive};
 
 #[derive(FromPrimitive, ToPrimitive)]
 pub enum ServerboundOpcode {
     Login,
     Move,
     Heartbeat,
-    Disconnect
+    Disconnect,
 }
 
 pub struct ServerboundPacket {
     pub opcode: ServerboundOpcode,
-    pub payload: Vec<u8>
+    pub payload: Vec<u8>,
 }
 
 #[derive(FromPrimitive, ToPrimitive)]
@@ -19,12 +19,12 @@ pub enum ClientboundOpcode {
     SpawnPlayer,
     Move,
     DespawnPlayer,
-    NotifyDisconnection
+    NotifyDisconnection,
 }
 
 pub struct ClientboundPacket {
     pub opcode: ClientboundOpcode,
-    pub payload: Vec<u8>
+    pub payload: Vec<u8>,
 }
 
 impl ClientboundPacket {

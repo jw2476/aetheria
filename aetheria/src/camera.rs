@@ -2,7 +2,7 @@ use std::f32::EPSILON;
 
 use ash::vk;
 use bytemuck::{cast_slice, cast_slice_mut};
-use glam::{Mat4, Vec3, Quat};
+use glam::{Mat4, Quat, Vec3};
 use vulkan::Buffer;
 
 pub struct Camera {
@@ -28,18 +28,19 @@ impl Camera {
             target,
             actual_target: target,
             width,
-            height
+            height,
         };
 
         Ok(camera)
     }
-    
+
     fn pad_vec3(data: Vec3) -> [f32; 4] {
         [data.x, data.y, data.z, 0.0]
     }
 
     pub fn update_buffer(&self, buffer: &mut Buffer) {
-        let mut eye = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), self.actual_theta) * Vec3::new(0.0, 500.0 * 2.0_f32.powf(-0.5), 500.0);
+        let mut eye = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), self.actual_theta)
+            * Vec3::new(0.0, 500.0 * 2.0_f32.powf(-0.5), 500.0);
         eye += self.actual_target;
 
         let vp = [Self::pad_vec3(eye), Self::pad_vec3(self.actual_target)]

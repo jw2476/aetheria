@@ -1,4 +1,4 @@
-use super::{Device, Image, Renderpass, Set, graphics, compute};
+use super::{compute, graphics, Device, Image, Renderpass, Set};
 use ash::vk;
 use std::{ops::Deref, result::Result, sync::Arc};
 
@@ -17,21 +17,21 @@ pub struct Buffer {
 
 enum Pipeline {
     Graphics(graphics::Pipeline),
-    Compute(compute::Pipeline)
+    Compute(compute::Pipeline),
 }
 
 impl Pipeline {
     pub fn get_layout(&self) -> vk::PipelineLayout {
         match self {
             Pipeline::Graphics(graphics) => graphics.layout,
-            Pipeline::Compute(compute) => compute.layout
+            Pipeline::Compute(compute) => compute.layout,
         }
     }
 
     pub fn get_bind_point(&self) -> vk::PipelineBindPoint {
         match self {
             Pipeline::Compute(_) => vk::PipelineBindPoint::COMPUTE,
-            Pipeline::Graphics(_) => vk::PipelineBindPoint::GRAPHICS
+            Pipeline::Graphics(_) => vk::PipelineBindPoint::GRAPHICS,
         }
     }
 }
@@ -39,7 +39,7 @@ impl Pipeline {
 pub struct BufferBuilder {
     buffer: Buffer,
     device: Arc<Device>,
-    pipeline: Option<Pipeline> 
+    pipeline: Option<Pipeline>,
 }
 
 #[derive(Clone, Debug)]
@@ -113,22 +113,21 @@ impl BufferBuilder {
             self.device
                 .cmd_bind_pipeline(**self, vk::PipelineBindPoint::COMPUTE, *pipeline)
         };
-    
+
         self.pipeline = Some(Pipeline::Compute(pipeline));
 
         self
     }
 
-    pub fn bind_descriptor_set(
-        self,
-        binding: u32,
-        descriptor_set: &Set,
-    ) -> Self {
+    pub fn bind_descriptor_set(self, binding: u32, descriptor_set: &Set) -> Self {
         let descriptor_sets = &[**descriptor_set];
         unsafe {
             self.device.cmd_bind_descriptor_sets(
                 **self,
-                self.pipeline.as_ref().unwrap().get_bind_point(),
+                self.pipeline
+                    .as_ref()
+                    .expect("Binding descriptor set without pipeline bound")
+                    .get_bind_point(),
                 self.pipeline.as_ref().unwrap().get_layout(),
                 binding,
                 descriptor_sets,
@@ -185,11 +184,19 @@ impl BufferBuilder {
         unsafe {
             self.device.cmd_dispatch(**self, x, y, z);
         }
-        
+
         self
     }
 
-    pub fn blit_image(self, from: &Image, to: &Image, from_layout: vk::ImageLayout, to_layout: vk::ImageLayout, aspect: vk::ImageAspectFlags, filter: vk::Filter) -> Self {
+    pub fn blit_image(
+        self,
+        from: &Image,
+        to: &Image,
+        from_layout: vk::ImageLayout,
+        to_layout: vk::ImageLayout,
+        aspect: vk::ImageAspectFlags,
+        filter: vk::Filter,
+    ) -> Self {
         unsafe {
             let subresource = vk::ImageSubresourceLayers::builder()
                 .aspect_mask(aspect)
@@ -198,12 +205,34 @@ impl BufferBuilder {
                 .layer_count(1);
             let copy_info = vk::ImageBlit::builder()
                 .src_subresource(*subresource)
-                .src_offsets([vk::Offset3D::default(), vk::Offset3D { x: from.width as i32, y: from.height as i32, z: 1 }])
+                .src_offsets([
+                    vk::Offset3D::default(),
+                    vk::Offset3D {
+                        x: from.width as i32,
+                        y: from.height as i32,
+                        z: 1,
+                    },
+                ])
                 .dst_subresource(*subresource)
-                .dst_offsets([vk::Offset3D::default(), vk::Offset3D { x: to.width as i32, y: to.height as i32, z: 1 }]);
-            self.device.cmd_blit_image(**self, from.image, from_layout, to.image, to_layout, &[*copy_info], filter);
+                .dst_offsets([
+                    vk::Offset3D::default(),
+                    vk::Offset3D {
+                        x: to.width as i32,
+                        y: to.height as i32,
+                        z: 1,
+                    },
+                ]);
+            self.device.cmd_blit_image(
+                **self,
+                from.image,
+                from_layout,
+                to.image,
+                to_layout,
+                &[*copy_info],
+                filter,
+            );
         }
-        
+
         self
     }
 
@@ -278,6 +307,10 @@ impl BufferBuilder {
         self
     }
 
+    pub fn record<F: Fn(Self) -> Self>(self, predicate: F) -> Self {
+        predicate(self)
+    }
+
     pub fn end(self) -> Result<Buffer, vk::Result> {
         unsafe { self.device.end_command_buffer(**self)? };
 
@@ -350,7 +383,7 @@ impl Pool {
         let builder = BufferBuilder {
             buffer,
             device: self.device.clone(),
-            pipeline: None
+            pipeline: None,
         };
 
         Ok(builder)

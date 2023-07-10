@@ -5,7 +5,6 @@ use gpu_allocator::{
     AllocatorDebugSettings,
 };
 use std::sync::{Arc, Mutex};
-use std::{cell::RefCell, rc::Rc};
 
 pub struct Context {
     pub instance: Instance,

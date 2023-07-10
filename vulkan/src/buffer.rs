@@ -1,12 +1,14 @@
 use super::Context;
 use ash::vk;
-use gpu_allocator::{vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator}, MemoryLocation};
+use gpu_allocator::{
+    vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
+    MemoryLocation,
+};
+use std::sync::{Arc, Mutex};
 use std::{
-    cell::RefCell,
     ops::{Deref, Drop},
     result::Result,
 };
-use std::sync::{Arc, Mutex};
 
 pub struct Buffer {
     pub(crate) buffer: vk::Buffer,
@@ -24,7 +26,7 @@ impl Buffer {
         let bytes: Vec<u8> = data.into();
 
         let create_info = vk::BufferCreateInfo::builder()
-            .size(bytes.len().try_into().unwrap())
+            .size(bytes.len() as u64)
             .usage(usage);
         let buffer = unsafe { ctx.device.create_buffer(&create_info, None)? };
 

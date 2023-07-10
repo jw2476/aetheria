@@ -259,13 +259,18 @@ impl Texture {
         })
     }
 
-    pub fn from_image(ctx: &Context, image: Arc<Image>, mag_filter: vk::Filter, min_filter: vk::Filter) -> Result<Self, vk::Result> {
+    pub fn from_image(
+        ctx: &Context,
+        image: Arc<Image>,
+        mag_filter: vk::Filter,
+        min_filter: vk::Filter,
+    ) -> Result<Self, vk::Result> {
         let view = image.create_view(ctx)?;
         let sampler = image.create_sampler(ctx, mag_filter, min_filter)?;
         Ok(Self {
             image,
             view,
-            sampler
+            sampler,
         })
     }
 }

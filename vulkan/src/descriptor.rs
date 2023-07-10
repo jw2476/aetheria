@@ -1,6 +1,6 @@
 use super::{Buffer, Device, Texture};
 use ash::vk;
-use std::{collections::HashMap, ops::Deref, rc::Rc, result::Result, sync::Arc};
+use std::{collections::HashMap, ops::Deref, result::Result, sync::Arc};
 
 #[derive(Clone, Copy)]
 pub struct Binding {

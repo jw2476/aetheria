@@ -1,6 +1,6 @@
-use std::time::Instant;
 use ash::vk;
 use bytemuck::cast_slice;
+use std::time::Instant;
 use vulkan::Buffer;
 
 use crate::renderer::Renderer;
