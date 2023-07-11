@@ -214,6 +214,7 @@ impl Deref for Sun {
 struct Player {
     player: RenderObject,
     jump_t: f32,
+    light: Light
 }
 
 impl Player {
@@ -231,6 +232,7 @@ impl Player {
         Ok(Self {
             player,
             jump_t: 0.0,
+            light: Light::new(Vec3::ZERO, 5000.0, Vec3::new(0.729, 0.902, 0.992))
         })
     }
 
@@ -281,6 +283,8 @@ impl Player {
                 * time.delta_seconds();
             self.player.transform.translation += camera.get_rotation() * delta;
         }
+
+        self.light.position = self.player.transform.translation + Vec3::new(0.0, 15.0, 0.0);
 
         if old_translation != self.player.transform.translation {
             let packet = ServerboundPacket {
@@ -607,6 +611,7 @@ fn main() {
                     .map(|firefly| *firefly.as_ref())
                     .collect::<Vec<Light>>();
                 lights.push(*sun);
+                lights.push(player.light);
                 renderer.render(
                     &[
                         &grass,

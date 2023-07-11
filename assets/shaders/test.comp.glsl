@@ -64,7 +64,6 @@ layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 float INFINITY = 1.0/0.0;
 float EPSILON = 0.000001;
 vec3 AMBIENT = vec3(0.008, 0.024, 0.090);
-int RIS_M = 5;
 
 vec3 PALETTE[32] = {
 	vec3(0.7451, 0.2902, 0.1843),
@@ -149,17 +148,9 @@ struct TriangleHit {
 	float t;
 };
 
-TriangleHit triangle_hit(Ray ray, Triangle triangle) {
-	
+TriangleHit triangle_hit(Ray ray, Triangle triangle) {	
 	TriangleHit hit;
 	hit.hit = false;
-
-	/*vec3 normalDots = vec3(
-		dot(ray.direction, triangle.v0.normal),
-		dot(ray.direction, triangle.v1.normal),
-		dot(ray.direction, triangle.v2.normal)
-	);
-	if (all(greaterThan(normalDots, vec3(0.0)))) { return hit; }*/
 
 	vec3 a = inverse(mat3(
 		-ray.direction, 
@@ -168,6 +159,7 @@ TriangleHit triangle_hit(Ray ray, Triangle triangle) {
 	) * (ray.origin - triangle.v2.position);
 
 	vec4 b = vec4(a, 1.0 - a.y - a.z);
+
 	hit.hit = all(greaterThanEqual(b, vec4(0.0))) && all(lessThanEqual(b.yzw, vec3(1.0)));
 	hit.position = ray.origin + b.x * ray.direction;
 	hit.normal = triangle.v0.normal * b.y + triangle.v1.normal * b.z + triangle.v2.normal * b.w;
@@ -191,7 +183,7 @@ bool intersects_box(Ray ray, vec3 bmin, vec3 bmax) {
 	return tmax >= tmin && tmax > 0;
 }
 
-HitPayload trace_ray(Ray ray) {
+HitPayload trace_ray(Ray ray, vec3 target) {
 	HitPayload payload;
 	payload.hit = false;
 	payload.material = -1;
@@ -203,7 +195,7 @@ HitPayload trace_ray(Ray ray) {
 	for (int meshIdx = 0; meshIdx < meshes.numMeshes; meshIdx++) {
 		Mesh mesh = meshes.meshes[meshIdx];
 		
-		if (!intersects_box(ray, mesh.minAABB, mesh.maxAABB)) { continue; }
+		if (!intersects_box(ray, mesh.minAABB, mesh.maxAABB) || (all(lessThan(mesh.minAABB, target))) && all(greaterThan(mesh.maxAABB, target))) { continue; }
 
 		for (int indexIdx = mesh.first_index; indexIdx < (mesh.first_index + mesh.num_indicies); indexIdx += 3) {
 			Triangle triangle;
@@ -237,57 +229,8 @@ HitPayload trace_ray(Ray ray) {
 	return payload;
 }
 
-float distributionGGX(vec3 normal, vec3 halfway, float roughness) {
-    float a2     = roughness*roughness;
-    float NdotH  = max(dot(normal, halfway), 0.0);
-    float NdotH2 = NdotH*NdotH;
-	
-    float nom    = a2;
-    float denom  = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom        = PI * denom * denom;
-	
-    return nom / denom;
-}
-
-float geometrySchlickGGX(float NdotV, float k) {
-    float nom   = NdotV;
-    float denom = NdotV * (1.0 - k) + k;
-	
-    return nom / denom;
-}
-  
-float geometrySmith(vec3 normal, Ray incoming, Ray outgoing, float roughness) {
-    float k = (roughness*roughness)/2.0;
-    float NdotV = max(dot(normal, outgoing.direction), 0.0);
-    float NdotL = max(dot(normal, -incoming.direction), 0.0);
-    float ggx1 = geometrySchlickGGX(NdotV, k);
-    float ggx2 = geometrySchlickGGX(NdotL, k);
-	
-    return ggx1*ggx2;
-}
-
-vec3 fresnelSchlick(vec3 normal, vec3 halfway, vec3 albedo, float metalness) {
-    vec3 F0 = mix(vec3(0.04), albedo, metalness);
-    return F0 + (1.0 - F0) * pow(1.0 - dot(normal, halfway), 5.0);
-}
-
-vec3 get_brdf(Material material, Ray incoming, Ray outgoing, vec3 normal) {
-	vec3 halfway = normalize(-incoming.direction + outgoing.direction);
-	float ndf = distributionGGX(normal, halfway, material.roughness);
-	float g = geometrySmith(normal, incoming, outgoing, material.roughness);
-	vec3 f = fresnelSchlick(normal, halfway, material.albedo, material.metalness);
-	vec3 numerator = ndf * g * f;
-	float denominator = 4.0 * max(dot(normal, -incoming.direction), 0.0) * max(dot(normal, outgoing.direction), 0.0) + 0.0001;
-	vec3 specular = numerator / denominator;
-	vec3 kSpecular = f;
-	vec3 kDiffuse = vec3(1.0) - kSpecular;
-	kDiffuse *= 1.0 - material.metalness;
-
-	return (kDiffuse * material.albedo / PI + specular) * max(dot(normal, outgoing.direction), 0.0);
-}	
-
 vec3 per_pixel(Ray incoming) {
-	HitPayload hit = trace_ray(incoming);
+	HitPayload hit = trace_ray(incoming, vec3(INFINITY));
 	if (!hit.hit) { return vec3(0.0, 0.0, 0.0); }
 
 	Material material = materials.materials[hit.material];
@@ -312,7 +255,7 @@ vec3 per_pixel(Ray incoming) {
 		lightContribution *= max(dot(hit.normal, outgoing.direction), 0.0);
 		lightContribution = round(lightContribution * 4) / 4;
 
-		HitPayload hit2 = trace_ray(outgoing);
+		HitPayload hit2 = trace_ray(outgoing, light.position);
 		bool lightVisible = !hit2.hit || (hit2.t > distance);
 		diffuse += light.color * lightContribution * float(lightVisible);
 	}
@@ -324,76 +267,6 @@ vec3 per_pixel(Ray incoming) {
 	return color;
 }
 
-float getPaletteDistance(vec3 a, vec3 b) {
-	return length(a - b);
-}
-
-/*vec3 rgbtohsl(vec3 rgb) {
-	float cmax = max(rgb.r, max(rgb.g, rgb.b));
-	float cmin = min(rgb.r, min(rgb.g, rgb.b));
-	float delta = cmax - cmin;
-	float luminance = (cmax + cmin) / 2;
-	float saturation;
-
-	if (cmax == cmin) {
-		saturation = 0.0;
-	} else if (luminance <= 0.5) {
-		saturation = delta/(cmax+cmin);
-	} else if (luminance > 0.5) {
-		saturation = delta/(2.0-cmax-cmin);
-	}
-	
-	float hue;
-	if (cmax == rgb.r) {
-		hue = (rgb.g - rgb.b)/delta;	
-	} else if (cmax == rgb.g) {
-		hue = 2.0 + (rgb.b - rgb.r)/delta;
-	} else {
-		hue = 4.0 + (rgb.r - rgb.b)/delta;
-	}
-
-	return vec3(hue, saturation, luminance);
-}*/
-
-vec3 hsl2rgb(vec3 c)
-{
-	vec3 rgb = clamp( abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0 );
-
-	return c.z + c.y * (rgb-0.5)*(1.0-abs(2.0*c.z-1.0));
-}
-
-vec3 rgb2hsl(vec3 c) {
-	float h = 0.0;
-	float s = 0.0;
-	float l = 0.0;
-	float r = c.r;
-	float g = c.g;
-	float b = c.b;
-	float cMin = min( r, min( g, b ) );
-	float cMax = max( r, max( g, b ) );
-
-	l = ( cMax + cMin ) / 2.0;
-	if ( cMax > cMin ) {
-		float cDelta = cMax - cMin;
-
-		//s = l < .05 ? cDelta / ( cMax + cMin ) : cDelta / ( 2.0 - ( cMax + cMin ) ); Original
-		s = l < .0 ? cDelta / ( cMax + cMin ) : cDelta / ( 2.0 - ( cMax + cMin ) );
-
-		if ( r == cMax ) {
-			h = ( g - b ) / cDelta;
-		} else if ( g == cMax ) {
-			h = 2.0 + ( b - r ) / cDelta;
-		} else {
-			h = 4.0 + ( r - g ) / cDelta;
-		}
-
-		if ( h < 0.0) {
-			h += 6.0;
-		}
-		h = h / 6.0;
-	}
-	return vec3( h, s, l );
-}
 
 void main() {
  	vec2 pixelPos = vec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y) - viewport/2;
@@ -406,19 +279,5 @@ void main() {
 	vec3 color = per_pixel(ray);
 	vec4 outputColor = vec4(color, 1.0);
 
-    	/*float minPaletteDistance = INFINITY;
-    	for (int i = 0; i < 32; i++) {
-		float paletteDistance = getPaletteDistance(PALETTE[i], color.rgb);
-		if (paletteDistance < minPaletteDistance) {
-	 		minPaletteDistance = paletteDistance;
-			outputColor = vec4(PALETTE[i], 1.0);
-	 	}
-    	}*/
-	
-	/*vec3 hsl = rgb2hsl(color);
-	if (hsl.y < 0.02) { hsl.y = 0.0; } else { hsl.y = 0.8; }
-	if (hsl.z < 0.3) { hsl.z = 0.5; } else if (hsl.z < 0.6) { hsl.z = 0.75; } else { hsl.z = 0.85; }
-	vec4 outputColor = vec4(hsl2rgb(hsl), 1.0);*/
-	
 	imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), outputColor);
 }
