@@ -188,12 +188,7 @@ impl Sun {
         );
         self.light.strength = self.light.position.length().powf(2.0)
             * 0.5
-            * self
-                .light
-                .position
-                .normalize()
-                .dot(Vec3::new(0.0, 1.0, 0.0))
-                .powf(1.0 / 9.0);
+            * self.theta.cos().powf(0.13).max(0.0);
         self.light.strength = self.light.strength.max(0.0);
     }
 
@@ -599,11 +594,11 @@ fn main() {
                 if mouse.is_button_down(MouseButton::Right) {
                     camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY
                 }
-                if keyboard.is_key_pressed(VirtualKeyCode::Left) {
-                    sun.theta += PI / 6.0
+                if keyboard.is_key_down(VirtualKeyCode::Left) {
+                    sun.theta += PI / 60.0
                 }
-                if keyboard.is_key_pressed(VirtualKeyCode::Right) {
-                    sun.theta -= PI / 6.0
+                if keyboard.is_key_down(VirtualKeyCode::Right) {
+                    sun.theta -= PI / 60.0
                 }
 
                 let mut lights = fireflies

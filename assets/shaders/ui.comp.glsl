@@ -16,17 +16,19 @@ struct Rectangle {
 void main() {
     Rectangle rectangle;
     rectangle.origin = vec2(100, 100);
-    rectangle.extent = vec2(50, 25);
-    rectangle.radius = 8;
+    rectangle.extent = vec2(50, 50);
+    rectangle.radius = 25;
 
-    vec2 pixelPos = gl_GlobalInvocationID.xy - rectangle.origin; // Center on rectangle origin
-    pixelPos = vec2(abs(pixelPos.x), abs(pixelPos.y)); // Limit to top-right quadrant
-    pixelPos -= rectangle.extent / 2; // Align rectangle to origin
-    pixelPos -= vec2(rectangle.radius);
-    vec2 displacement = vec2(max(0, pixelPos.x), max(0, pixelPos.y));
-    float distance = length(displacement);
-    
-    bool hit = distance < rectangle.radius;
+    vec2 halfSize = rectangle.extent / 2;
+    vec2 center = rectangle.origin + halfSize;
+    vec2 pixelPosition = abs(gl_GlobalInvocationID.xy - center);
+    vec2 shrunkCornerPosition = halfSize - rectangle.radius;
+    vec2 displacement = pixelPosition - shrunkCornerPosition;
+    displacement.x = max(0, displacement.x);
+    displacement.y = max(0, displacement.y);
+    float distance = length(displacement) - rectangle.radius;
+
+    bool hit = distance < 0;
     vec4 color = vec4(vec3(float(hit)), 0.3);
 
     vec4 renderPixel = imageLoad(renderColor, ivec2(gl_GlobalInvocationID.xy));
