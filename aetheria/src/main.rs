@@ -12,26 +12,26 @@ mod material;
 mod renderer;
 mod time;
 mod transform;
+mod entities;
+mod scenes;
 
 use anyhow::Result;
-use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
-use glam::{Quat, Vec2, Vec3, Vec4};
+use glam::{Quat, Vec2, Vec3};
 use input::{Keyboard, Mouse};
 use net::*;
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::{FromPrimitive};
 use rand::Rng;
-use renderer::{Light, RenderObject, Renderable, Renderer};
+use renderer::{Light, Renderer};
 use std::{
     collections::HashMap,
     f32::consts::PI,
     io,
-    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
-    ops::Deref,
+    net::{IpAddr, SocketAddr, UdpSocket},
     sync::Arc,
-    time::{Instant, SystemTime},
+    time::Instant,
 };
 use time::Time;
 use tracing::info;
@@ -41,6 +41,8 @@ use winit::{
     event::{MouseButton, VirtualKeyCode},
     event_loop::ControlFlow,
 };
+
+use crate::{entities::Player, scenes::RootScene};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -57,351 +59,7 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
     (event_loop, window)
 }
 
-struct Tree {
-    pub transform: Transform,
-    trunk: RenderObject,
-    foliage: RenderObject,
-}
-
-impl Tree {
-    pub fn load(
-        renderer: &mut Renderer,
-        mesh_registry: &mut MeshRegistry,
-        transform: Transform,
-    ) -> Result<Tree, vk::Result> {
-        let trunk = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("tree.trunk.obj")?
-            .set_color(Vec3::new(0.451, 0.243, 0.224))
-            .set_transform(transform.clone())
-            .build()?;
-        let foliage = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("tree.foliage.obj")?
-            .set_color(Vec3::new(0.388, 0.780, 0.302))
-            .set_transform(transform.clone())
-            .build()?;
-
-        Ok(Self {
-            transform,
-            trunk,
-            foliage,
-        })
-    }
-
-    pub fn update_transform(&mut self) -> Result<(), vk::Result> {
-        self.trunk.transform = self.transform.clone();
-        self.foliage.transform = self.transform.clone();
-        Ok(())
-    }
-}
-
-impl Renderable for Tree {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![&self.trunk, &self.foliage]
-    }
-}
-
-struct Rock {
-    pub transform: Transform,
-    rock: RenderObject,
-}
-
-impl Rock {
-    pub fn load(
-        renderer: &mut Renderer,
-        mesh_registry: &mut MeshRegistry,
-        transform: Transform,
-    ) -> Result<Self, vk::Result> {
-        let rock = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("rocks.obj")?
-            .set_color(Vec3::new(0.6916608, 0.8617874, 0.9339623))
-            .set_transform(transform.clone())
-            .build()?;
-        Ok(Self { transform, rock })
-    }
-}
-
-impl Renderable for Rock {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![&self.rock]
-    }
-}
-
-struct Grass {
-    pub transform: Transform,
-    grass: RenderObject,
-}
-
-impl Grass {
-    pub fn load(
-        renderer: &mut Renderer,
-        mesh_registry: &mut MeshRegistry,
-        transform: Transform,
-    ) -> Result<Self, vk::Result> {
-        let grass = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("grass.obj")?
-            .set_color(Vec3::new(0.388, 0.780, 0.302))
-            .set_transform(transform.clone())
-            .build()?;
-        Ok(Self { transform, grass })
-    }
-}
-
-impl Renderable for Grass {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![&self.grass]
-    }
-}
-
 const CAMERA_SENSITIVITY: f32 = 250.0;
-const PLAYER_SPEED: f32 = 100.0;
-const JUMP_HEIGHT: f32 = 100.0;
-const JUMP_SPEED: f32 = 4.0;
-const DASH_DISTANCE: f32 = 100.0;
-const FIREFLY_SPEED: f32 = 60.0;
-
-struct Sun {
-    noon_pos: Vec3,
-    pub light: Light,
-    theta: f32,
-}
-
-impl Sun {
-    pub fn new(noon_pos: Vec3, color: Vec3) -> Self {
-        let seconds = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_secs();
-        let mut sun = Self {
-            noon_pos,
-            light: Light::new(noon_pos, 0.0, color),
-            theta: (seconds % 120) as f32 * (PI / 60.0),
-        };
-        sun.update_theta(sun.theta);
-        sun
-    }
-
-    pub fn update_theta(&mut self, theta: f32) {
-        self.theta = theta % (std::f32::consts::PI * 2.0);
-        self.light.position =
-            Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), self.theta) * self.noon_pos;
-        self.light.color = Vec3::new(
-            0.7 + 0.1 * self.theta.sin().powf(2.0),
-            0.2 + 0.8 * self.theta.cos().powf(2.0),
-            0.8 * self.theta.cos().powf(2.0),
-        );
-        self.light.strength = self.light.position.length().powf(2.0)
-            * 0.5
-            * self.theta.cos().powf(0.13).max(0.0);
-        self.light.strength = self.light.strength.max(0.0);
-    }
-
-    pub fn frame_finished(&mut self, time: &Time) {
-        self.update_theta(self.theta + (time.delta_seconds() * (PI / 60.0)));
-    }
-}
-
-impl Deref for Sun {
-    type Target = Light;
-
-    fn deref(&self) -> &Self::Target {
-        &self.light
-    }
-}
-
-#[derive(Clone)]
-struct Player {
-    player: RenderObject,
-    jump_t: f32,
-    light: Light
-}
-
-impl Player {
-    pub fn load(
-        renderer: &mut Renderer,
-        mesh_registry: &mut MeshRegistry,
-        transform: Transform,
-    ) -> Result<Self, vk::Result> {
-        let player = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("player.obj")?
-            .set_color(Vec3::new(1.0, 1.0, 1.0))
-            .set_transform(transform)
-            .build()?;
-
-        Ok(Self {
-            player,
-            jump_t: 0.0,
-            light: Light::new(Vec3::ZERO, 5000.0, Vec3::new(0.729, 0.902, 0.992))
-        })
-    }
-
-    pub fn update_transform<F: Fn(&mut Transform)>(&mut self, predicate: F) {
-        predicate(&mut self.player.transform);
-    }
-
-    pub fn get_transform(&self) -> Transform {
-        self.player.transform.clone()
-    }
-
-    pub fn frame_finished(
-        &mut self,
-        keyboard: &Keyboard,
-        mouse: &Mouse,
-        camera: &Camera,
-        time: &Time,
-        viewport: Vec2,
-        socket: &UdpSocket,
-    ) {
-        let old_translation = self.player.transform.translation.clone();
-
-        // Dash
-        if keyboard.is_key_pressed(VirtualKeyCode::Space) && self.jump_t >= (PI / 4.0) {
-            let mouse_direction = (mouse.position - (viewport / 2.0)).normalize_or_zero();
-            let mouse_direction =
-                camera.get_rotation() * Vec3::new(mouse_direction.x, 0.0, mouse_direction.y);
-            self.player.transform.translation += mouse_direction * DASH_DISTANCE;
-        }
-
-        // Jump
-        if keyboard.is_key_pressed(VirtualKeyCode::Space) && self.jump_t == 0.0 {
-            self.jump_t = std::f32::consts::PI - 0.0001;
-        }
-
-        self.player.transform.translation.y = self.jump_t.sin().powf(0.6) * JUMP_HEIGHT;
-        self.jump_t -= time.delta_seconds() * JUMP_SPEED;
-        self.jump_t = self.jump_t.max(0.0);
-
-        // Movement
-        let z = keyboard.is_key_down(VirtualKeyCode::S) as i32
-            - keyboard.is_key_down(VirtualKeyCode::W) as i32;
-        let x = keyboard.is_key_down(VirtualKeyCode::D) as i32
-            - keyboard.is_key_down(VirtualKeyCode::A) as i32;
-        if x != 0 || z != 0 {
-            let delta = Vec3::new(x as f32, 0.0, z as f32).normalize()
-                * PLAYER_SPEED
-                * time.delta_seconds();
-            self.player.transform.translation += camera.get_rotation() * delta;
-        }
-
-        self.light.position = self.player.transform.translation + Vec3::new(0.0, 15.0, 0.0);
-
-        if old_translation != self.player.transform.translation {
-            let packet = ServerboundPacket {
-                opcode: ServerboundOpcode::Move,
-                payload: bytemuck::cast::<Vec3, [u8; 12]>(self.player.transform.translation)
-                    .to_vec(),
-            };
-            socket.send(&packet.to_bytes()).unwrap();
-        }
-    }
-}
-
-impl Renderable for Player {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![&self.player]
-    }
-}
-
-struct Firefly {
-    light: Light,
-    velocity: Vec3,
-    origin: Vec3,
-    front: RenderObject,
-    back: RenderObject,
-}
-
-impl Firefly {
-    pub fn new(
-        renderer: &mut Renderer,
-        mesh_registry: &mut MeshRegistry,
-        position: Vec3,
-        color: Vec3,
-    ) -> Result<Self, vk::Result> {
-        let light = Light::new(position, 0.0, color);
-
-        let front = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("firefly_front.obj")?
-            .set_color(Vec3::new(0.0, 0.0, 0.0))
-            .set_transform(Transform {
-                translation: position,
-                rotation: Quat::IDENTITY,
-                scale: Vec3::ONE,
-            })
-            .build()?;
-        let back = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("firefly_back.obj")?
-            .set_color(Vec3::new(10.0, 10.0, 0.0))
-            .set_transform(Transform {
-                translation: position,
-                rotation: Quat::IDENTITY,
-                scale: Vec3::ONE,
-            })
-            .build()?;
-
-        let mut rng = rand::thread_rng();
-        let velocity = Vec3::new(
-            rng.gen_range(-1.0..1.0),
-            rng.gen_range(-1.0..1.0),
-            rng.gen_range(-1.0..1.0),
-        )
-        .normalize_or_zero();
-        Ok(Self {
-            light,
-            velocity,
-            origin: position,
-            front,
-            back,
-        })
-    }
-
-    pub fn frame_finished(&mut self, sun: &Sun, time: &Time) {
-        if sun.theta > (std::f32::consts::PI / 3.0)
-            && sun.theta < (std::f32::consts::PI * (5.0 / 3.0))
-        {
-            self.light.strength = 300.0
-                * ((sun.theta / 2.0).sin() - sun.theta.cos())
-                    .powf(1.5)
-                    .min(1.0);
-        } else {
-            self.light.strength = 0.0
-        }
-
-        self.light.position += self.velocity * FIREFLY_SPEED * time.delta_seconds();
-
-        let mut rng = rand::thread_rng();
-        let random_vec3 = Vec3::new(
-            rng.gen_range(-1.0..1.0),
-            rng.gen_range(-1.0..1.0),
-            rng.gen_range(-1.0..1.0),
-        )
-        .normalize_or_zero();
-        let origin_direction = (self.origin - self.light.position).normalize_or_zero();
-        let origin_bias = ((self.origin - self.light.position).length() - 100.0) / 100.0;
-        self.velocity = (self.velocity + random_vec3 * 0.1 + origin_direction * origin_bias)
-            .normalize_or_zero();
-
-        self.light.position.y = self.light.position.y.clamp(5.0, 15.0);
-        self.front.transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0);
-        self.back.transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0);
-
-        let v = Vec3::new(self.velocity.x, 0.0, self.velocity.z).normalize();
-        let rotation = Quat::from_rotation_arc(Vec3::new(0.0, 0.0, 1.0), v);
-        self.front.transform.rotation = rotation.clone();
-        self.back.transform.rotation = rotation.clone();
-    }
-}
-
-impl AsRef<Light> for Firefly {
-    fn as_ref(&self) -> &Light {
-        &self.light
-    }
-}
-
-impl Renderable for Firefly {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        if self.light.strength != 0.0 {
-            vec![&self.front, &self.back]
-        } else {
-            vec![]
-        }
-    }
-}
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -441,54 +99,7 @@ fn main() {
     let mut mouse = Mouse::new();
     let mut rng = rand::thread_rng();
 
-    let mut trees: Vec<Tree> = Vec::new();
-
-    for _ in 0..10 {
-        let translation = Vec3::new(
-            rng.gen_range(-400.0..400.0),
-            0.0,
-            rng.gen_range(-400.0..400.0),
-        );
-        let rotation = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), rng.gen_range(-PI..PI));
-        let transform = Transform {
-            translation,
-            rotation,
-            scale: Vec3::new(0.1, 0.1, 0.1),
-        };
-        trees.push(Tree::load(&mut renderer, &mut mesh_registry, transform).unwrap());
-    }
-
-    let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
-
-    let mut sun = Sun::new(Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
-
-    let mut fireflies = Vec::new();
-
-    for _ in 0..10 {
-        let position = Vec3::new(
-            rng.gen_range(-400.0..400.0),
-            50.0,
-            rng.gen_range(-400.0..400.0),
-        );
-        fireflies.push(
-            Firefly::new(
-                &mut renderer,
-                &mut mesh_registry,
-                position,
-                Vec3::new(0.745, 0.949, 0.392),
-            )
-            .unwrap(),
-        );
-    }
-
-    let mut player = {
-        let transform = Transform {
-            translation: Vec3::new(0.0, 10.0, 0.0),
-            rotation: Quat::IDENTITY,
-            scale: Vec3::ONE,
-        };
-        Player::load(&mut renderer, &mut mesh_registry, transform).unwrap()
-    };
+    let mut root = RootScene::new(&mut renderer, &mut mesh_registry).expect("Failed to load scene");
 
     let mut players: HashMap<String, Player> = HashMap::new();
     let mut last_heartbeat: Instant = Instant::now();
@@ -528,7 +139,7 @@ fn main() {
                     let username = String::from_utf8(packet.payload[12..].to_vec()).unwrap();
                     players.insert(
                         username,
-                        Player::load(
+                        Player::new(
                             &mut renderer,
                             &mut mesh_registry,
                             Transform {
@@ -549,9 +160,7 @@ fn main() {
                     players
                         .get_mut(&username)
                         .expect("Peer not found")
-                        .player
-                        .transform
-                        .translation = translation;
+                        .update_transform(|transform| transform.translation = translation);
                 }
 
                 if let ClientboundOpcode::DespawnPlayer = packet.opcode {
@@ -595,27 +204,18 @@ fn main() {
                     camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY
                 }
                 if keyboard.is_key_down(VirtualKeyCode::Left) {
-                    sun.theta += PI / 60.0
+                    root.sun.update_theta(root.sun.get_theta() + PI / 60.0)
                 }
                 if keyboard.is_key_down(VirtualKeyCode::Right) {
-                    sun.theta -= PI / 60.0
+                    root.sun.update_theta(root.sun.get_theta() - PI / 60.0)
                 }
 
-                let mut lights = fireflies
-                    .iter()
-                    .map(|firefly| *firefly.as_ref())
-                    .collect::<Vec<Light>>();
-                lights.push(*sun);
-                lights.push(player.light);
                 renderer.render(
                     &[
-                        &grass,
-                        &trees,
-                        &player,
-                        &fireflies,
+                        &root,
                         &players.values().cloned().collect::<Vec<Player>>(),
                     ],
-                    &lights,
+                    &root.get_lights(),
                     &camera,
                     &time,
                     &mesh_registry,
@@ -624,16 +224,13 @@ fn main() {
                     window.inner_size().width as f32,
                     window.inner_size().height as f32,
                 );
-                player.frame_finished(&keyboard, &mouse, &camera, &time, viewport, &socket);
-                fireflies
-                    .iter_mut()
-                    .for_each(|firefly| firefly.frame_finished(&sun, &time));
+
+                root.frame_finished(&keyboard, &mouse, &camera, &time, viewport, &socket);
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();
                 mouse.frame_finished();
-                sun.frame_finished(&time);
-                camera.target = player.get_transform().translation;
+                camera.target = root.player.get_transform().translation;
             }
             _ => (),
         };
