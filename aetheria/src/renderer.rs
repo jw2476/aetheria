@@ -142,6 +142,11 @@ impl Light {
 
 pub struct RenderPass {
     texture: Texture,
+
+    frame_layout: SetLayout,
+    frame_pool: Pool,
+    frame_set: Set,
+
     geometry_layout: SetLayout,
     geometry_pool: Pool,
     geometry_set: Set,
@@ -151,8 +156,9 @@ pub struct RenderPass {
 impl RenderPass {
     pub fn new(
         ctx: &Context,
-        per_frame_layout: &SetLayout,
         shader_registry: &mut ShaderRegistry,
+        camera: &Camera,
+        time: &Time
     ) -> Result<Self, vk::Result> {
         let image = Image::new(
             &ctx,
@@ -162,6 +168,15 @@ impl RenderPass {
             vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
         )?;
         let texture = Texture::from_image(&ctx, image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
+
+        let frame_layout = SetLayoutBuilder::new(&ctx.device)
+            .add(vk::DescriptorType::UNIFORM_BUFFER)
+            .add(vk::DescriptorType::UNIFORM_BUFFER)
+            .build()?;
+        let mut frame_pool = Pool::new(ctx.device.clone(), frame_layout.clone(), 1)?;
+        let frame_set = frame_pool.allocate()?;
+        frame_set.update_buffer(&ctx.device, 0, &camera.buffer);
+        frame_set.update_buffer(&ctx.device, 1, &time.buffer);
 
         let geometry_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::STORAGE_IMAGE)
@@ -179,11 +194,14 @@ impl RenderPass {
         let pipeline = compute::Pipeline::new(
             &ctx.device,
             shader.clone(),
-            &[per_frame_layout.clone(), geometry_layout.clone()],
+            &[frame_layout.clone(), geometry_layout.clone()],
         )?;
 
         Ok(Self {
             texture,
+            frame_layout,
+            frame_set,
+            frame_pool,
             geometry_layout,
             geometry_pool,
             geometry_set,
@@ -209,7 +227,7 @@ impl RenderPass {
         return (min, max);
     }
 
-    pub(self) fn set_geometry(
+    pub fn set_geometry(
         &self,
         renderer: &Renderer,
         mesh_registry: &MeshRegistry,
@@ -311,10 +329,15 @@ impl RenderPass {
             .update_buffer(&renderer.device, 5, &light_buffer);
     }
 
-    pub(self) fn record(
+    pub fn get_texture(&self) -> &'_ Texture {
+        &self.texture
+    }
+}
+
+impl Pass for RenderPass {
+    fn record(
         &self,
         cmd: command::BufferBuilder,
-        per_frame_set: &Set,
     ) -> command::BufferBuilder {
         cmd.transition_image_layout(
             &self.texture.image,
@@ -328,7 +351,7 @@ impl RenderPass {
             },
         )
         .bind_compute_pipeline(self.pipeline.clone())
-        .bind_descriptor_set(0, &per_frame_set)
+        .bind_descriptor_set(0, &self.frame_set)
         .bind_descriptor_set(1, &self.geometry_set)
         .dispatch(
             RENDER_WIDTH / 16,
@@ -336,20 +359,16 @@ impl RenderPass {
             1,
         )
     }
-
-    pub(self) fn get_texture(&self) -> &'_ Texture {
-        &self.texture
-    }
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 pub struct Rectangle {
-    color: Vec4,
-    origin: Vec2,
-    extent: Vec2,
-    radius: f32,
-    _padding: [u8; 12]
+    pub color: Vec4,
+    pub origin: Vec2,
+    pub extent: Vec2,
+    pub radius: f32,
+    pub _padding: [u8; 12]
 }
 
 pub struct UIPass {
@@ -401,7 +420,7 @@ impl UIPass {
         })
     }
 
-    pub(self) fn set_geometry(&self, ctx: &Context, rectangles: &[Rectangle]) -> Result<(), vk::Result> {
+    pub fn set_geometry(&self, ctx: &Context, rectangles: &[Rectangle]) -> Result<(), vk::Result> {
         let mut rectangle_data: Vec<u8> = cast_slice::<i32, u8>(&[rectangles.len() as i32, 0, 0, 0]).to_vec();
         println!("{:?}", rectangle_data);
         rectangle_data.extend_from_slice(cast_slice::<Rectangle, u8>(rectangles));
@@ -410,7 +429,13 @@ impl UIPass {
         Ok(())
     }
 
-    pub(self) fn record(
+    pub fn get_texture(&self) -> &'_ Texture {
+        &self.output
+    }
+}
+
+impl Pass for UIPass {
+    fn record(
         &self,
         cmd: command::BufferBuilder,
     ) -> command::BufferBuilder {
@@ -433,10 +458,10 @@ impl UIPass {
             1,
         )
     }
+}
 
-    pub(self) fn get_texture(&self) -> &'_ Texture {
-        &self.output
-    }
+pub trait Pass {
+    fn record(&self, cmd: command::BufferBuilder) -> command::BufferBuilder;
 }
 
 pub struct Renderer {
@@ -445,15 +470,9 @@ pub struct Renderer {
 
     render_finished: vk::Semaphore,
     in_flight: vk::Fence,
+    output_image: Option<(Arc<Image>, vk::ImageLayout)>,
 
-    per_frame_layout: SetLayout,
-    per_frame_pool: Pool,
-    per_frame_set: Set,
-    camera_buffer: Buffer,
-    time_buffer: Buffer,
-
-    render_pass: RenderPass,
-    ui_pass: UIPass
+    passes: Vec<Arc<dyn Pass>>
 }
 
 const RENDER_WIDTH: u32 = 480;
@@ -462,7 +481,6 @@ const RENDER_HEIGHT: u32 = 270;
 impl Renderer {
     pub fn new(
         ctx: Context,
-        shader_registry: &mut ShaderRegistry,
         window: Arc<Window>,
     ) -> Result<Self, vk::Result> {
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
@@ -471,34 +489,13 @@ impl Renderer {
             unsafe { ctx.device.create_semaphore(&semaphore_info, None).unwrap() };
         let in_flight = unsafe { ctx.device.create_fence(&fence_info, None).unwrap() };
 
-        let per_frame_layout = SetLayoutBuilder::new(&ctx.device)
-            .add(vk::DescriptorType::UNIFORM_BUFFER)
-            .add(vk::DescriptorType::UNIFORM_BUFFER)
-            .build()?;
-        let mut per_frame_pool = Pool::new(ctx.device.clone(), per_frame_layout.clone(), 1)?;
-
-        let camera_buffer =
-            Buffer::new(&ctx, vec![0_u8; 32], vk::BufferUsageFlags::UNIFORM_BUFFER)?;
-        let time_buffer = Buffer::new(&ctx, vec![0_u8; 8], vk::BufferUsageFlags::UNIFORM_BUFFER)?;
-        let per_frame_set = per_frame_pool.allocate()?;
-        per_frame_set.update_buffer(&ctx.device, 0, &camera_buffer);
-        per_frame_set.update_buffer(&ctx.device, 1, &time_buffer);
-
-        let render_pass = RenderPass::new(&ctx, &per_frame_layout, shader_registry)?;
-        let ui_pass = UIPass::new(&ctx, shader_registry, render_pass.get_texture())?;
-
         let renderer = Self {
             ctx,
             window,
             render_finished,
             in_flight,
-            per_frame_layout,
-            per_frame_pool,
-            camera_buffer,
-            time_buffer,
-            per_frame_set,
-            render_pass,
-            ui_pass
+            output_image: None,
+            passes: Vec::new()
         };
 
         Ok(renderer)
@@ -536,25 +533,33 @@ impl Renderer {
         Ok(())
     }
 
+    pub fn add_pass(&mut self, pass: Arc<dyn Pass>) {
+        self.passes.push(pass);
+    }
+
+    pub fn set_output_image(&mut self, image: Arc<Image>, layout: vk::ImageLayout) {
+        self.output_image = Some((image, layout));
+    }
+
+    pub fn wait_for_frame(&self) {
+        unsafe {
+            self.device
+                .wait_for_fences(&[self.in_flight], true, u64::MAX)
+                .unwrap();
+        }
+    }
+
     pub fn render(
         &mut self,
-        renderables: &[&dyn Renderable],
-        lights: &[Light],
-        camera: &Camera,
-        time: &Time,
-        mesh_registry: &MeshRegistry,
     ) {
         unsafe {
             let in_flight = self.in_flight.clone();
 
             let acquire_result = self.ctx.start_frame(in_flight);
 
-            camera.update_buffer(&mut self.camera_buffer);
-            time.update_buffer(&mut self.time_buffer);
-
-            self.render_pass
+            /*self.render_pass
                 .set_geometry(&self, mesh_registry, renderables, lights);
-            self.ui_pass.set_geometry(&self, &[Rectangle { origin: Vec2::new(50.0, 50.0), extent: Vec2::new(50.0, 50.0), radius: 25.0, color: Vec4::new(1.0, 0.0, 1.0, 0.3), ..Default::default() }]).expect("Failed to update UI geometry");
+            self.ui_pass.set_geometry(&self, &[Rectangle { origin: Vec2::new(50.0, 50.0), extent: Vec2::new(50.0, 50.0), radius: 25.0, color: Vec4::new(1.0, 0.0, 1.0, 0.3), ..Default::default() }]).expect("Failed to update UI geometry");*/
 
             let image_index = match acquire_result {
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
@@ -574,12 +579,13 @@ impl Renderer {
                 .unwrap()
                 .begin()
                 .unwrap()
-                .record(|cmd| self.render_pass.record(cmd, &self.per_frame_set))
-                .record(|cmd: command::BufferBuilder| self.ui_pass.record(cmd))
+                .record(|cmd| { 
+                    self.passes.iter().fold(cmd, |cmd, pass| cmd.record(|cmd| pass.record(cmd))) 
+                })
                 .transition_image_layout(
-                    &self.ui_pass.get_texture().image,
+                    &self.output_image.as_ref().expect("No output image set").0,
                     &TransitionLayoutOptions {
-                        old: vk::ImageLayout::GENERAL,
+                        old: self.output_image.as_ref().unwrap().1,
                         new: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                         source_access: vk::AccessFlags::SHADER_WRITE,
                         destination_access: vk::AccessFlags::TRANSFER_READ,
@@ -599,7 +605,7 @@ impl Renderer {
                     },
                 )
                 .blit_image(
-                    &self.ui_pass.get_texture().image,
+                    &self.output_image.as_ref().unwrap().0,
                     &self.ctx.swapchain.images[image_index as usize],
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,

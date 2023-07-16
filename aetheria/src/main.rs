@@ -16,10 +16,11 @@ mod entities;
 mod scenes;
 
 use anyhow::Result;
+use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
-use glam::{Quat, Vec2, Vec3};
+use glam::{Quat, Vec2, Vec3, Vec4};
 use input::{Keyboard, Mouse};
 use net::*;
 use num_traits::{FromPrimitive};
@@ -42,7 +43,7 @@ use winit::{
     event_loop::ControlFlow,
 };
 
-use crate::{entities::Player, scenes::RootScene};
+use crate::{entities::Player, scenes::RootScene, renderer::{RenderPass, UIPass, Rectangle}};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -92,12 +93,16 @@ fn main() {
     let mut mesh_registry = MeshRegistry::new();
     let mut shader_registry = ShaderRegistry::new();
 
-    let mut renderer = Renderer::new(ctx, &mut shader_registry, window.clone()).unwrap();
-    let mut camera = Camera::new(480.0, 270.0).unwrap();
-    let mut time = Time::new().unwrap();
+    let mut renderer = Renderer::new(ctx, window.clone()).unwrap();
+    let mut camera = Camera::new(480.0, 270.0, &renderer).unwrap();
+    let mut time = Time::new(&renderer).unwrap();
+    let render_pass = Arc::new(RenderPass::new(&renderer, &mut shader_registry, &camera, &time).unwrap());
+    let ui_pass = Arc::new(UIPass::new(&renderer, &mut shader_registry, render_pass.get_texture()).unwrap());
+    renderer.add_pass(render_pass.clone());
+    renderer.add_pass(ui_pass.clone());
+    renderer.set_output_image(ui_pass.get_texture().image.clone(), vk::ImageLayout::GENERAL);
     let mut keyboard = Keyboard::new();
     let mut mouse = Mouse::new();
-    let mut rng = rand::thread_rng();
 
     let mut root = RootScene::new(&mut renderer, &mut mesh_registry).expect("Failed to load scene");
 
@@ -116,9 +121,7 @@ fn main() {
 
         let mut data = [0; 4096];
         match socket.recv(&mut data) {
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                println!("Waiting for fd");
-            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(e) => panic!("{e}"),
             Ok(n) => {
                 let packet_size = u64::from_be_bytes(data[0..8].try_into().unwrap());
@@ -210,16 +213,18 @@ fn main() {
                     root.sun.update_theta(root.sun.get_theta() - PI / 60.0)
                 }
 
-                renderer.render(
+                renderer.wait_for_frame();
+                render_pass.set_geometry(
+                    &renderer, 
+                    &mesh_registry,
                     &[
                         &root,
                         &players.values().cloned().collect::<Vec<Player>>(),
-                    ],
+                    ], 
                     &root.get_lights(),
-                    &camera,
-                    &time,
-                    &mesh_registry,
                 );
+                ui_pass.set_geometry(&renderer, &[Rectangle { origin: Vec2::new(50.0, 50.0), extent: Vec2::new(20.0, 20.0), radius: 10.0, color: Vec4::new(1.0, 1.0, 0.0, 0.4), ..Default::default() }]).unwrap();
+                renderer.render();
                 let viewport = Vec2::new(
                     window.inner_size().width as f32,
                     window.inner_size().height as f32,

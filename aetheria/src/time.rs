@@ -9,14 +9,16 @@ pub struct Time {
     last_frame: Instant,
     current_frame: Instant,
     pub time: f32,
+    pub buffer: Buffer
 }
 
 impl Time {
-    pub fn new() -> Result<Self, vk::Result> {
+    pub fn new(renderer: &Renderer) -> Result<Self, vk::Result> {
         let time = Self {
             last_frame: Instant::now(),
             current_frame: Instant::now(),
             time: 0.0,
+            buffer: Buffer::new(renderer, [0_u8; 8], vk::BufferUsageFlags::UNIFORM_BUFFER)?
         };
         Ok(time)
     }
@@ -25,11 +27,11 @@ impl Time {
         (self.current_frame - self.last_frame).as_secs_f32()
     }
 
-    pub fn update_buffer(&self, buffer: &mut Buffer) {
+    fn update_buffer(&mut self) {
         let delta = self.delta_seconds();
         let data = &[self.time, delta];
         let data = cast_slice::<f32, u8>(data);
-        buffer.upload(data);
+        self.buffer.upload(data);
     }
 
     pub fn frame_finished(&mut self) {
@@ -40,5 +42,6 @@ impl Time {
 
         self.last_frame = self.current_frame;
         self.current_frame = Instant::now();
+        self.update_buffer();
     }
 }

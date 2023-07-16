@@ -57,10 +57,6 @@ impl Context {
 
     pub unsafe fn start_frame(&mut self, in_flight: vk::Fence) -> Result<u32, vk::Result> {
         unsafe {
-            self.device
-                .wait_for_fences(&[in_flight], true, u64::MAX)
-                .unwrap();
-
             let image_index = self
                 .device
                 .extensions
