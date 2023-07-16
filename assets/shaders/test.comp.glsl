@@ -195,7 +195,8 @@ HitPayload trace_ray(Ray ray, vec3 target) {
 	for (int meshIdx = 0; meshIdx < meshes.numMeshes; meshIdx++) {
 		Mesh mesh = meshes.meshes[meshIdx];
 		
-		if (!intersects_box(ray, mesh.minAABB, mesh.maxAABB) || (all(lessThan(mesh.minAABB, target))) && all(greaterThan(mesh.maxAABB, target))) { continue; }
+    if (!intersects_box(ray, mesh.minAABB, mesh.maxAABB)) { continue; }
+    //if (all(greaterThan(ray.origin, mesh.minAABB)) && all(lessThan(ray.origin, mesh.maxAABB))) { continue; }
 
 		for (int indexIdx = mesh.first_index; indexIdx < (mesh.first_index + mesh.num_indicies); indexIdx += 3) {
 			Triangle triangle;

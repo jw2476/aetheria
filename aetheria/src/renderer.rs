@@ -1,9 +1,7 @@
 use ash::vk;
 use assets::{Mesh, MeshRegistry, ShaderRegistry, Vertex};
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
-use egui::mutex::Mutex;
-use egui::TexturesDelta;
-use glam::{Mat4, Quat, Vec3, Vec4};
+use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::{ops::Deref, sync::Arc};
@@ -344,6 +342,16 @@ impl RenderPass {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+pub struct Rectangle {
+    color: Vec4,
+    origin: Vec2,
+    extent: Vec2,
+    radius: f32,
+    _padding: [u8; 12]
+}
+
 pub struct UIPass {
     pipeline: compute::Pipeline,
     ui_layout: SetLayout,
@@ -370,13 +378,12 @@ impl UIPass {
         let ui_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::STORAGE_IMAGE)
             .add(vk::DescriptorType::STORAGE_IMAGE)
-
+            .add(vk::DescriptorType::STORAGE_BUFFER)
             .build()?;
         let mut ui_pool = Pool::new(ctx.device.clone(), ui_layout.clone(), 1)?;
         let ui_set = ui_pool.allocate()?;
         ui_set.update_texture(&ctx.device, 0, &output, vk::ImageLayout::GENERAL);
-        ui_set.update_texture(&ctx.device, 1, &input, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-
+        ui_set.update_texture(&ctx.device, 1, &input, vk::ImageLayout::GENERAL);
 
         let shader: Arc<Shader> = shader_registry.load(&ctx.device, "ui.comp.glsl");
         let pipeline = compute::Pipeline::new(
@@ -392,6 +399,15 @@ impl UIPass {
             ui_set,
             output
         })
+    }
+
+    pub(self) fn set_geometry(&self, ctx: &Context, rectangles: &[Rectangle]) -> Result<(), vk::Result> {
+        let mut rectangle_data: Vec<u8> = cast_slice::<i32, u8>(&[rectangles.len() as i32, 0, 0, 0]).to_vec();
+        println!("{:?}", rectangle_data);
+        rectangle_data.extend_from_slice(cast_slice::<Rectangle, u8>(rectangles));
+        let rectangle_buffer = Buffer::new(ctx, rectangle_data, vk::BufferUsageFlags::STORAGE_BUFFER)?;
+        self.ui_set.update_buffer(&ctx.device, 2, &rectangle_buffer);
+        Ok(())
     }
 
     pub(self) fn record(
@@ -538,6 +554,7 @@ impl Renderer {
 
             self.render_pass
                 .set_geometry(&self, mesh_registry, renderables, lights);
+            self.ui_pass.set_geometry(&self, &[Rectangle { origin: Vec2::new(50.0, 50.0), extent: Vec2::new(50.0, 50.0), radius: 25.0, color: Vec4::new(1.0, 0.0, 1.0, 0.3), ..Default::default() }]).expect("Failed to update UI geometry");
 
             let image_index = match acquire_result {
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
@@ -558,17 +575,6 @@ impl Renderer {
                 .begin()
                 .unwrap()
                 .record(|cmd| self.render_pass.record(cmd, &self.per_frame_set))
-                .transition_image_layout(
-                    &self.render_pass.get_texture().image,
-                    &TransitionLayoutOptions {
-                        old: vk::ImageLayout::GENERAL,
-                        new: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                        source_access: vk::AccessFlags::SHADER_WRITE,
-                        destination_access: vk::AccessFlags::SHADER_READ,
-                        source_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
-                        destination_stage: vk::PipelineStageFlags::COMPUTE_SHADER,
-                    },
-                )
                 .record(|cmd: command::BufferBuilder| self.ui_pass.record(cmd))
                 .transition_image_layout(
                     &self.ui_pass.get_texture().image,
