@@ -3,7 +3,7 @@ use std::{f32::consts::PI, net::UdpSocket};
 use ash::vk;
 use assets::MeshRegistry;
 use glam::{Vec2, Vec3};
-use net::{ServerboundPacket, ServerboundOpcode};
+use net::{ServerboundOpcode, ServerboundPacket};
 use winit::event::VirtualKeyCode;
 
 use crate::{

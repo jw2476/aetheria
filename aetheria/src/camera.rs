@@ -16,7 +16,7 @@ pub struct Camera {
     pub width: f32,
     pub height: f32,
 
-    pub buffer: Buffer
+    pub buffer: Buffer,
 }
 
 impl Camera {
@@ -33,7 +33,7 @@ impl Camera {
             actual_target: target,
             width,
             height,
-            buffer: Buffer::new(&renderer, [0_u8; 32], vk::BufferUsageFlags::UNIFORM_BUFFER)?
+            buffer: Buffer::new(&renderer, [0_u8; 32], vk::BufferUsageFlags::UNIFORM_BUFFER)?,
         };
 
         Ok(camera)
@@ -42,7 +42,7 @@ impl Camera {
     fn pad_vec3(data: Vec3) -> [f32; 4] {
         [data.x, data.y, data.z, 0.0]
     }
-    
+
     pub fn update_buffer(&mut self) {
         let mut eye = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), self.actual_theta)
             * Vec3::new(0.0, 500.0 * 2.0_f32.powf(-0.5), 500.0);
@@ -65,7 +65,7 @@ impl Camera {
         if (self.actual_target - self.target).length() > EPSILON {
             self.actual_target += (self.target - self.actual_target) * Self::DAMPING;
         }
-        
+
         self.update_buffer();
     }
 

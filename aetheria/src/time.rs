@@ -1,6 +1,7 @@
 use ash::vk;
 use bytemuck::cast_slice;
 use std::time::Instant;
+use tracing::info;
 use vulkan::Buffer;
 
 use crate::renderer::Renderer;
@@ -9,16 +10,17 @@ pub struct Time {
     last_frame: Instant,
     current_frame: Instant,
     pub time: f32,
-    pub buffer: Buffer
+    pub buffer: Buffer,
 }
 
 impl Time {
     pub fn new(renderer: &Renderer) -> Result<Self, vk::Result> {
+        info!("Starting frame timer");
         let time = Self {
             last_frame: Instant::now(),
             current_frame: Instant::now(),
             time: 0.0,
-            buffer: Buffer::new(renderer, [0_u8; 8], vk::BufferUsageFlags::UNIFORM_BUFFER)?
+            buffer: Buffer::new(renderer, [0_u8; 8], vk::BufferUsageFlags::UNIFORM_BUFFER)?,
         };
         Ok(time)
     }

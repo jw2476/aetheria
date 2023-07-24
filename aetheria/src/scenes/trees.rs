@@ -5,7 +5,11 @@ use assets::MeshRegistry;
 use glam::{Quat, Vec3};
 use rand::Rng;
 
-use crate::{entities::Tree, renderer::{Renderer, Renderable, RenderObject}, transform::Transform};
+use crate::{
+    entities::Tree,
+    renderer::{RenderObject, Renderable, Renderer},
+    transform::Transform,
+};
 
 const NUM_TREES: u32 = 10;
 
@@ -41,9 +45,11 @@ impl Trees {
     }
 }
 
-
 impl Renderable for Trees {
     fn get_objects(&self) -> Vec<&RenderObject> {
-        self.trees.iter().flat_map(|tree| tree.get_objects()).collect::<Vec<&RenderObject>>()
+        self.trees
+            .iter()
+            .flat_map(|tree| tree.get_objects())
+            .collect::<Vec<&RenderObject>>()
     }
 }

@@ -3,11 +3,12 @@ use assets::MeshRegistry;
 use glam::{Quat, Vec3};
 use rand::Rng;
 
+use super::Sun;
 use crate::{
     renderer::{Light, RenderObject, Renderable, Renderer},
-    transform::Transform, time::Time,
+    time::Time,
+    transform::Transform,
 };
-use super::Sun;
 
 const FIREFLY_SPEED: f32 = 60.0;
 

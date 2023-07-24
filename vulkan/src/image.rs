@@ -1,9 +1,7 @@
-use super::{Buffer, Context, Device, Pool};
+use super::{Buffer, Context, Device, Pool, allocator::{Allocation, Allocator}};
 use crate::command::TransitionLayoutOptions;
 use crate::Set;
-use ash::vk;
-use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator};
-use gpu_allocator::MemoryLocation;
+use ash::vk::{self, MemoryPropertyFlags};
 use std::cell::OnceCell;
 use std::ops::Deref;
 use std::path::Path;
@@ -44,26 +42,7 @@ impl Image {
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
 
-        let image = unsafe { ctx.device.create_image(&create_info, None)? };
-
-        let requirements = unsafe { ctx.device.get_image_memory_requirements(image) };
-        let allocation_info = AllocationCreateDesc {
-            name: "image",
-            requirements,
-            location: MemoryLocation::GpuOnly,
-            linear: true,
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-        };
-        let allocation = ctx
-            .allocator
-            .lock()
-            .unwrap()
-            .allocate(&allocation_info)
-            .unwrap();
-        unsafe {
-            ctx.device
-                .bind_image_memory(image, allocation.memory(), allocation.offset())?;
-        };
+        let (image, allocation) = ctx.allocator.lock().unwrap().create_image(&create_info, MemoryPropertyFlags::DEVICE_LOCAL)?;
 
         Ok(Arc::new(Self {
             image,
@@ -71,7 +50,7 @@ impl Image {
             width,
             height,
             allocation: Some(allocation),
-            allocator: Some(ctx.allocator.clone()),
+            allocator: Some(ctx.allocator.clone())
         }))
     }
 
@@ -175,8 +154,7 @@ impl Drop for Image {
             .unwrap()
             .lock()
             .unwrap()
-            .free(self.allocation.take().expect("Vulkan buffer double free"))
-            .expect("Failed to free vulkan buffer");
+            .free(&self.allocation.unwrap())
     }
 }
 

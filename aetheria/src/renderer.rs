@@ -158,7 +158,7 @@ impl RenderPass {
         ctx: &Context,
         shader_registry: &mut ShaderRegistry,
         camera: &Camera,
-        time: &Time
+        time: &Time,
     ) -> Result<Self, vk::Result> {
         let image = Image::new(
             &ctx,
@@ -281,17 +281,17 @@ impl RenderPass {
         let mut mesh_data = cast_slice::<i32, u8>(&[meshes.len() as i32, 0, 0, 0]).to_vec();
         mesh_data.append(&mut cast_slice::<MeshData, u8>(&meshes).to_vec());
 
-        let indices = indices
-            .iter()
-            .copied()
-            .flat_map(|index| [index, 0, 0, 0])
-            .collect::<Vec<i32>>();
         let vertex_buffer = Buffer::new(
             &renderer,
             cast_slice::<Vertex, u8>(&vertices),
             vk::BufferUsageFlags::STORAGE_BUFFER,
         )
         .unwrap();
+        let indices = indices
+            .iter()
+            .copied()
+            .flat_map(|index| [index, 0, 0, 0])
+            .collect::<Vec<i32>>();
         let index_buffer = Buffer::new(
             &renderer,
             cast_slice::<i32, u8>(&indices),
@@ -317,6 +317,8 @@ impl RenderPass {
         )
         .unwrap();
 
+        println!("{:#?}", renderer.ctx.allocator);
+
         self.geometry_set
             .update_buffer(&renderer.device, 1, &vertex_buffer);
         self.geometry_set
@@ -335,10 +337,7 @@ impl RenderPass {
 }
 
 impl Pass for RenderPass {
-    fn record(
-        &self,
-        cmd: command::BufferBuilder,
-    ) -> command::BufferBuilder {
+    fn record(&self, cmd: command::BufferBuilder) -> command::BufferBuilder {
         cmd.transition_image_layout(
             &self.texture.image,
             &TransitionLayoutOptions {
@@ -368,7 +367,7 @@ pub struct Rectangle {
     pub origin: Vec2,
     pub extent: Vec2,
     pub radius: f32,
-    pub _padding: [u8; 12]
+    pub _padding: [u8; 12],
 }
 
 pub struct UIPass {
@@ -376,14 +375,14 @@ pub struct UIPass {
     ui_layout: SetLayout,
     ui_pool: Pool,
     ui_set: Set,
-    output: Texture
+    output: Texture,
 }
 
 impl UIPass {
     pub fn new(
         ctx: &Context,
         shader_registry: &mut ShaderRegistry,
-        input: &Texture
+        input: &Texture,
     ) -> Result<Self, vk::Result> {
         let image = Image::new(
             &ctx,
@@ -405,26 +404,24 @@ impl UIPass {
         ui_set.update_texture(&ctx.device, 1, &input, vk::ImageLayout::GENERAL);
 
         let shader: Arc<Shader> = shader_registry.load(&ctx.device, "ui.comp.glsl");
-        let pipeline = compute::Pipeline::new(
-            &ctx.device,
-            shader.clone(),
-            &[ui_layout.clone()],
-        )?;
+        let pipeline = compute::Pipeline::new(&ctx.device, shader.clone(), &[ui_layout.clone()])?;
 
         Ok(Self {
             pipeline,
             ui_layout,
             ui_pool,
             ui_set,
-            output
+            output,
         })
     }
 
     pub fn set_geometry(&self, ctx: &Context, rectangles: &[Rectangle]) -> Result<(), vk::Result> {
-        let mut rectangle_data: Vec<u8> = cast_slice::<i32, u8>(&[rectangles.len() as i32, 0, 0, 0]).to_vec();
+        let mut rectangle_data: Vec<u8> =
+            cast_slice::<i32, u8>(&[rectangles.len() as i32, 0, 0, 0]).to_vec();
         println!("{:?}", rectangle_data);
         rectangle_data.extend_from_slice(cast_slice::<Rectangle, u8>(rectangles));
-        let rectangle_buffer = Buffer::new(ctx, rectangle_data, vk::BufferUsageFlags::STORAGE_BUFFER)?;
+        let rectangle_buffer =
+            Buffer::new(ctx, rectangle_data, vk::BufferUsageFlags::STORAGE_BUFFER)?;
         self.ui_set.update_buffer(&ctx.device, 2, &rectangle_buffer);
         Ok(())
     }
@@ -435,10 +432,7 @@ impl UIPass {
 }
 
 impl Pass for UIPass {
-    fn record(
-        &self,
-        cmd: command::BufferBuilder,
-    ) -> command::BufferBuilder {
+    fn record(&self, cmd: command::BufferBuilder) -> command::BufferBuilder {
         cmd.transition_image_layout(
             &self.output.image,
             &TransitionLayoutOptions {
@@ -472,17 +466,14 @@ pub struct Renderer {
     in_flight: vk::Fence,
     output_image: Option<(Arc<Image>, vk::ImageLayout)>,
 
-    passes: Vec<Arc<dyn Pass>>
+    passes: Vec<Arc<dyn Pass>>,
 }
 
 const RENDER_WIDTH: u32 = 480;
 const RENDER_HEIGHT: u32 = 270;
 
 impl Renderer {
-    pub fn new(
-        ctx: Context,
-        window: Arc<Window>,
-    ) -> Result<Self, vk::Result> {
+    pub fn new(ctx: Context, window: Arc<Window>) -> Result<Self, vk::Result> {
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
         let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
         let render_finished =
@@ -495,7 +486,7 @@ impl Renderer {
             render_finished,
             in_flight,
             output_image: None,
-            passes: Vec::new()
+            passes: Vec::new(),
         };
 
         Ok(renderer)
@@ -549,9 +540,7 @@ impl Renderer {
         }
     }
 
-    pub fn render(
-        &mut self,
-    ) {
+    pub fn render(&mut self) {
         unsafe {
             let in_flight = self.in_flight.clone();
 
@@ -579,8 +568,10 @@ impl Renderer {
                 .unwrap()
                 .begin()
                 .unwrap()
-                .record(|cmd| { 
-                    self.passes.iter().fold(cmd, |cmd, pass| cmd.record(|cmd| pass.record(cmd))) 
+                .record(|cmd| {
+                    self.passes
+                        .iter()
+                        .fold(cmd, |cmd, pass| cmd.record(|cmd| pass.record(cmd)))
                 })
                 .transition_image_layout(
                     &self.output_image.as_ref().expect("No output image set").0,

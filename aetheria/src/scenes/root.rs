@@ -1,13 +1,16 @@
-use std::{ops::Deref, net::UdpSocket};
+use std::{net::UdpSocket, ops::Deref};
 
 use ash::vk;
 use assets::MeshRegistry;
-use glam::{Quat, Vec3, Vec2};
+use glam::{Quat, Vec2, Vec3};
 
 use crate::{
+    camera::Camera,
     entities::{Grass, Player, Sun},
-    renderer::{RenderObject, Renderable, Renderer, Light},
-    transform::Transform, input::{Keyboard, Mouse}, camera::Camera, time::Time,
+    input::{Keyboard, Mouse},
+    renderer::{Light, RenderObject, Renderable, Renderer},
+    time::Time,
+    transform::Transform,
 };
 
 use super::{Fireflies, Trees};
@@ -49,16 +52,31 @@ impl RootScene {
     }
 
     pub fn get_lights(&self) -> Vec<Light> {
-        let mut data = self.fireflies.iter().map(|firefly| *firefly.as_ref()).collect::<Vec<Light>>();
+        let mut data = self
+            .fireflies
+            .iter()
+            .map(|firefly| *firefly.as_ref())
+            .collect::<Vec<Light>>();
         data.push(self.sun.light);
         data.push(self.player.light);
         data
     }
 
-    pub fn frame_finished(&mut self, keyboard: &Keyboard, mouse: &Mouse, camera: &Camera, time: &Time, viewport: Vec2, socket: &UdpSocket) {
-        self.player.frame_finished(keyboard, mouse, camera, time, viewport, socket);
+    pub fn frame_finished(
+        &mut self,
+        keyboard: &Keyboard,
+        mouse: &Mouse,
+        camera: &Camera,
+        time: &Time,
+        viewport: Vec2,
+        socket: &UdpSocket,
+    ) {
+        self.player
+            .frame_finished(keyboard, mouse, camera, time, viewport, socket);
         self.sun.frame_finished(time);
-        self.fireflies.iter_mut().for_each(|firefly| firefly.frame_finished(&self.sun, time));
+        self.fireflies
+            .iter_mut()
+            .for_each(|firefly| firefly.frame_finished(&self.sun, time));
     }
 }
 

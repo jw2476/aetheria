@@ -2,7 +2,10 @@ use ash::vk;
 use assets::MeshRegistry;
 use glam::Vec3;
 
-use crate::{transform::Transform, renderer::{RenderObject, Renderer, Renderable}};
+use crate::{
+    renderer::{RenderObject, Renderable, Renderer},
+    transform::Transform,
+};
 
 pub struct Grass {
     pub transform: Transform,

@@ -1,9 +1,5 @@
-use super::{command, Device, Instance, Surface, Swapchain};
+use super::{allocator::Allocator, command, Device, Instance, Surface, Swapchain};
 use ash::{vk, Entry};
-use gpu_allocator::{
-    vulkan::{Allocator, AllocatorCreateDesc},
-    AllocatorDebugSettings,
-};
 use std::sync::{Arc, Mutex};
 
 pub struct Context {
@@ -15,7 +11,7 @@ pub struct Context {
 
     pub image_available: vk::Semaphore,
 
-    pub(crate) allocator: Arc<Mutex<Allocator>>,
+    pub allocator: Arc<Mutex<Allocator>>,
 }
 
 impl Context {
@@ -35,14 +31,7 @@ impl Context {
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
         let image_available = unsafe { device.create_semaphore(&semaphore_info, None).unwrap() };
 
-        let allocator = Allocator::new(&AllocatorCreateDesc {
-            instance: (*instance).clone(),
-            device: (*device).clone(),
-            physical_device: *device.physical,
-            debug_settings: AllocatorDebugSettings::default(),
-            buffer_device_address: false,
-        })
-        .unwrap();
+        let allocator = Allocator::new(&instance, device.clone()).unwrap();
 
         Self {
             instance,

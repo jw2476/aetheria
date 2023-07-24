@@ -1,6 +1,6 @@
-use std::{time::SystemTime, f32::consts::PI, ops::Deref};
+use std::{f32::consts::PI, ops::Deref, time::SystemTime};
 
-use glam::{Vec3, Quat};
+use glam::{Quat, Vec3};
 
 use crate::{renderer::Light, time::Time};
 
@@ -31,9 +31,8 @@ impl Sun {
             0.2 + 0.8 * self.theta.cos().powf(2.0),
             0.8 * self.theta.cos().powf(2.0),
         );
-        self.light.strength = self.light.position.length().powf(2.0)
-            * 0.5
-            * self.theta.cos().powf(0.13).max(0.0);
+        self.light.strength =
+            self.light.position.length().powf(2.0) * 0.5 * self.theta.cos().powf(0.13).max(0.0);
         self.light.strength = self.light.strength.max(0.0);
     }
 

@@ -307,6 +307,28 @@ impl BufferBuilder {
         self
     }
 
+    pub fn clear(self, image: Arc<Image>, color: [f32; 4], layout: vk::ImageLayout) -> Self {
+        unsafe {
+            let clear_value = vk::ClearColorValue { float32: color };
+            let subresource_range = vk::ImageSubresourceRange::builder()
+                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                .base_mip_level(0)
+                .level_count(1)
+                .base_array_layer(0)
+                .layer_count(1);
+            let subresource_ranges = &[*subresource_range];
+            self.device.cmd_clear_color_image(
+                **self,
+                image.image,
+                layout,
+                &clear_value,
+                subresource_ranges,
+            );
+        }
+
+        self
+    }
+
     pub fn record<F: Fn(Self) -> Self>(self, predicate: F) -> Self {
         predicate(self)
     }
