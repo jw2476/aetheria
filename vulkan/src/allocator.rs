@@ -80,7 +80,7 @@ impl Allocator {
         let mut points = vec![0_usize];
         for region in occupied {
             points.push(region.offset);
-            points.push(region.size);
+            points.push(region.offset + region.size);
         }
         points.push(end);
 

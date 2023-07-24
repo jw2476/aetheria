@@ -317,8 +317,6 @@ impl RenderPass {
         )
         .unwrap();
 
-        println!("{:#?}", renderer.ctx.allocator);
-
         self.geometry_set
             .update_buffer(&renderer.device, 1, &vertex_buffer);
         self.geometry_set
