@@ -149,6 +149,7 @@ impl Allocator {
         create_info: &vk::BufferCreateInfo,
         properties: vk::MemoryPropertyFlags,
     ) -> Result<(vk::Buffer, Allocation), vk::Result> {
+        unsafe { self.device.device_wait_idle()? };
         let buffer = unsafe { self.device.create_buffer(create_info, None)? };
         let requirements = unsafe { self.device.get_buffer_memory_requirements(buffer) };
         let (memory, allocation) = self.allocate_from_requirements(requirements, properties);
@@ -165,6 +166,7 @@ impl Allocator {
         create_info: &vk::ImageCreateInfo,
         properties: vk::MemoryPropertyFlags,
     ) -> Result<(vk::Image, Allocation), vk::Result> {
+        unsafe { self.device.device_wait_idle()? };
         let image = unsafe { self.device.create_image(create_info, None)? };
         let requirements = unsafe { self.device.get_image_memory_requirements(image) };
         let (memory, allocation) = self.allocate_from_requirements(requirements, properties);

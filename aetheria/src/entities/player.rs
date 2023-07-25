@@ -9,8 +9,8 @@ use winit::event::VirtualKeyCode;
 use crate::{
     camera::Camera,
     input::{Keyboard, Mouse},
+    render::{Light, RenderObject, Renderable},
     renderer::Renderer,
-    render::{Renderable, RenderObject, Light},
     time::Time,
     transform::Transform,
 };

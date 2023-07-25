@@ -8,8 +8,8 @@ use crate::{
     camera::Camera,
     entities::{Grass, Player, Sun},
     input::{Keyboard, Mouse},
+    render::{Light, RenderObject, Renderable},
     renderer::Renderer,
-    render::{Light, Renderable, RenderObject},
     time::Time,
     transform::Transform,
 };

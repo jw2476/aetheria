@@ -5,9 +5,10 @@ use rand::Rng;
 
 use super::Sun;
 use crate::{
+    render::{Light, RenderObject, Renderable},
     renderer::Renderer,
     time::Time,
-    transform::Transform, render::{Light, RenderObject, Renderable},
+    transform::Transform,
 };
 
 const FIREFLY_SPEED: f32 = 60.0;

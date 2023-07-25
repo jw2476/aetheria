@@ -7,8 +7,9 @@ use rand::Rng;
 
 use crate::{
     entities::Tree,
+    render::{RenderObject, Renderable},
     renderer::Renderer,
-    transform::Transform, render::{Renderable, RenderObject},
+    transform::Transform,
 };
 
 const NUM_TREES: u32 = 10;

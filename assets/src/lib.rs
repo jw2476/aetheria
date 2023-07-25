@@ -6,7 +6,7 @@ use std::{
     path::Path,
     sync::{Arc, Weak},
 };
-use vulkan::{buffer::Buffer, context::Context, device::Device, graphics::Shader};
+use vulkan::{buffer::Buffer, context::Context, device::Device, graphics::Shader, Texture};
 
 pub struct ShaderRegistry {
     registry: HashMap<String, Weak<Shader>>,
@@ -147,6 +147,53 @@ impl MeshRegistry {
                 let mesh = Arc::new(mesh);
                 self.registry.insert(path.to_owned(), Arc::downgrade(&mesh));
                 mesh
+            }
+        }
+    }
+}
+
+pub struct TextureRegistry {
+    registry: HashMap<String, Weak<Texture>>,
+}
+
+impl TextureRegistry {
+    pub fn new() -> Self {
+        Self {
+            registry: HashMap::new(),
+        }
+    }
+
+    pub fn get_meshes(&self) -> Vec<Arc<Texture>> {
+        self.registry
+            .values()
+            .filter_map(|weak| weak.upgrade())
+            .collect()
+    }
+
+    pub fn load(&mut self, ctx: &mut Context, path: &str) -> Arc<Texture> {
+        let registry_value = self
+            .registry
+            .get(&path.to_owned())
+            .map(|weak| weak.upgrade())
+            .flatten();
+
+        match registry_value {
+            Some(value) => value,
+            None => {
+                let texture = Path::new("assets/textures/compiled").join(path);
+                println!("Loading: {}", texture.display());
+
+                let texture = Arc::new(
+                    Texture::new(
+                        ctx,
+                        &std::fs::read(texture).expect("Failed to read texture"),
+                    )
+                    .expect("Failed to read texture"),
+                );
+
+                self.registry
+                    .insert(path.to_owned(), Arc::downgrade(&texture));
+                texture
             }
         }
     }

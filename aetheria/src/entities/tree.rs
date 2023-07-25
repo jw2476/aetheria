@@ -3,8 +3,9 @@ use assets::MeshRegistry;
 use glam::Vec3;
 
 use crate::{
+    render::{RenderObject, Renderable},
     renderer::Renderer,
-    transform::Transform, render::{RenderObject, Renderable},
+    transform::Transform,
 };
 
 pub struct Tree {

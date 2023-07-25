@@ -5,10 +5,7 @@ use assets::MeshRegistry;
 use glam::Vec3;
 use rand::Rng;
 
-use crate::{
-    entities::Firefly,
-    renderer::Renderer,
-};
+use crate::{entities::Firefly, renderer::Renderer};
 
 const NUM_FIREFLIES: u32 = 10;
 

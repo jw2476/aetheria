@@ -19,7 +19,7 @@ mod ui;
 
 use anyhow::Result;
 use ash::vk;
-use assets::{MeshRegistry, ShaderRegistry};
+use assets::{MeshRegistry, ShaderRegistry, TextureRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
 use glam::{Quat, Vec2, Vec3, Vec4};
@@ -45,8 +45,10 @@ use winit::{
 
 use crate::{
     entities::Player,
+    render::RenderPass,
+    renderer::Renderer,
     scenes::RootScene,
-    renderer::Renderer, render::RenderPass, ui::{UIPass, Rectangle}
+    ui::{Rectangle, UIPass, Character},
 };
 
 struct Indices(Vec<u32>);
@@ -96,14 +98,22 @@ fn main() {
 
     let mut mesh_registry = MeshRegistry::new();
     let mut shader_registry = ShaderRegistry::new();
+    let mut texture_registry = TextureRegistry::new();
 
     let mut renderer = Renderer::new(ctx, window.clone()).unwrap();
     let mut camera = Camera::new(480.0, 270.0, &renderer).unwrap();
     let mut time = Time::new(&renderer).unwrap();
     let render_pass =
         Arc::new(RenderPass::new(&renderer, &mut shader_registry, &camera, &time).unwrap());
-    let ui_pass =
-        Arc::new(UIPass::new(&renderer, &mut shader_registry, render_pass.get_texture()).unwrap());
+    let ui_pass = Arc::new(
+        UIPass::new(
+            &mut renderer,
+            &mut shader_registry,
+            &mut texture_registry,
+            render_pass.get_texture(),
+        )
+        .unwrap(),
+    );
     renderer.add_pass(render_pass.clone());
     renderer.add_pass(ui_pass.clone());
     renderer.set_output_image(
@@ -234,11 +244,16 @@ fn main() {
                         &renderer,
                         &[Rectangle {
                             origin: Vec2::new(50.0, 50.0),
-                            extent: Vec2::new(20.0, 20.0),
+                            extent: Vec2::new(100.0, 8.0),
                             radius: 10.0,
                             color: Vec4::new(1.0, 1.0, 0.0, 0.4),
                             ..Default::default()
                         }],
+                        &[Character {
+                            origin: Vec2::new(100.0, 100.0),
+                            altas_id: 0,
+                            ..Default::default()
+                        }]
                     )
                     .unwrap();
                 renderer.render();

@@ -1,5 +1,5 @@
 use ash::vk;
-use assets::ShaderRegistry;
+use assets::{ShaderRegistry, TextureRegistry};
 use bytemuck::{cast_slice, Pod, Zeroable};
 use glam::{Vec2, Vec4};
 use std::sync::Arc;
@@ -20,8 +20,17 @@ pub struct Rectangle {
     pub _padding: [u8; 12],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+pub struct Character {
+    pub origin: Vec2,
+    pub altas_id: u32,
+    pub _padding: [u8; 4]
+}
+
 pub struct UIPass {
     pipeline: compute::Pipeline,
+    font: Arc<Texture>,
     ui_layout: SetLayout,
     ui_pool: Pool,
     ui_set: Set,
@@ -30,8 +39,9 @@ pub struct UIPass {
 
 impl UIPass {
     pub fn new(
-        renderer: &Renderer,
+        renderer: &mut Renderer,
         shader_registry: &mut ShaderRegistry,
+        texture_registry: &mut TextureRegistry,
         input: &Texture,
     ) -> Result<Self, vk::Result> {
         let image = Image::new(
@@ -47,12 +57,22 @@ impl UIPass {
         let ui_layout = SetLayoutBuilder::new(&renderer.device)
             .add(vk::DescriptorType::STORAGE_IMAGE)
             .add(vk::DescriptorType::STORAGE_IMAGE)
+            .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .add(vk::DescriptorType::STORAGE_BUFFER)
             .add(vk::DescriptorType::STORAGE_BUFFER)
             .build()?;
         let mut ui_pool = Pool::new(renderer.device.clone(), ui_layout.clone(), 1)?;
         let ui_set = ui_pool.allocate()?;
         ui_set.update_texture(&renderer.device, 0, &output, vk::ImageLayout::GENERAL);
         ui_set.update_texture(&renderer.device, 1, &input, vk::ImageLayout::GENERAL);
+
+        let font = texture_registry.load(renderer, "font.qoi");
+        ui_set.update_texture(
+            &renderer.device,
+            2,
+            &font,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        );
 
         let shader: Arc<Shader> = shader_registry.load(&renderer.device, "ui.comp.glsl");
         let pipeline =
@@ -63,6 +83,7 @@ impl UIPass {
             ui_layout,
             ui_pool,
             ui_set,
+            font,
             output,
         })
     }
@@ -71,10 +92,10 @@ impl UIPass {
         &self,
         renderer: &Renderer,
         rectangles: &[Rectangle],
+        characters: &[Character],
     ) -> Result<(), vk::Result> {
         let mut rectangle_data: Vec<u8> =
             cast_slice::<i32, u8>(&[rectangles.len() as i32, 0, 0, 0]).to_vec();
-        println!("{:?}", rectangle_data);
         rectangle_data.extend_from_slice(cast_slice::<Rectangle, u8>(rectangles));
         let rectangle_buffer = Buffer::new(
             renderer,
@@ -82,7 +103,19 @@ impl UIPass {
             vk::BufferUsageFlags::STORAGE_BUFFER,
         )?;
         self.ui_set
-            .update_buffer(&renderer.device, 2, &rectangle_buffer);
+            .update_buffer(&renderer.device, 3, &rectangle_buffer);
+
+        let mut character_data: Vec<u8> =
+            cast_slice::<i32, u8>(&[characters.len() as i32, 0, 0, 0]).to_vec();
+        character_data.extend_from_slice(cast_slice::<Character, u8>(characters));
+        let character_buffer = Buffer::new(
+            renderer,
+            character_data,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        )?;
+        self.ui_set
+            .update_buffer(&renderer.device, 4, &character_buffer);
+
         Ok(())
     }
 

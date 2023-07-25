@@ -204,7 +204,7 @@ impl Texture {
             vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
         )?;
         let view = image.create_view(ctx)?;
-        let sampler = image.create_sampler(ctx, vk::Filter::LINEAR, vk::Filter::LINEAR)?;
+        let sampler = image.create_sampler(ctx, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
 
         ctx.command_pool
             .allocate()
