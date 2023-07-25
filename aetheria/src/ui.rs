@@ -10,22 +10,80 @@ use vulkan::{
 
 use crate::renderer::{Pass, Renderer, RENDER_HEIGHT, RENDER_WIDTH};
 
+static ASCII_UPPER: [char; 27] = [
+    'A', 'B', 'C', 'D', 'E', 
+    'F', 'G', 'H', 'I', 'J', 
+    'K', 'L', 'M', 'N', 'O',
+    'P', 'Q', 'R', 'S', 'T', 
+    'U', 'V', 'W', 'X', 'Y', 
+    'Z', ' '
+];
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SizeConstraints {
+    pub min: Vec2,
+    pub max: Vec2
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Region {
+    pub origin: Vec2,
+    pub size: Vec2
+}
+
+pub trait Element {
+    fn layout(&mut self, constraint: SizeConstraints) -> Vec2;
+    fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>);
+}
+
+pub struct Text {
+    pub color: Vec4,
+    pub content: String
+}
+
+impl Element for Text {
+    fn layout(&mut self, constraint: SizeConstraints) -> Vec2 {
+        Vec2::new(
+            (self.content.len() as f32 * 12.0).min(constraint.min.x),
+            12.0_f32.min(constraint.min.y)
+        )
+    }
+
+    fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>) {
+        for (i, c) in self.content.to_uppercase().chars().enumerate() {
+            scene.push(Rectangle {
+                color: self.color, 
+                origin: region.origin + Vec2::new(12.0 * i as f32, 0.0),
+                extent: Vec2::new(12.0, 12.0),
+                atlas_id: ASCII_UPPER.iter().position(|a| *a == c).expect(&format!("Character {} not in font", c)) as i32,
+                ..Default::default()
+            }) 
+        } 
+    }
+}
+
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Rectangle {
     pub color: Vec4,
     pub origin: Vec2,
     pub extent: Vec2,
     pub radius: f32,
-    pub _padding: [u8; 12],
+    pub atlas_id: i32,
+    pub _padding: [u8; 8],
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
-pub struct Character {
-    pub origin: Vec2,
-    pub altas_id: u32,
-    pub _padding: [u8; 4]
+impl Default for Rectangle {
+    fn default() -> Self {
+        Self {
+            color: Vec4::ONE,
+            origin: Vec2::ZERO,
+            extent: Vec2::ONE,
+            radius: 0.0000000000001,
+            atlas_id: -1,
+            _padding: [0_u8; 8]
+        }
+    }
 }
 
 pub struct UIPass {
@@ -59,7 +117,6 @@ impl UIPass {
             .add(vk::DescriptorType::STORAGE_IMAGE)
             .add(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .add(vk::DescriptorType::STORAGE_BUFFER)
-            .add(vk::DescriptorType::STORAGE_BUFFER)
             .build()?;
         let mut ui_pool = Pool::new(renderer.device.clone(), ui_layout.clone(), 1)?;
         let ui_set = ui_pool.allocate()?;
@@ -92,7 +149,6 @@ impl UIPass {
         &self,
         renderer: &Renderer,
         rectangles: &[Rectangle],
-        characters: &[Character],
     ) -> Result<(), vk::Result> {
         let mut rectangle_data: Vec<u8> =
             cast_slice::<i32, u8>(&[rectangles.len() as i32, 0, 0, 0]).to_vec();
@@ -104,17 +160,6 @@ impl UIPass {
         )?;
         self.ui_set
             .update_buffer(&renderer.device, 3, &rectangle_buffer);
-
-        let mut character_data: Vec<u8> =
-            cast_slice::<i32, u8>(&[characters.len() as i32, 0, 0, 0]).to_vec();
-        character_data.extend_from_slice(cast_slice::<Character, u8>(characters));
-        let character_buffer = Buffer::new(
-            renderer,
-            character_data,
-            vk::BufferUsageFlags::STORAGE_BUFFER,
-        )?;
-        self.ui_set
-            .update_buffer(&renderer.device, 4, &character_buffer);
 
         Ok(())
     }

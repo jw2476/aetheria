@@ -48,7 +48,7 @@ use crate::{
     render::RenderPass,
     renderer::Renderer,
     scenes::RootScene,
-    ui::{Rectangle, UIPass, Character},
+    ui::{Rectangle, UIPass, Text, Element, SizeConstraints, Region},
 };
 
 struct Indices(Vec<u32>);
@@ -239,23 +239,11 @@ fn main() {
                     &[&root, &players.values().cloned().collect::<Vec<Player>>()],
                     &root.get_lights(),
                 );
-                ui_pass
-                    .set_geometry(
-                        &renderer,
-                        &[Rectangle {
-                            origin: Vec2::new(50.0, 50.0),
-                            extent: Vec2::new(100.0, 8.0),
-                            radius: 10.0,
-                            color: Vec4::new(1.0, 1.0, 0.0, 0.4),
-                            ..Default::default()
-                        }],
-                        &[Character {
-                            origin: Vec2::new(100.0, 100.0),
-                            altas_id: 0,
-                            ..Default::default()
-                        }]
-                    )
-                    .unwrap();
+                let mut text = Text { color: Vec4::new(1.0, 1.0, 1.0, 1.0), content: "Hello World".to_owned() };
+                let mut rectangles = Vec::new();
+                text.paint(Region { origin: Vec2::new(50.0, 50.0), size: Vec2::new(12.0 * text.content.len() as f32, 12.0) }, &mut rectangles);
+                ui_pass.set_geometry(&renderer, &rectangles);
+
                 renderer.render();
                 let viewport = Vec2::new(
                     window.inner_size().width as f32,

@@ -11,22 +11,13 @@ struct Rectangle {
     vec2 origin;
     vec2 extent;
     float radius;
+    int atlasID;
 };
 
 layout(std140, set = 0, binding = 3) buffer Rectangles {
   int numRectangles;
   Rectangle rectangles[];
 } rectangles;
-
-struct Character {
-     vec2 origin;
-     int atlasID;
-};
-
-layout(std140, set = 0, binding = 4) buffer Characters {
-  int numCharacters;
-  Character characters[];
-} characters;
 
 const vec2 EXTENT = vec2(480, 270);
 
@@ -49,18 +40,14 @@ void main() {
     for (int i = 0; i < rectangles.numRectangles; i++) {
         Rectangle rectangle = rectangles.rectangles[i];
         if (hitsRectangle(rectangle)) {
-            color = vec4(rectangle.color.rgb * rectangle.color.a + color.rgb * (1 - rectangle.color.a), rectangle.color.a);
+	    float glyph = 1;
+	    vec2 fromOrigin = vec2(gl_GlobalInvocationID.xy) - rectangle.origin;
+	    if (rectangle.atlasID != -1) {
+		glyph = length(texture(fontAtlas, (fromOrigin + vec2(12 * rectangle.atlasID, 0)) / vec2(1920, 12)).rgb);
+	    }
+	    float alpha = rectangle.color.a * glyph;
+            color = vec4(rectangle.color.rgb * alpha + color.rgb * (1 - alpha), alpha);
         }
-    }
-
-    for (int i = 0; i < characters.numCharacters; i++) {
-	Character character = characters.characters[i];
-	ivec2 fromOrigin = ivec2(gl_GlobalInvocationID.xy) - ivec2(character.origin);
-	if (all(greaterThanEqual(fromOrigin, ivec2(0))) && all(lessThan(fromOrigin, ivec2(12)))) {
-	    vec4 pixel = texture(fontAtlas, vec2(fromOrigin + uvec2(12 * character.atlasID, 0)) / vec2(1920, 12));
-	    pixel.a = length(pixel.rgb);
-            color = vec4(pixel.rgb * pixel.a + color.rgb * (1 - pixel.a), pixel.a);
-	}
     }
 
     imageStore(outColor, ivec2(gl_GlobalInvocationID.xy), color);
