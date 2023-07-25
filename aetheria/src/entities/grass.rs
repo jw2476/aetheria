@@ -3,8 +3,8 @@ use assets::MeshRegistry;
 use glam::Vec3;
 
 use crate::{
-    renderer::{RenderObject, Renderable, Renderer},
-    transform::Transform,
+    renderer::Renderer,
+    transform::Transform, render::{RenderObject, Renderable},
 };
 
 pub struct Grass {

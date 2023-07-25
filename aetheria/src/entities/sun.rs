@@ -2,7 +2,7 @@ use std::{f32::consts::PI, ops::Deref, time::SystemTime};
 
 use glam::{Quat, Vec3};
 
-use crate::{renderer::Light, time::Time};
+use crate::{time::Time, render::Light};
 
 pub struct Sun {
     noon_pos: Vec3,

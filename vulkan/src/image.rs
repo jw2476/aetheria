@@ -1,4 +1,7 @@
-use super::{Buffer, Context, Device, Pool, allocator::{Allocation, Allocator}};
+use super::{
+    allocator::{Allocation, Allocator},
+    Buffer, Context, Device, Pool,
+};
 use crate::command::TransitionLayoutOptions;
 use crate::Set;
 use ash::vk::{self, MemoryPropertyFlags};
@@ -42,7 +45,11 @@ impl Image {
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
 
-        let (image, allocation) = ctx.allocator.lock().unwrap().create_image(&create_info, MemoryPropertyFlags::DEVICE_LOCAL)?;
+        let (image, allocation) = ctx
+            .allocator
+            .lock()
+            .unwrap()
+            .create_image(&create_info, MemoryPropertyFlags::DEVICE_LOCAL)?;
 
         Ok(Arc::new(Self {
             image,
@@ -50,7 +57,7 @@ impl Image {
             width,
             height,
             allocation: Some(allocation),
-            allocator: Some(ctx.allocator.clone())
+            allocator: Some(ctx.allocator.clone()),
         }))
     }
 

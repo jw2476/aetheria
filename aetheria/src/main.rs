@@ -10,10 +10,12 @@ mod entities;
 mod input;
 mod macros;
 mod material;
+mod render;
 mod renderer;
 mod scenes;
 mod time;
 mod transform;
+mod ui;
 
 use anyhow::Result;
 use ash::vk;
@@ -24,8 +26,6 @@ use glam::{Quat, Vec2, Vec3, Vec4};
 use input::{Keyboard, Mouse};
 use net::*;
 use num_traits::FromPrimitive;
-use rand::Rng;
-use renderer::{Light, Renderer};
 use std::{
     collections::HashMap,
     f32::consts::PI,
@@ -45,8 +45,8 @@ use winit::{
 
 use crate::{
     entities::Player,
-    renderer::{Rectangle, RenderPass, UIPass},
     scenes::RootScene,
+    renderer::Renderer, render::RenderPass, ui::{UIPass, Rectangle}
 };
 
 struct Indices(Vec<u32>);

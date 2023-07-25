@@ -1,17 +1,17 @@
 use crate::{Buffer, Device, Instance};
 use ash::vk;
-use std::{ffi::c_void, sync::Arc, fmt::Debug};
+use std::{ffi::c_void, fmt::Debug, sync::Arc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Region {
     size: usize,
-    offset: usize
+    offset: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Allocation {
     id: usize,
-    region: Region
+    region: Region,
 }
 // Vulkan calls these memory types
 #[derive(Clone, Debug)]
@@ -46,8 +46,7 @@ impl Allocator {
             .iter()
             .enumerate()
             .map(|(i, heap)| {
-                let alloc_info =
-                    vk::MemoryAllocateInfo::builder()
+                let alloc_info = vk::MemoryAllocateInfo::builder()
                     .allocation_size(32 * 1024 * 1024) // 32MiB
                     .memory_type_index(i as u32);
                 let memory = unsafe {
@@ -75,7 +74,7 @@ impl Allocator {
         size: usize,
         alignment: usize,
         occupied: Vec<Region>,
-        end: usize
+        end: usize,
     ) -> Option<Region> {
         let mut points = vec![0_usize];
         for region in occupied {
@@ -84,18 +83,24 @@ impl Allocator {
         }
         points.push(end);
 
-        let free = points.chunks_exact(2).map(|points| {
-            let from = points[0];
-            let to = points[1];
-            Region { offset: from + (from % alignment), size: to - (from + (from % alignment)) }
-        }).collect::<Vec<Region>>();
+        let free = points
+            .chunks_exact(2)
+            .map(|points| {
+                let from = points[0];
+                let to = points[1];
+                Region {
+                    offset: from + (from % alignment),
+                    size: to - (from + (from % alignment)),
+                }
+            })
+            .collect::<Vec<Region>>();
 
         for region in free {
             if region.size > size {
                 return Some(Region {
                     size,
-                    offset: region.offset
-                })
+                    offset: region.offset,
+                });
             }
         }
 
@@ -119,14 +124,20 @@ impl Allocator {
             .expect("No suitable memory heap");
 
         let region = Self::find_region(
-                requirements.size as usize,
-                requirements.alignment as usize,
-                heap.allocations.iter().map(|alloc| alloc.region).collect::<Vec<Region>>(),
-                32 * 1024 * 1024
-            )
-            .expect("Cannot find region in heap");
+            requirements.size as usize,
+            requirements.alignment as usize,
+            heap.allocations
+                .iter()
+                .map(|alloc| alloc.region)
+                .collect::<Vec<Region>>(),
+            32 * 1024 * 1024,
+        )
+        .expect("Cannot find region in heap");
 
-        let allocation = Allocation { id: self.next_id, region };
+        let allocation = Allocation {
+            id: self.next_id,
+            region,
+        };
 
         heap.allocations.push(allocation);
         self.next_id += 1;

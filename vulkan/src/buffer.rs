@@ -46,7 +46,11 @@ impl Buffer {
     }
 
     pub fn upload(&self, bytes: &[u8]) {
-        self.allocator.lock().unwrap().write(&self.allocation, bytes).expect("Failed to write to buffer");
+        self.allocator
+            .lock()
+            .unwrap()
+            .write(&self.allocation, bytes)
+            .expect("Failed to write to buffer");
     }
 }
 

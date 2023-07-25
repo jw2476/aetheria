@@ -7,7 +7,7 @@ use rand::Rng;
 
 use crate::{
     entities::Firefly,
-    renderer::{Light, RenderObject, Renderable, Renderer},
+    renderer::Renderer,
 };
 
 const NUM_FIREFLIES: u32 = 10;
