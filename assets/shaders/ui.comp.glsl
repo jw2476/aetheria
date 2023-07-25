@@ -43,7 +43,7 @@ void main() {
 	    float glyph = 1;
 	    vec2 fromOrigin = vec2(gl_GlobalInvocationID.xy) - rectangle.origin;
 	    if (rectangle.atlasID != -1) {
-		glyph = length(texture(fontAtlas, (fromOrigin + vec2(12 * rectangle.atlasID, 0)) / vec2(1920, 12)).rgb);
+		glyph = length(texture(fontAtlas, (fromOrigin + vec2(6 * rectangle.atlasID, 0)) / vec2(1920, 5)).rgb);
 	    }
 	    float alpha = rectangle.color.a * glyph;
             color = vec4(rectangle.color.rgb * alpha + color.rgb * (1 - alpha), alpha);

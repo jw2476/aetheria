@@ -48,7 +48,7 @@ use crate::{
     render::RenderPass,
     renderer::Renderer,
     scenes::RootScene,
-    ui::{Rectangle, UIPass, Text, Element, SizeConstraints, Region},
+    ui::{Rectangle, UIPass, Text, Element, SizeConstraints, Region, CHAR_WIDTH, CHAR_HEIGHT},
 };
 
 struct Indices(Vec<u32>);
@@ -241,8 +241,8 @@ fn main() {
                 );
                 let mut text = Text { color: Vec4::new(1.0, 1.0, 1.0, 1.0), content: "Hello World".to_owned() };
                 let mut rectangles = Vec::new();
-                text.paint(Region { origin: Vec2::new(50.0, 50.0), size: Vec2::new(12.0 * text.content.len() as f32, 12.0) }, &mut rectangles);
-                ui_pass.set_geometry(&renderer, &rectangles);
+                text.paint(Region { origin: Vec2::new(50.0, 50.0), size: Vec2::new(CHAR_WIDTH as f32 * text.content.len() as f32, CHAR_HEIGHT as f32) }, &mut rectangles);
+                ui_pass.set_geometry(&renderer, &rectangles).expect("Failed to set UI geometry");
 
                 renderer.render();
                 let viewport = Vec2::new(
