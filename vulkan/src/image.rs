@@ -120,6 +120,7 @@ impl Image {
         ctx: &Context,
         mag_filter: vk::Filter,
         min_filter: vk::Filter,
+        normalized_uv: bool,
     ) -> Result<vk::Sampler, vk::Result> {
         let create_info = vk::SamplerCreateInfo::builder()
             .mag_filter(mag_filter)
@@ -136,7 +137,7 @@ impl Image {
             .min_lod(0.0)
             .max_lod(0.0)
             .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
-            .unnormalized_coordinates(false);
+            .unnormalized_coordinates(!normalized_uv);
 
         unsafe { ctx.device.create_sampler(&create_info, None) }
     }
@@ -182,10 +183,10 @@ impl Deref for Texture {
 impl Texture {
     pub const WHITE: OnceCell<Self> = OnceCell::new();
 
-    pub fn new(ctx: &mut Context, bytes: &[u8]) -> Result<Self, vk::Result> {
+    pub fn new(ctx: &mut Context, bytes: &[u8], normalized_uv: bool) -> Result<Self, vk::Result> {
         let (header, data) = qoi::decode_to_vec(bytes).unwrap();
 
-        Self::new_bytes(ctx, &data, header.width, header.height)
+        Self::new_bytes(ctx, &data, header.width, header.height, normalized_uv)
     }
 
     pub fn new_bytes(
@@ -193,6 +194,7 @@ impl Texture {
         data: &[u8],
         width: u32,
         height: u32,
+        normalized_uv: bool,
     ) -> Result<Self, vk::Result> {
         let texture_buffer = Buffer::new(ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
 
@@ -204,7 +206,8 @@ impl Texture {
             vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
         )?;
         let view = image.create_view(ctx)?;
-        let sampler = image.create_sampler(ctx, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
+        let sampler =
+            image.create_sampler(ctx, vk::Filter::NEAREST, vk::Filter::NEAREST, normalized_uv)?;
 
         ctx.command_pool
             .allocate()
@@ -249,9 +252,10 @@ impl Texture {
         image: Arc<Image>,
         mag_filter: vk::Filter,
         min_filter: vk::Filter,
+        normalized_uv: bool,
     ) -> Result<Self, vk::Result> {
         let view = image.create_view(ctx)?;
-        let sampler = image.create_sampler(ctx, mag_filter, min_filter)?;
+        let sampler = image.create_sampler(ctx, mag_filter, min_filter, normalized_uv)?;
         Ok(Self {
             image,
             view,

@@ -41,7 +41,7 @@ impl Firefly {
             .build()?;
         let back = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("firefly_back.obj")?
-            .set_color(Vec3::new(10.0, 10.0, 0.0))
+            .set_color(Vec3::new(1.0, 1.0, 0.0))
             .set_transform(Transform {
                 translation: position,
                 rotation: Quat::IDENTITY,

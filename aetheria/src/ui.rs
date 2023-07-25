@@ -1,7 +1,7 @@
 use ash::vk;
 use assets::{ShaderRegistry, TextureRegistry};
 use bytemuck::{cast_slice, Pod, Zeroable};
-use glam::{Vec2, Vec4};
+use glam::{UVec2, Vec4};
 use std::sync::Arc;
 use vulkan::{
     command, command::TransitionLayoutOptions, compute, Buffer, Image, Pool, Set, SetLayout,
@@ -20,31 +20,32 @@ pub const CHAR_HEIGHT: u32 = 5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SizeConstraints {
-    pub min: Vec2,
-    pub max: Vec2,
+    pub min: UVec2,
+    pub max: UVec2,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Region {
-    pub origin: Vec2,
-    pub size: Vec2,
+    pub origin: UVec2,
+    pub size: UVec2,
 }
 
-pub trait Element {
-    fn layout(&mut self, constraint: SizeConstraints) -> Vec2;
+pub trait Element : Clone + std::fmt::Debug {
+    fn layout(&mut self, constraint: SizeConstraints) -> UVec2;
     fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>);
 }
 
+#[derive(Clone, Debug)]
 pub struct Text {
     pub color: Vec4,
     pub content: String,
 }
 
 impl Element for Text {
-    fn layout(&mut self, constraint: SizeConstraints) -> Vec2 {
-        Vec2::new(
-            ((self.content.len() as u32 * CHAR_WIDTH) as f32).min(constraint.min.x),
-            (CHAR_HEIGHT as f32).min(constraint.min.y),
+    fn layout(&mut self, constraint: SizeConstraints) -> UVec2 {
+        UVec2::new(
+            (self.content.len() as u32 * CHAR_WIDTH).max(constraint.min.x),
+            CHAR_HEIGHT.max(constraint.min.y),
         )
     }
 
@@ -52,8 +53,8 @@ impl Element for Text {
         for (i, c) in self.content.to_uppercase().chars().enumerate() {
             scene.push(Rectangle {
                 color: self.color,
-                origin: region.origin + Vec2::new((CHAR_WIDTH * i as u32) as f32, 0.0),
-                extent: Vec2::new(CHAR_HEIGHT as f32, 5.0),
+                origin: region.origin + UVec2::new(CHAR_WIDTH * i as u32, 0),
+                extent: UVec2::new(CHAR_HEIGHT, 5),
                 atlas_id: ASCII_UPPER
                     .iter()
                     .position(|a| *a == c)
@@ -69,9 +70,9 @@ impl Element for Text {
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Rectangle {
     pub color: Vec4,
-    pub origin: Vec2,
-    pub extent: Vec2,
-    pub radius: f32,
+    pub origin: UVec2,
+    pub extent: UVec2,
+    pub radius: u32,
     pub atlas_id: i32,
     pub _padding: [u8; 8],
 }
@@ -80,9 +81,9 @@ impl Default for Rectangle {
     fn default() -> Self {
         Self {
             color: Vec4::ONE,
-            origin: Vec2::ZERO,
-            extent: Vec2::ONE,
-            radius: 0.0000000000001,
+            origin: UVec2::ZERO,
+            extent: UVec2::ONE,
+            radius: 0,
             atlas_id: -1,
             _padding: [0_u8; 8],
         }
@@ -113,7 +114,7 @@ impl UIPass {
             vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC,
         )?;
         let output =
-            Texture::from_image(&renderer, image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
+            Texture::from_image(&renderer, image, vk::Filter::NEAREST, vk::Filter::NEAREST, true)?;
 
         let ui_layout = SetLayoutBuilder::new(&renderer.device)
             .add(vk::DescriptorType::STORAGE_IMAGE)
@@ -126,7 +127,7 @@ impl UIPass {
         ui_set.update_texture(&renderer.device, 0, &output, vk::ImageLayout::GENERAL);
         ui_set.update_texture(&renderer.device, 1, &input, vk::ImageLayout::GENERAL);
 
-        let font = texture_registry.load(renderer, "font.qoi");
+        let font = texture_registry.load(renderer, "font.qoi", false);
         ui_set.update_texture(
             &renderer.device,
             2,

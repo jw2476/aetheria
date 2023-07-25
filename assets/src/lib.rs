@@ -170,7 +170,7 @@ impl TextureRegistry {
             .collect()
     }
 
-    pub fn load(&mut self, ctx: &mut Context, path: &str) -> Arc<Texture> {
+    pub fn load(&mut self, ctx: &mut Context, path: &str, normalized_uv: bool) -> Arc<Texture> {
         let registry_value = self
             .registry
             .get(&path.to_owned())
@@ -187,6 +187,7 @@ impl TextureRegistry {
                     Texture::new(
                         ctx,
                         &std::fs::read(texture).expect("Failed to read texture"),
+                        normalized_uv,
                     )
                     .expect("Failed to read texture"),
                 );

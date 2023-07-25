@@ -163,7 +163,8 @@ impl RenderPass {
             vk::Format::R8G8B8A8_UNORM,
             vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
         )?;
-        let texture = Texture::from_image(&ctx, image, vk::Filter::NEAREST, vk::Filter::NEAREST)?;
+        let texture =
+            Texture::from_image(&ctx, image, vk::Filter::NEAREST, vk::Filter::NEAREST, true)?;
 
         let frame_layout = SetLayoutBuilder::new(&ctx.device)
             .add(vk::DescriptorType::UNIFORM_BUFFER)

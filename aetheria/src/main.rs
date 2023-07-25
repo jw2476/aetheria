@@ -6,6 +6,7 @@
 extern crate core;
 
 mod camera;
+mod components;
 mod entities;
 mod input;
 mod macros;
@@ -22,7 +23,7 @@ use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry, TextureRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
-use glam::{Quat, Vec2, Vec3, Vec4};
+use glam::{Quat, UVec2, Vec2, Vec3, Vec4};
 use input::{Keyboard, Mouse};
 use net::*;
 use num_traits::FromPrimitive;
@@ -46,7 +47,7 @@ use winit::{
 use crate::{
     entities::Player,
     render::RenderPass,
-    renderer::Renderer,
+    renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
     scenes::RootScene,
     ui::{Element, Rectangle, Region, SizeConstraints, Text, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
 };
@@ -243,19 +244,21 @@ fn main() {
                     color: Vec4::new(1.0, 1.0, 1.0, 1.0),
                     content: "Hello World".to_owned(),
                 };
-                let mut rectangles = Vec::new();
-                text.paint(
+                let mut scene = Vec::new();
+                let mut gather = components::gather::Component::new();
+                let size = gather.layout(SizeConstraints {
+                    min: UVec2::ZERO,
+                    max: UVec2::new(RENDER_WIDTH, RENDER_HEIGHT),
+                });
+                gather.paint(
                     Region {
-                        origin: Vec2::new(50.0, 50.0),
-                        size: Vec2::new(
-                            CHAR_WIDTH as f32 * text.content.len() as f32,
-                            CHAR_HEIGHT as f32,
-                        ),
+                        origin: UVec2::ZERO,
+                        size,
                     },
-                    &mut rectangles,
+                    &mut scene,
                 );
                 ui_pass
-                    .set_geometry(&renderer, &rectangles)
+                    .set_geometry(&renderer, &scene)
                     .expect("Failed to set UI geometry");
 
                 renderer.render();

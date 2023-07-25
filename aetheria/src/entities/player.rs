@@ -42,7 +42,7 @@ impl Player {
         Ok(Self {
             player,
             jump_t: 0.0,
-            light: Light::new(Vec3::ZERO, 5000.0, Vec3::new(0.996, 0.843, 0.667)),
+            light: Light::new(Vec3::ZERO, 5000.0, Vec3::new(1.0, 1.0, 1.0)),
         })
     }
 

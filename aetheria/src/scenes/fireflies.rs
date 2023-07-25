@@ -33,7 +33,7 @@ impl Fireflies {
                     renderer,
                     mesh_registry,
                     position,
-                    Vec3::new(0.745, 0.949, 0.392),
+                    Vec3::new(1.0, 1.0, 1.0),
                 )
                 .unwrap(),
             );
