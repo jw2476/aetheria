@@ -61,6 +61,7 @@ impl Context {
                 .0;
 
             self.device.reset_fences(&[in_flight]).unwrap();
+            self.allocator.lock().unwrap().flush_frees();
 
             Ok(image_index)
         }

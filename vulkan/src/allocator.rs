@@ -1,11 +1,21 @@
 use crate::{Buffer, Device, Instance};
 use ash::vk;
-use std::{ffi::c_void, fmt::Debug, sync::Arc};
+use std::{
+    ffi::c_void,
+    fmt::{Debug, Display},
+    sync::Arc,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Region {
     size: usize,
     offset: usize,
+}
+
+impl Display for Region {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{}", self.offset, self.offset + self.size)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,9 +32,21 @@ pub struct Heap {
     allocations: Vec<Allocation>,
 }
 
+impl Display for Heap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}: ", self.properties)?;
+        for allocation in &self.allocations {
+            write!(f, "{}, ", allocation.region)?;
+        }
+
+        Ok(())
+    }
+}
+
 pub struct Allocator {
     device: Arc<Device>,
     heaps: Vec<Heap>,
+    to_free: Vec<usize>,
     next_id: usize,
 }
 
@@ -66,6 +88,7 @@ impl Allocator {
         Ok(Self {
             device,
             heaps,
+            to_free: Vec::new(),
             next_id: 0,
         })
     }
@@ -204,16 +227,41 @@ impl Allocator {
     }
 
     pub fn free(&mut self, allocation: &Allocation) {
-        let heap = self
-            .heaps
+        self.heaps
             .iter_mut()
             .find(|heap| heap.allocations.contains(allocation))
             .expect(&format!("Double free of allocation {}", allocation.id));
-        heap.allocations.remove(
-            heap.allocations
+
+        self.to_free.push(allocation.id);
+    }
+
+    pub fn flush_frees(&mut self) {
+        for allocation in &self.to_free {
+            let heap = self
+                .heaps
+                .iter_mut()
+                .find(|heap| {
+                    heap.allocations
+                        .iter()
+                        .find(|alloc| alloc.id == *allocation)
+                        .is_some()
+                })
+                .expect(&format!("Double free of allocation {}", allocation));
+
+            let allocation = heap
+                .allocations
                 .iter()
-                .position(|alloc| alloc.id == allocation.id)
-                .unwrap(),
-        );
+                .find(|alloc| alloc.id == *allocation)
+                .unwrap();
+
+            heap.allocations.remove(
+                heap.allocations
+                    .iter()
+                    .position(|alloc| alloc.id == allocation.id)
+                    .unwrap(),
+            );
+        }
+
+        self.to_free.clear();
     }
 }

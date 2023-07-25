@@ -11,14 +11,8 @@ use vulkan::{
 use crate::renderer::{Pass, Renderer, RENDER_HEIGHT, RENDER_WIDTH};
 
 static ASCII_UPPER: [char; 37] = [
-    'A', 'B', 'C', 'D', 'E', 
-    'F', 'G', 'H', 'I', 'J', 
-    'K', 'L', 'M', 'N', 'O',
-    'P', 'Q', 'R', 'S', 'T', 
-    'U', 'V', 'W', 'X', 'Y', 
-    'Z', ' ', '0', '1', '2',
-    '3', '4', '5', '6', '7',
-    '8', '9'
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+    'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
 ];
 
 pub const CHAR_WIDTH: u32 = 6;
@@ -27,13 +21,13 @@ pub const CHAR_HEIGHT: u32 = 5;
 #[derive(Clone, Debug, PartialEq)]
 pub struct SizeConstraints {
     pub min: Vec2,
-    pub max: Vec2
+    pub max: Vec2,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Region {
     pub origin: Vec2,
-    pub size: Vec2
+    pub size: Vec2,
 }
 
 pub trait Element {
@@ -43,27 +37,31 @@ pub trait Element {
 
 pub struct Text {
     pub color: Vec4,
-    pub content: String
+    pub content: String,
 }
 
 impl Element for Text {
     fn layout(&mut self, constraint: SizeConstraints) -> Vec2 {
         Vec2::new(
             ((self.content.len() as u32 * CHAR_WIDTH) as f32).min(constraint.min.x),
-            (CHAR_HEIGHT as f32).min(constraint.min.y)
+            (CHAR_HEIGHT as f32).min(constraint.min.y),
         )
     }
 
     fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>) {
         for (i, c) in self.content.to_uppercase().chars().enumerate() {
             scene.push(Rectangle {
-                color: self.color, 
+                color: self.color,
                 origin: region.origin + Vec2::new((CHAR_WIDTH * i as u32) as f32, 0.0),
                 extent: Vec2::new(CHAR_HEIGHT as f32, 5.0),
-                atlas_id: ASCII_UPPER.iter().position(|a| *a == c).expect(&format!("Character {} not in font", c)) as i32,
+                atlas_id: ASCII_UPPER
+                    .iter()
+                    .position(|a| *a == c)
+                    .expect(&format!("Character {} not in font", c))
+                    as i32,
                 ..Default::default()
-            }) 
-        } 
+            })
+        }
     }
 }
 
@@ -86,7 +84,7 @@ impl Default for Rectangle {
             extent: Vec2::ONE,
             radius: 0.0000000000001,
             atlas_id: -1,
-            _padding: [0_u8; 8]
+            _padding: [0_u8; 8],
         }
     }
 }

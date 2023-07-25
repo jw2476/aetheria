@@ -108,6 +108,7 @@ struct Ray {
 struct HitPayload {
 	bool hit;
 	vec3 normal;
+  int mesh;
 	int material;
 	vec3 position;
 	float t;
@@ -186,6 +187,7 @@ bool intersects_box(Ray ray, vec3 bmin, vec3 bmax) {
 HitPayload trace_ray(Ray ray, vec3 target) {
 	HitPayload payload;
 	payload.hit = false;
+  payload.mesh = -1;
 	payload.material = -1;
 	payload.position = vec3(0.0);
 	payload.normal = vec3(0.0);
@@ -213,6 +215,7 @@ HitPayload trace_ray(Ray ray, vec3 target) {
 			if (overwrite) {
 				minT = hit.t;
 				payload.hit = true;
+        payload.mesh = meshIdx;
 				payload.material = mesh.material;
 				payload.position = hit.position;
 				payload.normal = normalize(hit.normal);
@@ -234,6 +237,7 @@ vec3 per_pixel(Ray incoming) {
 	HitPayload hit = trace_ray(incoming, vec3(INFINITY));
 	if (!hit.hit) { return vec3(0.0, 0.0, 0.0); }
 
+  Mesh mesh = meshes.meshes[hit.mesh];
 	Material material = materials.materials[hit.material];
 	
 	Ray outgoing;

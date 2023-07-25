@@ -48,7 +48,7 @@ use crate::{
     render::RenderPass,
     renderer::Renderer,
     scenes::RootScene,
-    ui::{Rectangle, UIPass, Text, Element, SizeConstraints, Region, CHAR_WIDTH, CHAR_HEIGHT},
+    ui::{Element, Rectangle, Region, SizeConstraints, Text, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
 };
 
 struct Indices(Vec<u32>);
@@ -239,10 +239,24 @@ fn main() {
                     &[&root, &players.values().cloned().collect::<Vec<Player>>()],
                     &root.get_lights(),
                 );
-                let mut text = Text { color: Vec4::new(1.0, 1.0, 1.0, 1.0), content: "Hello World".to_owned() };
+                let mut text = Text {
+                    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
+                    content: "Hello World".to_owned(),
+                };
                 let mut rectangles = Vec::new();
-                text.paint(Region { origin: Vec2::new(50.0, 50.0), size: Vec2::new(CHAR_WIDTH as f32 * text.content.len() as f32, CHAR_HEIGHT as f32) }, &mut rectangles);
-                ui_pass.set_geometry(&renderer, &rectangles).expect("Failed to set UI geometry");
+                text.paint(
+                    Region {
+                        origin: Vec2::new(50.0, 50.0),
+                        size: Vec2::new(
+                            CHAR_WIDTH as f32 * text.content.len() as f32,
+                            CHAR_HEIGHT as f32,
+                        ),
+                    },
+                    &mut rectangles,
+                );
+                ui_pass
+                    .set_geometry(&renderer, &rectangles)
+                    .expect("Failed to set UI geometry");
 
                 renderer.render();
                 let viewport = Vec2::new(
