@@ -48,8 +48,8 @@ void main() {
             }
 
             float alpha = rectangle.color.a * glyph;
-            //color = vec4(rectangle.color.rgb * alpha + color.rgb * (1 - alpha), 1.0);
-            color = vec4(rectangle.color.rgb * glyph + color.rgb * (1 - glyph), glyph);
+            color = vec4(rectangle.color.rgb * alpha + color.rgb * (1 - alpha), alpha);
+            //color = vec4(rectangle.color.rgb * glyph + color.rgb * (1 - glyph), glyph);
         }
     }
 

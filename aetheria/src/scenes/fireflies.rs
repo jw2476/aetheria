@@ -29,13 +29,7 @@ impl Fireflies {
                 rng.gen_range(-400.0..400.0),
             );
             fireflies.push(
-                Firefly::new(
-                    renderer,
-                    mesh_registry,
-                    position,
-                    Vec3::new(1.0, 1.0, 1.0),
-                )
-                .unwrap(),
+                Firefly::new(renderer, mesh_registry, position, Vec3::new(1.0, 1.0, 1.0)).unwrap(),
             );
         }
 

@@ -30,7 +30,7 @@ pub struct Region {
     pub size: UVec2,
 }
 
-pub trait Element : Clone + std::fmt::Debug {
+pub trait Element: Clone + std::fmt::Debug {
     fn layout(&mut self, constraint: SizeConstraints) -> UVec2;
     fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>);
 }
@@ -113,8 +113,13 @@ impl UIPass {
             vk::Format::R8G8B8A8_UNORM,
             vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::TRANSFER_SRC,
         )?;
-        let output =
-            Texture::from_image(&renderer, image, vk::Filter::NEAREST, vk::Filter::NEAREST, true)?;
+        let output = Texture::from_image(
+            &renderer,
+            image,
+            vk::Filter::NEAREST,
+            vk::Filter::NEAREST,
+            true,
+        )?;
 
         let ui_layout = SetLayoutBuilder::new(&renderer.device)
             .add(vk::DescriptorType::STORAGE_IMAGE)

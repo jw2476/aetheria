@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, ops::{Deref, DerefMut}};
 
 use ash::vk;
 use assets::MeshRegistry;
@@ -52,5 +52,19 @@ impl Renderable for Trees {
             .iter()
             .flat_map(|tree| tree.get_objects())
             .collect::<Vec<&RenderObject>>()
+    }
+}
+
+impl Deref for Trees {
+    type Target = Vec<Tree>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.trees
+    }
+}
+
+impl DerefMut for Trees {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.trees
     }
 }

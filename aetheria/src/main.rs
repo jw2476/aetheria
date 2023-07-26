@@ -23,7 +23,7 @@ use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry, TextureRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
-use glam::{Quat, UVec2, Vec2, Vec3, Vec4};
+use glam::{IVec2, Quat, UVec2, Vec2, Vec3, Vec4};
 use input::{Keyboard, Mouse};
 use net::*;
 use num_traits::FromPrimitive;
@@ -33,7 +33,7 @@ use std::{
     io,
     net::{IpAddr, SocketAddr, UdpSocket},
     sync::Arc,
-    time::Instant,
+    time::Instant, ops::DerefMut,
 };
 use time::Time;
 use tracing::info;
@@ -45,8 +45,8 @@ use winit::{
 };
 
 use crate::{
-    entities::Player,
-    render::RenderPass,
+    entities::{Player, Tree},
+    render::{RenderPass, Renderable, RenderObject},
     renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
     scenes::RootScene,
     ui::{Element, Rectangle, Region, SizeConstraints, Text, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
@@ -250,13 +250,42 @@ fn main() {
                     min: UVec2::ZERO,
                     max: UVec2::new(RENDER_WIDTH, RENDER_HEIGHT),
                 });
-                gather.paint(
-                    Region {
-                        origin: UVec2::ZERO,
-                        size,
-                    },
-                    &mut scene,
-                );
+                let camera_delta =
+                    Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), 2.0 * PI - camera.actual_theta)
+                        * (camera.target - camera.actual_target);
+                let mut trees_by_distance = root
+                    .trees
+                    .iter()
+                    .enumerate()
+                    .map(|(i, tree)| {
+                        (
+                            (tree.transform.translation - root.player.get_transform().translation)
+                                .length(),
+                            i,
+                        )
+                    })
+                    .collect::<Vec<(f32, usize)>>();
+                trees_by_distance.sort_by(|a, b| a.0.total_cmp(&b.0));
+                let closest_tree = trees_by_distance.first().unwrap();
+
+                if closest_tree.0 < 50.0 {
+                    if keyboard.is_key_pressed(VirtualKeyCode::F) {
+                       root.trees.remove(closest_tree.1); 
+                    }
+
+                    let gather_origin = IVec2::new(250, 145)
+                        + IVec2::new(
+                            camera_delta.x as i32,
+                            (camera_delta.z * 2.0_f32.powf(-0.5)) as i32,
+                        );
+                    gather.paint(
+                        Region {
+                            origin: UVec2::new(gather_origin.x as u32, gather_origin.y as u32),
+                            size,
+                        },
+                        &mut scene,
+                    );
+                }
                 ui_pass
                     .set_geometry(&renderer, &scene)
                     .expect("Failed to set UI geometry");

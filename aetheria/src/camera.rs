@@ -9,9 +9,9 @@ use crate::renderer::Renderer;
 
 pub struct Camera {
     pub target: Vec3,
-    actual_target: Vec3,
+    pub actual_target: Vec3,
     pub theta: f32,
-    actual_theta: f32,
+    pub actual_theta: f32,
 
     pub width: f32,
     pub height: f32,
