@@ -1,4 +1,4 @@
-use std::{net::UdpSocket, ops::Deref};
+use std::{net::UdpSocket, ops::Deref, sync::{Arc, Mutex}};
 
 use ash::vk;
 use assets::MeshRegistry;
@@ -8,7 +8,7 @@ use crate::{
     camera::Camera,
     entities::{Grass, Player, Sun},
     input::{Keyboard, Mouse},
-    render::{Light, RenderObject, Renderable},
+    render::{Light, RenderObject, Renderable, RenderPass},
     renderer::Renderer,
     time::Time,
     transform::Transform,
@@ -17,9 +17,9 @@ use crate::{
 use super::{Fireflies, Trees};
 
 pub struct RootScene {
-    pub player: Player,
-    pub sun: Sun,
-    pub grass: Grass,
+    pub player: Arc<Mutex<Player>>,
+    pub sun: Arc<Mutex<Sun>>,
+    pub grass: Arc<Mutex<Grass>>,
     pub trees: Trees,
     pub fireflies: Fireflies,
 }
@@ -27,6 +27,7 @@ pub struct RootScene {
 impl RootScene {
     pub fn new(
         renderer: &mut Renderer,
+        render_pass: &mut RenderPass,
         mesh_registry: &mut MeshRegistry,
     ) -> Result<Self, vk::Result> {
         let mut player = {
@@ -35,13 +36,13 @@ impl RootScene {
                 rotation: Quat::IDENTITY,
                 scale: Vec3::ONE,
             };
-            Player::new(renderer, mesh_registry, transform).unwrap()
+            Player::new(renderer, render_pass, mesh_registry, transform).unwrap()
         };
         let sun = Sun::new(Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
-        let grass = Grass::new(renderer, mesh_registry, Transform::IDENTITY).unwrap();
+        let grass = Grass::new(renderer, render_pass, mesh_registry, Transform::IDENTITY).unwrap();
 
-        let trees = Trees::new(renderer, mesh_registry)?;
-        let fireflies = Fireflies::new(renderer, mesh_registry)?;
+        let trees = Trees::new(renderer, render_pass, mesh_registry)?;
+        let fireflies = Fireflies::new(renderer, render_pass, mesh_registry)?;
 
         Ok(Self {
             player,
@@ -56,10 +57,10 @@ impl RootScene {
         let mut data = self
             .fireflies
             .iter()
-            .map(|firefly| *firefly.as_ref())
+            .map(|firefly| *firefly.lock().unwrap().as_ref())
             .collect::<Vec<Light>>();
-        data.push(self.sun.light);
-        data.push(self.player.light);
+        data.push(self.sun.lock().unwrap().light);
+        data.push(self.player.lock().unwrap().light);
         data
     }
 
@@ -73,25 +74,11 @@ impl RootScene {
         socket: &UdpSocket,
     ) {
         self.player
+            .lock().unwrap()
             .frame_finished(keyboard, mouse, camera, time, viewport, socket);
-        self.sun.frame_finished(time);
+        self.sun.lock().unwrap().frame_finished(time);
         self.fireflies
             .iter_mut()
-            .for_each(|firefly| firefly.frame_finished(&self.sun, time));
-    }
-}
-
-impl Renderable for RootScene {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![
-            self.player.get_objects(),
-            self.grass.get_objects(),
-            self.trees.get_objects(),
-            self.fireflies.get_objects(),
-        ]
-        .iter()
-        .flatten()
-        .cloned()
-        .collect::<Vec<&RenderObject>>()
+            .for_each(|firefly| firefly.lock().unwrap().frame_finished(&self.sun.lock().unwrap(), time));
     }
 }

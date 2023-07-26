@@ -32,7 +32,7 @@ use std::{
     f32::consts::PI,
     io,
     net::{IpAddr, SocketAddr, UdpSocket},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Instant, ops::DerefMut,
 };
 use time::Time;
@@ -105,28 +105,28 @@ fn main() {
     let mut camera = Camera::new(480.0, 270.0, &renderer).unwrap();
     let mut time = Time::new(&renderer).unwrap();
     let render_pass =
-        Arc::new(RenderPass::new(&renderer, &mut shader_registry, &camera, &time).unwrap());
-    let ui_pass = Arc::new(
+        Arc::new(Mutex::new(RenderPass::new(&renderer, &mut shader_registry, &camera, &time).unwrap()));
+    let ui_pass = Arc::new(Mutex::new(
         UIPass::new(
             &mut renderer,
             &mut shader_registry,
             &mut texture_registry,
-            render_pass.get_texture(),
+            render_pass.lock().unwrap().get_texture(),
         )
         .unwrap(),
-    );
+    ));
     renderer.add_pass(render_pass.clone());
     renderer.add_pass(ui_pass.clone());
     renderer.set_output_image(
-        ui_pass.get_texture().image.clone(),
+        ui_pass.lock().unwrap().get_texture().image.clone(),
         vk::ImageLayout::GENERAL,
     );
     let mut keyboard = Keyboard::new();
     let mut mouse = Mouse::new();
 
-    let mut root = RootScene::new(&mut renderer, &mut mesh_registry).expect("Failed to load scene");
+    let mut root = RootScene::new(&mut renderer, &mut render_pass.lock().unwrap(), &mut mesh_registry).expect("Failed to load scene");
 
-    let mut players: HashMap<String, Player> = HashMap::new();
+    let mut players: HashMap<String, Arc<Mutex<Player>>> = HashMap::new();
     let mut last_heartbeat: Instant = Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
@@ -164,6 +164,7 @@ fn main() {
                         username,
                         Player::new(
                             &mut renderer,
+                            &mut render_pass.lock().unwrap(),
                             &mut mesh_registry,
                             Transform {
                                 translation,
@@ -183,6 +184,8 @@ fn main() {
                     players
                         .get_mut(&username)
                         .expect("Peer not found")
+                        .lock()
+                        .unwrap()
                         .update_transform(|transform| transform.translation = translation);
                 }
 
@@ -227,17 +230,20 @@ fn main() {
                     camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY
                 }
                 if keyboard.is_key_down(VirtualKeyCode::Left) {
-                    root.sun.update_theta(root.sun.get_theta() + PI / 60.0)
+                    let mut sun = root.sun.lock().unwrap();
+                    let theta = sun.get_theta() + PI / 60.0;
+                    sun.update_theta(theta);
                 }
                 if keyboard.is_key_down(VirtualKeyCode::Right) {
-                    root.sun.update_theta(root.sun.get_theta() - PI / 60.0)
+                    let mut sun = root.sun.lock().unwrap();
+                    let theta = sun.get_theta() - PI / 60.0;
+                    sun.update_theta(theta);
                 }
 
                 renderer.wait_for_frame();
-                render_pass.set_geometry(
+                render_pass.lock().unwrap().set_geometry(
                     &renderer,
                     &mesh_registry,
-                    &[&root, &players.values().cloned().collect::<Vec<Player>>()],
                     &root.get_lights(),
                 );
                 let mut text = Text {
@@ -259,7 +265,7 @@ fn main() {
                     .enumerate()
                     .map(|(i, tree)| {
                         (
-                            (tree.transform.translation - root.player.get_transform().translation)
+                            (tree.lock().unwrap().transform.translation - root.player.lock().unwrap().get_transform().translation)
                                 .length(),
                             i,
                         )
@@ -287,6 +293,8 @@ fn main() {
                     );
                 }
                 ui_pass
+                    .lock()
+                    .unwrap()
                     .set_geometry(&renderer, &scene)
                     .expect("Failed to set UI geometry");
 
@@ -301,7 +309,7 @@ fn main() {
                 keyboard.frame_finished();
                 camera.frame_finished();
                 mouse.frame_finished();
-                camera.target = root.player.get_transform().translation;
+                camera.target = root.player.lock().unwrap().get_transform().translation;
             }
             _ => (),
         };

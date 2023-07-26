@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, net::UdpSocket};
+use std::{f32::consts::PI, net::UdpSocket, sync::{Mutex, Arc}};
 
 use ash::vk;
 use assets::MeshRegistry;
@@ -9,7 +9,7 @@ use winit::event::VirtualKeyCode;
 use crate::{
     camera::Camera,
     input::{Keyboard, Mouse},
-    render::{Light, RenderObject, Renderable},
+    render::{Light, RenderObject, Renderable, RenderPass},
     renderer::Renderer,
     time::Time,
     transform::Transform,
@@ -30,20 +30,25 @@ pub struct Player {
 impl Player {
     pub fn new(
         renderer: &mut Renderer,
+        render_pass: &mut RenderPass,
         mesh_registry: &mut MeshRegistry,
         transform: Transform,
-    ) -> Result<Self, vk::Result> {
+    ) -> Result<Arc<Mutex<Self>>, vk::Result> {
         let player = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("player.obj")?
             .set_color(Vec3::new(1.0, 1.0, 1.0))
             .set_transform(transform)
             .build()?;
 
-        Ok(Self {
+        let player = Arc::new(Mutex::new(Self {
             player,
             jump_t: 0.0,
             light: Light::new(Vec3::ZERO, 5000.0, Vec3::new(1.0, 1.0, 1.0)),
-        })
+        }));
+
+        render_pass.add_renderable(Arc::downgrade(&(player.clone() as Arc<Mutex<dyn Renderable>>)));
+
+        Ok(player)
     }
 
     pub fn update_transform<F: Fn(&mut Transform)>(&mut self, predicate: F) {
@@ -108,7 +113,7 @@ impl Player {
 }
 
 impl Renderable for Player {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![&self.player]
+    fn get_objects(&self) -> Vec<RenderObject> {
+        vec![self.player.clone()]
     }
 }

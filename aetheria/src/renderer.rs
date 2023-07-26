@@ -4,6 +4,7 @@ use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use std::collections::HashMap;
 use std::ops::DerefMut;
+use std::sync::Mutex;
 use std::{ops::Deref, sync::Arc};
 use tracing::info;
 use vulkan::command::{self, TransitionLayoutOptions};
@@ -15,6 +16,7 @@ use vulkan::{
 use winit::window::Window;
 
 use crate::camera::Camera;
+use crate::render::Renderable;
 use crate::time::Time;
 use crate::transform::Transform;
 
@@ -30,7 +32,7 @@ pub struct Renderer {
     in_flight: vk::Fence,
     output_image: Option<(Arc<Image>, vk::ImageLayout)>,
 
-    passes: Vec<Arc<dyn Pass>>,
+    passes: Vec<Arc<Mutex<dyn Pass>>>,
 }
 
 pub const RENDER_WIDTH: u32 = 480;
@@ -88,7 +90,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn add_pass(&mut self, pass: Arc<dyn Pass>) {
+    pub fn add_pass(&mut self, pass: Arc<Mutex<dyn Pass>>) {
         self.passes.push(pass);
     }
 
@@ -135,7 +137,7 @@ impl Renderer {
                 .record(|cmd| {
                     self.passes
                         .iter()
-                        .fold(cmd, |cmd, pass| cmd.record(|cmd| pass.record(cmd)))
+                        .fold(cmd, |cmd, pass| cmd.record(|cmd| pass.lock().unwrap().record(cmd)))
                 })
                 .transition_image_layout(
                     &self.output_image.as_ref().expect("No output image set").0,

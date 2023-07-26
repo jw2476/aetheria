@@ -2,7 +2,7 @@ use ash::vk;
 use assets::{Mesh, MeshRegistry, ShaderRegistry, Vertex};
 use bytemuck::{cast_slice, Pod, Zeroable};
 use glam::{Vec3, Vec4};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::{Arc, Mutex, Weak}};
 use vulkan::{
     command, command::TransitionLayoutOptions, compute, Buffer, Context, Image, Pool, Set,
     SetLayout, SetLayoutBuilder, Shader, Texture,
@@ -82,14 +82,14 @@ impl RenderObject {
 }
 
 pub trait Renderable {
-    fn get_objects(&self) -> Vec<&RenderObject>;
+    fn get_objects(&self) -> Vec<RenderObject>;
 }
 
 impl<T: Renderable> Renderable for Vec<T> {
-    fn get_objects(&self) -> Vec<&RenderObject> {
+    fn get_objects(&self) -> Vec<RenderObject> {
         self.iter()
             .flat_map(|item| item.get_objects())
-            .collect::<Vec<&RenderObject>>()
+            .collect::<Vec<RenderObject>>()
     }
 }
 
@@ -147,6 +147,8 @@ pub struct RenderPass {
     geometry_pool: Pool,
     geometry_set: Set,
     pipeline: compute::Pipeline,
+
+    renderables: Vec<Weak<Mutex<dyn Renderable>>>,
 }
 
 impl RenderPass {
@@ -203,6 +205,7 @@ impl RenderPass {
             geometry_pool,
             geometry_set,
             pipeline,
+            renderables: Vec::new()
         })
     }
 
@@ -228,13 +231,13 @@ impl RenderPass {
         &self,
         renderer: &Renderer,
         mesh_registry: &MeshRegistry,
-        renderables: &[&dyn Renderable],
         lights: &[Light],
     ) {
-        let objects = renderables
+        let objects = self.renderables
             .iter()
-            .flat_map(|renderable| renderable.get_objects())
-            .collect::<Vec<&RenderObject>>();
+            .filter_map(|renderable| renderable.upgrade())
+            .flat_map(|renderable| renderable.lock().unwrap().get_objects().clone())
+            .collect::<Vec<RenderObject>>();
 
         let mut meshes: Vec<MeshData> = Vec::new();
         let mut vertices: Vec<Vertex> = Vec::new();
@@ -328,6 +331,10 @@ impl RenderPass {
 
     pub fn get_texture(&self) -> &'_ Texture {
         &self.texture
+    }
+
+    pub fn add_renderable(&mut self, renderable: Weak<Mutex<dyn Renderable>>) {
+        self.renderables.push(renderable);
     }
 }
 

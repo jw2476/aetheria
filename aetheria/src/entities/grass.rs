@@ -1,9 +1,11 @@
+use std::sync::{Arc, Mutex};
+
 use ash::vk;
 use assets::MeshRegistry;
 use glam::Vec3;
 
 use crate::{
-    render::{RenderObject, Renderable},
+    render::{RenderObject, Renderable, RenderPass},
     renderer::Renderer,
     transform::Transform,
 };
@@ -16,20 +18,23 @@ pub struct Grass {
 impl Grass {
     pub fn new(
         renderer: &mut Renderer,
+        render_pass: &mut RenderPass,
         mesh_registry: &mut MeshRegistry,
         transform: Transform,
-    ) -> Result<Self, vk::Result> {
+    ) -> Result<Arc<Mutex<Self>>, vk::Result> {
         let grass = RenderObject::builder(renderer, mesh_registry)
             .set_mesh("grass.obj")?
-            .set_color(Vec3::new(0.388, 0.780, 0.302))
+            .set_color(Vec3::new(0.290, 0.871, 0.502))
             .set_transform(transform.clone())
             .build()?;
-        Ok(Self { transform, grass })
+        let grass = Arc::new(Mutex::new(Self { transform, grass }));
+        render_pass.add_renderable(Arc::downgrade(&(grass.clone() as Arc<Mutex<dyn Renderable>>)));
+        Ok(grass)
     }
 }
 
 impl Renderable for Grass {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![&self.grass]
+    fn get_objects(&self) -> Vec<RenderObject> {
+        vec![self.grass.clone()]
     }
 }

@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex, Weak};
+
 use ash::vk;
 use assets::MeshRegistry;
 use glam::{Quat, Vec3};
@@ -5,7 +7,7 @@ use rand::Rng;
 
 use super::Sun;
 use crate::{
-    render::{Light, RenderObject, Renderable},
+    render::{Light, RenderObject, Renderable, RenderPass},
     renderer::Renderer,
     time::Time,
     transform::Transform,
@@ -24,10 +26,11 @@ pub struct Firefly {
 impl Firefly {
     pub fn new(
         renderer: &mut Renderer,
+        render_pass: &mut RenderPass,
         mesh_registry: &mut MeshRegistry,
         position: Vec3,
         color: Vec3,
-    ) -> Result<Self, vk::Result> {
+    ) -> Result<Arc<Mutex<Self>>, vk::Result> {
         let light = Light::new(position, 0.0, color);
 
         let front = RenderObject::builder(renderer, mesh_registry)
@@ -56,13 +59,17 @@ impl Firefly {
             rng.gen_range(-1.0..1.0),
         )
         .normalize_or_zero();
-        Ok(Self {
+        let firefly = Arc::new(Mutex::new(Self {
             light,
             velocity,
             origin: position,
             front,
             back,
-        })
+        }));
+
+
+        render_pass.add_renderable(Arc::downgrade(&(firefly.clone() as Arc<Mutex<dyn Renderable>>)));
+        Ok(firefly)
     }
 
     pub fn frame_finished(&mut self, sun: &Sun, time: &Time) {
@@ -109,9 +116,9 @@ impl AsRef<Light> for Firefly {
 }
 
 impl Renderable for Firefly {
-    fn get_objects(&self) -> Vec<&RenderObject> {
+    fn get_objects(&self) -> Vec<RenderObject> {
         if self.light.strength != 0.0 {
-            vec![&self.front, &self.back]
+            vec![self.front.clone(), self.back.clone()]
         } else {
             vec![]
         }

@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, ops::{Deref, DerefMut}};
+use std::{f32::consts::PI, ops::{Deref, DerefMut}, sync::{Arc, Mutex}};
 
 use ash::vk;
 use assets::MeshRegistry;
@@ -7,7 +7,7 @@ use rand::Rng;
 
 use crate::{
     entities::Tree,
-    render::{RenderObject, Renderable},
+    render::{RenderObject, Renderable, RenderPass},
     renderer::Renderer,
     transform::Transform,
 };
@@ -15,12 +15,13 @@ use crate::{
 const NUM_TREES: u32 = 10;
 
 pub struct Trees {
-    trees: Vec<Tree>,
+    trees: Vec<Arc<Mutex<Tree>>>,
 }
 
 impl Trees {
     pub fn new(
         renderer: &mut Renderer,
+        render_pass: &mut RenderPass,
         mesh_registry: &mut MeshRegistry,
     ) -> Result<Self, vk::Result> {
         let mut trees = Vec::new();
@@ -39,24 +40,15 @@ impl Trees {
                 rotation,
                 scale: Vec3::new(0.1, 0.1, 0.1),
             };
-            trees.push(Tree::new(renderer, mesh_registry, transform).unwrap());
+            trees.push(Tree::new(renderer, render_pass, mesh_registry, transform).unwrap());
         }
 
         Ok(Self { trees })
     }
 }
 
-impl Renderable for Trees {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        self.trees
-            .iter()
-            .flat_map(|tree| tree.get_objects())
-            .collect::<Vec<&RenderObject>>()
-    }
-}
-
 impl Deref for Trees {
-    type Target = Vec<Tree>;
+    type Target = Vec<Arc<Mutex<Tree>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.trees
