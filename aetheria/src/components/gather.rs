@@ -1,13 +1,14 @@
-use glam::Vec4;
-use super::components::*;
+use crate::ui::Element;
 
+use super::components::*;
+use glam::Vec4;
 
 pub type Component = Container<Padding<HPair<Container<Padding<Text>>, Text>>>;
 
 impl Component {
-    pub fn new() -> Self {
+    pub fn new(name: &str) -> Self {
         let f = Text {
-            color: Vec4::new(0.957, 0.247, 0.369, 1.0),
+            color: Self::get_highlight(),
             content: "F".to_owned(),
         };
         let padded_f = Padding {
@@ -19,13 +20,13 @@ impl Component {
         };
         let left = Container {
             child: padded_f,
-            color: Vec4::new(0.094, 0.094, 0.106, 1.0),
-            border_color: Vec4::new(0.957, 0.247, 0.369, 1.0),
+            color: Self::get_background(),
+            border_color: Self::get_highlight(),
             border_radius: 1,
         };
         let right = Text {
-            color: Vec4::new(0.957, 0.247, 0.369, 1.0),
-            content: "Gather".to_owned(),
+            color: Self::get_highlight(),
+            content: name.to_owned(),
         };
         let hpair = HPair::new(left, right, VAlign::Center, 2);
         let padding = Padding {
@@ -38,8 +39,8 @@ impl Component {
         Container {
             child: padding,
             border_radius: 1,
-            border_color: Vec4::new(0.957, 0.247, 0.369, 1.0),
-            color: Vec4::new(0.094, 0.094, 0.106, 1.0),
+            border_color: Self::get_highlight(),
+            color: Self::get_background(),
         }
         .into()
     }

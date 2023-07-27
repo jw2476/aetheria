@@ -13,8 +13,11 @@ use winit::event::VirtualKeyCode;
 use crate::{
     camera::Camera,
     input::{Keyboard, Mouse},
-    render::{Light, RenderObject, RenderPass, Renderable},
     renderer::Renderer,
+    systems::{
+        render::{Light, RenderObject, Renderable},
+        Positioned, Systems,
+    },
     time::Time,
     transform::Transform,
 };
@@ -34,7 +37,7 @@ pub struct Player {
 impl Player {
     pub fn new(
         renderer: &mut Renderer,
-        render_pass: &mut RenderPass,
+        systems: &mut Systems,
         mesh_registry: &mut MeshRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
@@ -50,9 +53,9 @@ impl Player {
             light: Light::new(Vec3::ZERO, 5000.0, Vec3::new(1.0, 1.0, 1.0)),
         }));
 
-        render_pass.add_renderable(Arc::downgrade(
-            &(player.clone() as Arc<Mutex<dyn Renderable>>),
-        ));
+        systems
+            .render
+            .add_renderable(player.clone() as Arc<Mutex<dyn Renderable>>);
 
         Ok(player)
     }
@@ -121,5 +124,11 @@ impl Player {
 impl Renderable for Player {
     fn get_objects(&self) -> Vec<RenderObject> {
         vec![self.player.clone()]
+    }
+}
+
+impl Positioned for Player {
+    fn get_position(&self) -> Vec3 {
+        self.get_transform().translation
     }
 }

@@ -1,5 +1,5 @@
-use crate::ui::{Element, SizeConstraints, Region, Rectangle, CHAR_WIDTH, CHAR_HEIGHT};
-use glam::{Vec4, UVec2};
+use crate::ui::{Element, Rectangle, Region, SizeConstraints, CHAR_HEIGHT, CHAR_WIDTH};
+use glam::{UVec2, Vec4};
 
 #[derive(Clone, Debug)]
 pub struct Container<T: Element> {
@@ -52,6 +52,18 @@ pub struct Padding<T: Element> {
     pub bottom: u32,
     pub left: u32,
     pub right: u32,
+}
+
+impl<T: Element> Padding<T> {
+    pub fn new_uniform(child: T, padding: u32) -> Self {
+        Self {
+            child,
+            top: padding,
+            bottom: padding,
+            left: padding,
+            right: padding,
+        }
+    }
 }
 
 impl<T: Element> Element for Padding<T> {

@@ -7,8 +7,13 @@ use rand::Rng;
 
 use super::Sun;
 use crate::{
-    render::{Light, RenderObject, RenderPass, Renderable},
+    item::{Inventory, Item, ItemStack},
     renderer::Renderer,
+    systems::{
+        gather::Gatherable,
+        render::{Light, RenderObject, Renderable, System},
+        Named, Positioned, Systems,
+    },
     time::Time,
     transform::Transform,
 };
@@ -21,12 +26,13 @@ pub struct Firefly {
     origin: Vec3,
     front: RenderObject,
     back: RenderObject,
+    gathered: bool,
 }
 
 impl Firefly {
     pub fn new(
         renderer: &mut Renderer,
-        render_pass: &mut RenderPass,
+        systems: &mut Systems,
         mesh_registry: &mut MeshRegistry,
         position: Vec3,
         color: Vec3,
@@ -65,11 +71,13 @@ impl Firefly {
             origin: position,
             front,
             back,
+            gathered: false,
         }));
 
-        render_pass.add_renderable(Arc::downgrade(
-            &(firefly.clone() as Arc<Mutex<dyn Renderable>>),
-        ));
+        systems
+            .render
+            .add_renderable(firefly.clone() as Arc<Mutex<dyn Renderable>>);
+        systems.gather.add_gatherable(firefly.clone());
         Ok(firefly)
     }
 
@@ -80,7 +88,8 @@ impl Firefly {
             self.light.strength = 300.0
                 * ((sun.get_theta() / 2.0).sin() - sun.get_theta().cos())
                     .powf(1.5)
-                    .min(1.0);
+                    .min(1.0)
+                * !self.gathered as u32 as f32;
         } else {
             self.light.strength = 0.0
         }
@@ -118,10 +127,36 @@ impl AsRef<Light> for Firefly {
 
 impl Renderable for Firefly {
     fn get_objects(&self) -> Vec<RenderObject> {
-        if self.light.strength != 0.0 {
+        if self.light.strength != 0.0 && !self.gathered {
             vec![self.front.clone(), self.back.clone()]
         } else {
             vec![]
         }
+    }
+}
+
+impl Named for Firefly {
+    fn get_name(&self) -> String {
+        "Sunset Firefly".to_owned()
+    }
+}
+
+impl Positioned for Firefly {
+    fn get_position(&self) -> Vec3 {
+        self.light.position
+    }
+}
+
+impl Gatherable for Firefly {
+    fn gather(&mut self, inventory: &mut Inventory) {
+        inventory.add(ItemStack {
+            item: Item::Fireglow,
+            amount: 1,
+        });
+        self.gathered = true;
+    }
+
+    fn is_gatherable(&self) -> bool {
+        !self.gathered && self.light.strength > 0.0 
     }
 }

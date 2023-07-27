@@ -5,8 +5,13 @@ use assets::MeshRegistry;
 use glam::Vec3;
 
 use crate::{
-    render::{RenderObject, RenderPass, Renderable},
+    item::{Inventory, Item, ItemStack},
     renderer::Renderer,
+    systems::{
+        gather::Gatherable,
+        render::{RenderObject, Renderable},
+        Named, Positioned, Systems,
+    },
     transform::Transform,
 };
 
@@ -14,12 +19,13 @@ pub struct Tree {
     pub transform: Transform,
     trunk: RenderObject,
     foliage: RenderObject,
+    gathered: bool,
 }
 
 impl Tree {
     pub fn new(
         renderer: &mut Renderer,
-        render_pass: &mut RenderPass,
+        systems: &mut Systems,
         mesh_registry: &mut MeshRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Tree>>, vk::Result> {
@@ -38,11 +44,14 @@ impl Tree {
             transform,
             trunk,
             foliage,
+            gathered: false,
         }));
 
-        render_pass.add_renderable(Arc::downgrade(
-            &(tree.clone() as Arc<Mutex<dyn Renderable>>),
-        ));
+        systems
+            .render
+            .add_renderable(tree.clone() as Arc<Mutex<dyn Renderable>>);
+        systems.gather.add_gatherable(tree.clone());
+
         Ok(tree)
     }
 
@@ -55,6 +64,36 @@ impl Tree {
 
 impl Renderable for Tree {
     fn get_objects(&self) -> Vec<RenderObject> {
-        vec![self.trunk.clone(), self.foliage.clone()]
+        if !self.gathered {
+            vec![self.trunk.clone(), self.foliage.clone()]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+impl Named for Tree {
+    fn get_name(&self) -> String {
+        "Tree".to_owned()
+    }
+}
+
+impl Positioned for Tree {
+    fn get_position(&self) -> Vec3 {
+        self.transform.translation
+    }
+}
+
+impl Gatherable for Tree {
+    fn gather(&mut self, inventory: &mut Inventory) {
+        inventory.add(ItemStack {
+            item: Item::Wood,
+            amount: 1,
+        });
+        self.gathered = true;
+    }
+
+    fn is_gatherable(&self) -> bool {
+        !self.gathered
     }
 }

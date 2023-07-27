@@ -5,8 +5,11 @@ use assets::MeshRegistry;
 use glam::Vec3;
 
 use crate::{
-    render::{RenderObject, RenderPass, Renderable},
     renderer::Renderer,
+    systems::{
+        render::{RenderObject, Renderable},
+        Systems,
+    },
     transform::Transform,
 };
 
@@ -18,7 +21,7 @@ pub struct Grass {
 impl Grass {
     pub fn new(
         renderer: &mut Renderer,
-        render_pass: &mut RenderPass,
+        systems: &mut Systems,
         mesh_registry: &mut MeshRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
@@ -28,9 +31,9 @@ impl Grass {
             .set_transform(transform.clone())
             .build()?;
         let grass = Arc::new(Mutex::new(Self { transform, grass }));
-        render_pass.add_renderable(Arc::downgrade(
-            &(grass.clone() as Arc<Mutex<dyn Renderable>>),
-        ));
+        systems
+            .render
+            .add_renderable(grass.clone() as Arc<Mutex<dyn Renderable>>);
         Ok(grass)
     }
 }

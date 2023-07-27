@@ -139,7 +139,7 @@ impl Light {
     }
 }
 
-pub struct RenderPass {
+pub struct System {
     texture: Texture,
 
     frame_layout: SetLayout,
@@ -154,7 +154,7 @@ pub struct RenderPass {
     renderables: Vec<Weak<Mutex<dyn Renderable>>>,
 }
 
-impl RenderPass {
+impl System {
     pub fn new(
         ctx: &Context,
         shader_registry: &mut ShaderRegistry,
@@ -337,12 +337,12 @@ impl RenderPass {
         &self.texture
     }
 
-    pub fn add_renderable(&mut self, renderable: Weak<Mutex<dyn Renderable>>) {
-        self.renderables.push(renderable);
+    pub fn add_renderable(&mut self, renderable: Arc<Mutex<dyn Renderable>>) {
+        self.renderables.push(Arc::downgrade(&renderable));
     }
 }
 
-impl Pass for RenderPass {
+impl Pass for System {
     fn record(&self, cmd: command::BufferBuilder) -> command::BufferBuilder {
         cmd.transition_image_layout(
             &self.texture.image,

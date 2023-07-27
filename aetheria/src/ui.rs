@@ -28,6 +28,14 @@ pub struct Region {
 pub trait Element: Clone + std::fmt::Debug {
     fn layout(&mut self, constraint: SizeConstraints) -> UVec2;
     fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>);
+
+    fn get_highlight() -> Vec4 {
+        Vec4::new(0.957, 0.247, 0.369, 1.0)
+    }
+
+    fn get_background() -> Vec4 {
+        Vec4::new(0.094, 0.094, 0.106, 1.0)
+    }
 }
 
 #[repr(C)]

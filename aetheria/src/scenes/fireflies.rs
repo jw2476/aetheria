@@ -8,7 +8,7 @@ use assets::MeshRegistry;
 use glam::Vec3;
 use rand::Rng;
 
-use crate::{entities::Firefly, render::RenderPass, renderer::Renderer};
+use crate::{entities::Firefly, renderer::Renderer, systems::Systems};
 
 const NUM_FIREFLIES: u32 = 10;
 
@@ -19,7 +19,7 @@ pub struct Fireflies {
 impl Fireflies {
     pub fn new(
         renderer: &mut Renderer,
-        render_pass: &mut RenderPass,
+        systems: &mut Systems,
         mesh_registry: &mut MeshRegistry,
     ) -> Result<Self, vk::Result> {
         let mut fireflies = Vec::new();
@@ -35,7 +35,7 @@ impl Fireflies {
             fireflies.push(
                 Firefly::new(
                     renderer,
-                    render_pass,
+                    systems,
                     mesh_registry,
                     position,
                     Vec3::new(1.0, 1.0, 1.0),

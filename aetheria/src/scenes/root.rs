@@ -12,8 +12,8 @@ use crate::{
     camera::Camera,
     entities::{Grass, Player, Sun},
     input::{Keyboard, Mouse},
-    render::{Light, RenderObject, RenderPass, Renderable},
     renderer::Renderer,
+    systems::{render::Light, Systems},
     time::Time,
     transform::Transform,
 };
@@ -31,7 +31,7 @@ pub struct RootScene {
 impl RootScene {
     pub fn new(
         renderer: &mut Renderer,
-        render_pass: &mut RenderPass,
+        systems: &mut Systems,
         mesh_registry: &mut MeshRegistry,
     ) -> Result<Self, vk::Result> {
         let mut player = {
@@ -40,13 +40,13 @@ impl RootScene {
                 rotation: Quat::IDENTITY,
                 scale: Vec3::ONE,
             };
-            Player::new(renderer, render_pass, mesh_registry, transform).unwrap()
+            Player::new(renderer, systems, mesh_registry, transform).unwrap()
         };
         let sun = Sun::new(Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
-        let grass = Grass::new(renderer, render_pass, mesh_registry, Transform::IDENTITY).unwrap();
+        let grass = Grass::new(renderer, systems, mesh_registry, Transform::IDENTITY).unwrap();
 
-        let trees = Trees::new(renderer, render_pass, mesh_registry)?;
-        let fireflies = Fireflies::new(renderer, render_pass, mesh_registry)?;
+        let trees = Trees::new(renderer, systems, mesh_registry)?;
+        let fireflies = Fireflies::new(renderer, systems, mesh_registry)?;
 
         Ok(Self {
             player,

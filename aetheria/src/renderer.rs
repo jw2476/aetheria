@@ -1,24 +1,11 @@
 use ash::vk;
-use assets::{Mesh, MeshRegistry, ShaderRegistry, Vertex};
-use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
-use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
-use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Mutex;
 use std::{ops::Deref, sync::Arc};
 use tracing::info;
 use vulkan::command::{self, TransitionLayoutOptions};
-use vulkan::VertexInputBuilder;
-use vulkan::{
-    compute, graphics, Buffer, Context, Image, Pool, Set, SetLayout, SetLayoutBuilder, Shader,
-    Swapchain, Texture,
-};
+use vulkan::{Context, Image, Swapchain};
 use winit::window::Window;
-
-use crate::camera::Camera;
-use crate::render::Renderable;
-use crate::time::Time;
-use crate::transform::Transform;
 
 pub trait Pass {
     fn record(&self, cmd: command::BufferBuilder) -> command::BufferBuilder;

@@ -9,11 +9,12 @@ mod camera;
 mod components;
 mod entities;
 mod input;
+mod item;
 mod macros;
 mod material;
-mod render;
 mod renderer;
 mod scenes;
+mod systems;
 mod time;
 mod transform;
 mod ui;
@@ -47,9 +48,10 @@ use winit::{
 
 use crate::{
     entities::{Player, Tree},
-    render::{RenderObject, RenderPass, Renderable},
+    item::Inventory,
     renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
     scenes::RootScene,
+    systems::{gather, render, Systems},
     ui::{Element, Rectangle, Region, SizeConstraints, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
 };
 
@@ -105,19 +107,23 @@ fn main() {
     let mut renderer = Renderer::new(ctx, window.clone()).unwrap();
     let mut camera = Camera::new(480.0, 270.0, &renderer).unwrap();
     let mut time = Time::new(&renderer).unwrap();
-    let render_pass = Arc::new(Mutex::new(
-        RenderPass::new(&renderer, &mut shader_registry, &camera, &time).unwrap(),
+    let render_system = Arc::new(Mutex::new(
+        render::System::new(&renderer, &mut shader_registry, &camera, &time).unwrap(),
     ));
+    let gather_system = Arc::new(Mutex::new(gather::System::new()));
+
+    let mut inventory = Inventory::new();
+
     let ui_pass = Arc::new(Mutex::new(
         UIPass::new(
             &mut renderer,
             &mut shader_registry,
             &mut texture_registry,
-            render_pass.lock().unwrap().get_texture(),
+            render_system.lock().unwrap().get_texture(),
         )
         .unwrap(),
     ));
-    renderer.add_pass(render_pass.clone());
+    renderer.add_pass(render_system.clone());
     renderer.add_pass(ui_pass.clone());
     renderer.set_output_image(
         ui_pass.lock().unwrap().get_texture().image.clone(),
@@ -128,13 +134,23 @@ fn main() {
 
     let mut root = RootScene::new(
         &mut renderer,
-        &mut render_pass.lock().unwrap(),
+        &mut Systems {
+            render: &mut render_system.lock().unwrap(),
+            gather: &mut gather_system.lock().unwrap(),
+        },
         &mut mesh_registry,
     )
     .expect("Failed to load scene");
 
+    gather_system
+        .lock()
+        .unwrap()
+        .set_player(root.player.clone());
+
     let mut players: HashMap<String, Arc<Mutex<Player>>> = HashMap::new();
     let mut last_heartbeat: Instant = Instant::now();
+
+    let mut inventory_open = false;
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -171,7 +187,10 @@ fn main() {
                         username,
                         Player::new(
                             &mut renderer,
-                            &mut render_pass.lock().unwrap(),
+                            &mut Systems {
+                                render: &mut render_system.lock().unwrap(),
+                                gather: &mut gather_system.lock().unwrap(),
+                            },
                             &mut mesh_registry,
                             Transform {
                                 translation,
@@ -247,50 +266,33 @@ fn main() {
                     sun.update_theta(theta);
                 }
 
+                if keyboard.is_key_pressed(VirtualKeyCode::I) {
+                    inventory_open = !inventory_open;
+                }
+
                 renderer.wait_for_frame();
-                render_pass.lock().unwrap().set_geometry(
+                render_system.lock().unwrap().set_geometry(
                     &renderer,
                     &mesh_registry,
                     &root.get_lights(),
                 );
+
                 let mut scene = Vec::new();
-                let mut gather = components::gather::Component::new();
-                let size = gather.layout(SizeConstraints {
-                    min: UVec2::ZERO,
-                    max: UVec2::new(RENDER_WIDTH, RENDER_HEIGHT),
-                });
-                let camera_delta =
-                    Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), 2.0 * PI - camera.actual_theta)
-                        * (camera.target - camera.actual_target);
-                let mut trees_by_distance = root
-                    .trees
-                    .iter()
-                    .enumerate()
-                    .map(|(i, tree)| {
-                        (
-                            (tree.lock().unwrap().transform.translation
-                                - root.player.lock().unwrap().get_transform().translation)
-                                .length(),
-                            i,
-                        )
-                    })
-                    .collect::<Vec<(f32, usize)>>();
-                trees_by_distance.sort_by(|a, b| a.0.total_cmp(&b.0));
-                let closest_tree = trees_by_distance.first().unwrap();
-
-                if closest_tree.0 < 50.0 {
-                    if keyboard.is_key_pressed(VirtualKeyCode::F) {
-                        root.trees.remove(closest_tree.1);
-                    }
-
-                    let gather_origin = IVec2::new(250, 145)
-                        + IVec2::new(
-                            camera_delta.x as i32,
-                            (camera_delta.z * 2.0_f32.powf(-0.5)) as i32,
-                        );
-                    gather.paint(
+                gather_system.lock().unwrap().frame_finished(
+                    &camera,
+                    &keyboard,
+                    &mut scene,
+                    &mut inventory,
+                );
+                if inventory_open {
+                    let mut inventory_window = components::inventory::Component::new(&inventory);
+                    let size = inventory_window.layout(SizeConstraints {
+                        min: UVec2::new(0, 0),
+                        max: UVec2::new(RENDER_WIDTH, RENDER_HEIGHT),
+                    });
+                    inventory_window.paint(
                         Region {
-                            origin: UVec2::new(gather_origin.x as u32, gather_origin.y as u32),
+                            origin: UVec2::new(0, 0),
                             size,
                         },
                         &mut scene,

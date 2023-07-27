@@ -7,7 +7,7 @@ use std::{
 
 use glam::{Quat, Vec3};
 
-use crate::{render::Light, time::Time};
+use crate::{systems::render::Light, time::Time};
 
 pub struct Sun {
     noon_pos: Vec3,

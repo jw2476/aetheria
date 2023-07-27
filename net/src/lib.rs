@@ -20,7 +20,7 @@ pub enum ClientboundOpcode {
     Move,
     DespawnPlayer,
     NotifyDisconnection,
-    Kick
+    Kick,
 }
 
 pub struct ClientboundPacket {
