@@ -135,9 +135,9 @@ impl Renderer {
                 .begin()
                 .unwrap()
                 .record(|cmd| {
-                    self.passes
-                        .iter()
-                        .fold(cmd, |cmd, pass| cmd.record(|cmd| pass.lock().unwrap().record(cmd)))
+                    self.passes.iter().fold(cmd, |cmd, pass| {
+                        cmd.record(|cmd| pass.lock().unwrap().record(cmd))
+                    })
                 })
                 .transition_image_layout(
                     &self.output_image.as_ref().expect("No output image set").0,

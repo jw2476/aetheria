@@ -5,7 +5,7 @@ use assets::MeshRegistry;
 use glam::Vec3;
 
 use crate::{
-    render::{RenderObject, Renderable, RenderPass},
+    render::{RenderObject, RenderPass, Renderable},
     renderer::Renderer,
     transform::Transform,
 };
@@ -28,7 +28,9 @@ impl Grass {
             .set_transform(transform.clone())
             .build()?;
         let grass = Arc::new(Mutex::new(Self { transform, grass }));
-        render_pass.add_renderable(Arc::downgrade(&(grass.clone() as Arc<Mutex<dyn Renderable>>)));
+        render_pass.add_renderable(Arc::downgrade(
+            &(grass.clone() as Arc<Mutex<dyn Renderable>>),
+        ));
         Ok(grass)
     }
 }

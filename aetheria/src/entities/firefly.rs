@@ -7,7 +7,7 @@ use rand::Rng;
 
 use super::Sun;
 use crate::{
-    render::{Light, RenderObject, Renderable, RenderPass},
+    render::{Light, RenderObject, RenderPass, Renderable},
     renderer::Renderer,
     time::Time,
     transform::Transform,
@@ -67,8 +67,9 @@ impl Firefly {
             back,
         }));
 
-
-        render_pass.add_renderable(Arc::downgrade(&(firefly.clone() as Arc<Mutex<dyn Renderable>>)));
+        render_pass.add_renderable(Arc::downgrade(
+            &(firefly.clone() as Arc<Mutex<dyn Renderable>>),
+        ));
         Ok(firefly)
     }
 

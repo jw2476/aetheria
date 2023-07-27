@@ -1,4 +1,8 @@
-use std::{net::UdpSocket, ops::Deref, sync::{Arc, Mutex}};
+use std::{
+    net::UdpSocket,
+    ops::Deref,
+    sync::{Arc, Mutex},
+};
 
 use ash::vk;
 use assets::MeshRegistry;
@@ -8,7 +12,7 @@ use crate::{
     camera::Camera,
     entities::{Grass, Player, Sun},
     input::{Keyboard, Mouse},
-    render::{Light, RenderObject, Renderable, RenderPass},
+    render::{Light, RenderObject, RenderPass, Renderable},
     renderer::Renderer,
     time::Time,
     transform::Transform,
@@ -74,11 +78,15 @@ impl RootScene {
         socket: &UdpSocket,
     ) {
         self.player
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .frame_finished(keyboard, mouse, camera, time, viewport, socket);
         self.sun.lock().unwrap().frame_finished(time);
-        self.fireflies
-            .iter_mut()
-            .for_each(|firefly| firefly.lock().unwrap().frame_finished(&self.sun.lock().unwrap(), time));
+        self.fireflies.iter_mut().for_each(|firefly| {
+            firefly
+                .lock()
+                .unwrap()
+                .frame_finished(&self.sun.lock().unwrap(), time)
+        });
     }
 }

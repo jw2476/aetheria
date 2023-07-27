@@ -1,4 +1,8 @@
-use std::{f32::consts::PI, ops::{Deref, DerefMut}, sync::{Arc, Mutex}};
+use std::{
+    f32::consts::PI,
+    ops::{Deref, DerefMut},
+    sync::{Arc, Mutex},
+};
 
 use ash::vk;
 use assets::MeshRegistry;
@@ -7,7 +11,7 @@ use rand::Rng;
 
 use crate::{
     entities::Tree,
-    render::{RenderObject, Renderable, RenderPass},
+    render::{RenderObject, RenderPass, Renderable},
     renderer::Renderer,
     transform::Transform,
 };

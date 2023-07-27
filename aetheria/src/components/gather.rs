@@ -206,6 +206,7 @@ impl Component {
             border_radius: 1,
             border_color: Vec4::new(0.957, 0.247, 0.369, 1.0),
             color: Vec4::new(0.094, 0.094, 0.106, 1.0),
-        }.into()
+        }
+        .into()
     }
 }

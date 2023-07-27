@@ -1,11 +1,14 @@
-use std::{ops::{Deref, DerefMut}, sync::{Arc, Mutex}};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::{Arc, Mutex},
+};
 
 use ash::vk;
 use assets::MeshRegistry;
 use glam::Vec3;
 use rand::Rng;
 
-use crate::{entities::Firefly, renderer::Renderer, render::RenderPass};
+use crate::{entities::Firefly, render::RenderPass, renderer::Renderer};
 
 const NUM_FIREFLIES: u32 = 10;
 
@@ -30,7 +33,14 @@ impl Fireflies {
                 rng.gen_range(-400.0..400.0),
             );
             fireflies.push(
-                Firefly::new(renderer, render_pass, mesh_registry, position, Vec3::new(1.0, 1.0, 1.0)).unwrap(),
+                Firefly::new(
+                    renderer,
+                    render_pass,
+                    mesh_registry,
+                    position,
+                    Vec3::new(1.0, 1.0, 1.0),
+                )
+                .unwrap(),
             );
         }
 

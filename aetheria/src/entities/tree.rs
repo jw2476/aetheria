@@ -5,7 +5,7 @@ use assets::MeshRegistry;
 use glam::Vec3;
 
 use crate::{
-    render::{RenderObject, Renderable, RenderPass},
+    render::{RenderObject, RenderPass, Renderable},
     renderer::Renderer,
     transform::Transform,
 };
@@ -40,7 +40,9 @@ impl Tree {
             foliage,
         }));
 
-        render_pass.add_renderable(Arc::downgrade(&(tree.clone() as Arc<Mutex<dyn Renderable>>)));
+        render_pass.add_renderable(Arc::downgrade(
+            &(tree.clone() as Arc<Mutex<dyn Renderable>>),
+        ));
         Ok(tree)
     }
 

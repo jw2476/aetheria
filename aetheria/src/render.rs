@@ -2,7 +2,10 @@ use ash::vk;
 use assets::{Mesh, MeshRegistry, ShaderRegistry, Vertex};
 use bytemuck::{cast_slice, Pod, Zeroable};
 use glam::{Vec3, Vec4};
-use std::{collections::HashMap, sync::{Arc, Mutex, Weak}};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, Weak},
+};
 use vulkan::{
     command, command::TransitionLayoutOptions, compute, Buffer, Context, Image, Pool, Set,
     SetLayout, SetLayoutBuilder, Shader, Texture,
@@ -205,7 +208,7 @@ impl RenderPass {
             geometry_pool,
             geometry_set,
             pipeline,
-            renderables: Vec::new()
+            renderables: Vec::new(),
         })
     }
 
@@ -233,7 +236,8 @@ impl RenderPass {
         mesh_registry: &MeshRegistry,
         lights: &[Light],
     ) {
-        let objects = self.renderables
+        let objects = self
+            .renderables
             .iter()
             .filter_map(|renderable| renderable.upgrade())
             .flat_map(|renderable| renderable.lock().unwrap().get_objects().clone())

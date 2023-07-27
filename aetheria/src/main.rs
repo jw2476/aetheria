@@ -32,8 +32,9 @@ use std::{
     f32::consts::PI,
     io,
     net::{IpAddr, SocketAddr, UdpSocket},
+    ops::DerefMut,
     sync::{Arc, Mutex},
-    time::Instant, ops::DerefMut,
+    time::Instant,
 };
 use time::Time;
 use tracing::info;
@@ -46,7 +47,7 @@ use winit::{
 
 use crate::{
     entities::{Player, Tree},
-    render::{RenderPass, Renderable, RenderObject},
+    render::{RenderObject, RenderPass, Renderable},
     renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
     scenes::RootScene,
     ui::{Element, Rectangle, Region, SizeConstraints, Text, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
@@ -104,8 +105,9 @@ fn main() {
     let mut renderer = Renderer::new(ctx, window.clone()).unwrap();
     let mut camera = Camera::new(480.0, 270.0, &renderer).unwrap();
     let mut time = Time::new(&renderer).unwrap();
-    let render_pass =
-        Arc::new(Mutex::new(RenderPass::new(&renderer, &mut shader_registry, &camera, &time).unwrap()));
+    let render_pass = Arc::new(Mutex::new(
+        RenderPass::new(&renderer, &mut shader_registry, &camera, &time).unwrap(),
+    ));
     let ui_pass = Arc::new(Mutex::new(
         UIPass::new(
             &mut renderer,
@@ -124,7 +126,12 @@ fn main() {
     let mut keyboard = Keyboard::new();
     let mut mouse = Mouse::new();
 
-    let mut root = RootScene::new(&mut renderer, &mut render_pass.lock().unwrap(), &mut mesh_registry).expect("Failed to load scene");
+    let mut root = RootScene::new(
+        &mut renderer,
+        &mut render_pass.lock().unwrap(),
+        &mut mesh_registry,
+    )
+    .expect("Failed to load scene");
 
     let mut players: HashMap<String, Arc<Mutex<Player>>> = HashMap::new();
     let mut last_heartbeat: Instant = Instant::now();
@@ -265,7 +272,8 @@ fn main() {
                     .enumerate()
                     .map(|(i, tree)| {
                         (
-                            (tree.lock().unwrap().transform.translation - root.player.lock().unwrap().get_transform().translation)
+                            (tree.lock().unwrap().transform.translation
+                                - root.player.lock().unwrap().get_transform().translation)
                                 .length(),
                             i,
                         )
@@ -276,7 +284,7 @@ fn main() {
 
                 if closest_tree.0 < 50.0 {
                     if keyboard.is_key_pressed(VirtualKeyCode::F) {
-                       root.trees.remove(closest_tree.1); 
+                        root.trees.remove(closest_tree.1);
                     }
 
                     let gather_origin = IVec2::new(250, 145)

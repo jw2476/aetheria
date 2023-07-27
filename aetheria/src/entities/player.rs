@@ -1,4 +1,8 @@
-use std::{f32::consts::PI, net::UdpSocket, sync::{Mutex, Arc}};
+use std::{
+    f32::consts::PI,
+    net::UdpSocket,
+    sync::{Arc, Mutex},
+};
 
 use ash::vk;
 use assets::MeshRegistry;
@@ -9,7 +13,7 @@ use winit::event::VirtualKeyCode;
 use crate::{
     camera::Camera,
     input::{Keyboard, Mouse},
-    render::{Light, RenderObject, Renderable, RenderPass},
+    render::{Light, RenderObject, RenderPass, Renderable},
     renderer::Renderer,
     time::Time,
     transform::Transform,
@@ -46,7 +50,9 @@ impl Player {
             light: Light::new(Vec3::ZERO, 5000.0, Vec3::new(1.0, 1.0, 1.0)),
         }));
 
-        render_pass.add_renderable(Arc::downgrade(&(player.clone() as Arc<Mutex<dyn Renderable>>)));
+        render_pass.add_renderable(Arc::downgrade(
+            &(player.clone() as Arc<Mutex<dyn Renderable>>),
+        ));
 
         Ok(player)
     }

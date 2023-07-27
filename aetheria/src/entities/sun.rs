@@ -1,4 +1,9 @@
-use std::{f32::consts::PI, ops::Deref, time::SystemTime, sync::{Arc, Mutex}};
+use std::{
+    f32::consts::PI,
+    ops::Deref,
+    sync::{Arc, Mutex},
+    time::SystemTime,
+};
 
 use glam::{Quat, Vec3};
 
