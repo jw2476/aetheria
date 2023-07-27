@@ -10,11 +10,6 @@ use vulkan::{
 
 use crate::renderer::{Pass, Renderer, RENDER_HEIGHT, RENDER_WIDTH};
 
-static ASCII_UPPER: [char; 37] = [
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
-    'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-];
-
 pub const CHAR_WIDTH: u32 = 6;
 pub const CHAR_HEIGHT: u32 = 5;
 
@@ -33,37 +28,6 @@ pub struct Region {
 pub trait Element: Clone + std::fmt::Debug {
     fn layout(&mut self, constraint: SizeConstraints) -> UVec2;
     fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>);
-}
-
-#[derive(Clone, Debug)]
-pub struct Text {
-    pub color: Vec4,
-    pub content: String,
-}
-
-impl Element for Text {
-    fn layout(&mut self, constraint: SizeConstraints) -> UVec2 {
-        UVec2::new(
-            (self.content.len() as u32 * CHAR_WIDTH).max(constraint.min.x),
-            CHAR_HEIGHT.max(constraint.min.y),
-        )
-    }
-
-    fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>) {
-        for (i, c) in self.content.to_uppercase().chars().enumerate() {
-            scene.push(Rectangle {
-                color: self.color,
-                origin: region.origin + UVec2::new(CHAR_WIDTH * i as u32, 0),
-                extent: UVec2::new(CHAR_HEIGHT, 5),
-                atlas_id: ASCII_UPPER
-                    .iter()
-                    .position(|a| *a == c)
-                    .expect(&format!("Character {} not in font", c))
-                    as i32,
-                ..Default::default()
-            })
-        }
-    }
 }
 
 #[repr(C)]

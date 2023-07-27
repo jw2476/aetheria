@@ -50,7 +50,7 @@ use crate::{
     render::{RenderObject, RenderPass, Renderable},
     renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
     scenes::RootScene,
-    ui::{Element, Rectangle, Region, SizeConstraints, Text, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
+    ui::{Element, Rectangle, Region, SizeConstraints, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
 };
 
 struct Indices(Vec<u32>);
@@ -253,10 +253,6 @@ fn main() {
                     &mesh_registry,
                     &root.get_lights(),
                 );
-                let mut text = Text {
-                    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-                    content: "Hello World".to_owned(),
-                };
                 let mut scene = Vec::new();
                 let mut gather = components::gather::Component::new();
                 let size = gather.layout(SizeConstraints {

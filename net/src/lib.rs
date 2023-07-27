@@ -1,5 +1,5 @@
 use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::ToPrimitive;
 
 #[derive(FromPrimitive, ToPrimitive)]
 pub enum ServerboundOpcode {
@@ -20,6 +20,7 @@ pub enum ClientboundOpcode {
     Move,
     DespawnPlayer,
     NotifyDisconnection,
+    Kick
 }
 
 pub struct ClientboundPacket {
