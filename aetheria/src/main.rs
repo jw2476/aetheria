@@ -24,7 +24,7 @@ use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry, TextureRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
-use common::{item::Inventory, net};
+use common::{item::Inventory, net, Observable, Observer};
 use glam::{IVec2, Quat, UVec2, Vec2, Vec3, Vec4};
 use input::{Keyboard, Mouse};
 use num_traits::FromPrimitive;
@@ -72,6 +72,42 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
 
 const CAMERA_SENSITIVITY: f32 = 250.0;
 
+struct InventoryUpdater {
+    socket: Arc<Socket>
+}
+
+impl InventoryUpdater {
+    pub fn new(socket: Arc<Socket>) -> Self {
+        Self {
+            socket
+        }
+    }
+}
+
+impl Observer<Inventory> for InventoryUpdater {
+    fn notify(&self, old: &Inventory, new: &Inventory) {
+        let old = old.get_items();
+        let new = new.get_items();
+
+        if old.len() == new.len() { // Either no change or change in quantity
+            old.iter()
+                .zip(new.iter())
+                .filter(|(old, new)| old.amount != new.amount)
+                .for_each(|(_, &stack)| {
+                    let packet = net::server::Packet::ModifyInventory(net::server::ModifyInventory {
+                        stack 
+                    });
+                    self.socket.send(&packet).unwrap()
+                });
+        } else { // New item stack, will always be last for now
+            let packet = net::server::Packet::ModifyInventory(net::server::ModifyInventory {
+                stack: *new.last().unwrap()
+            });
+            self.socket.send(&packet).unwrap()
+        }
+    }
+}
+
 fn main() {
     tracing_subscriber::fmt::init();
 
@@ -84,7 +120,7 @@ fn main() {
     }
 
     let remote = SocketAddr::new(IpAddr::V4(ip.trim().parse().unwrap()), 8000);
-    let socket: Socket = UdpSocket::bind("[::]:0").unwrap().into();
+    let socket: Arc<Socket> = Arc::new(UdpSocket::bind("[::]:0").unwrap().into());
     socket.connect(remote).unwrap();
     socket.set_nonblocking(true).unwrap();
     let mut username = String::new();
@@ -111,7 +147,9 @@ fn main() {
     ));
     let gather_system = Arc::new(Mutex::new(gather::System::new()));
 
-    let mut inventory = Inventory::new();
+    let mut inventory = Observable::new(Inventory::new());
+
+    inventory.register(Box::new(InventoryUpdater::new(socket.clone())));
 
     let ui_pass = Arc::new(Mutex::new(
         UIPass::new(
@@ -206,6 +244,10 @@ fn main() {
                         info!("Disconnecting due to {}", packet.reason);
                         control_flow.set_exit();
                         return;
+                    },
+                    net::client::Packet::ModifyInventory(packet) => {
+                        info!("Setting {:?} to {}", packet.stack.item, packet.stack.amount);
+                        inventory.run_silent(|inventory| inventory.set(packet.stack));
                     }
                 }
             }
@@ -260,12 +302,14 @@ fn main() {
                 );
 
                 let mut scene = Vec::new();
-                gather_system.lock().unwrap().frame_finished(
-                    &camera,
-                    &keyboard,
-                    &mut scene,
-                    &mut inventory,
-                );
+                inventory.run(|inventory| {
+                    gather_system.lock().unwrap().frame_finished(
+                        &camera,
+                        &keyboard,
+                        &mut scene,
+                        inventory,
+                    );
+                });
                 if inventory_open {
                     let mut inventory_window = components::inventory::Component::new(&inventory);
                     let size = inventory_window.layout(SizeConstraints {

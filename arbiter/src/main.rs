@@ -4,7 +4,7 @@
 #![warn(clippy::expect_used)]
 
 use anyhow::Result;
-use common::net;
+use common::{net, item::Inventory};
 use glam::Vec3;
 use std::{
     collections::HashMap,
@@ -18,6 +18,7 @@ struct Client {
     player_translation: Vec3,
     username: String,
     last_heartbeat: Instant,
+    inventory: Inventory
 }
 
 struct Server {
@@ -98,6 +99,7 @@ fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAd
         username: packet.username.clone(),
         player_translation: Vec3::new(0.0, 0.0, 0.0),
         last_heartbeat: Instant::now(),
+        inventory: Inventory::new()
     };
 
     // Notify peers about new client
@@ -188,7 +190,8 @@ fn handle_packet(server: &mut Server, packet: &net::server::Packet, addr: Socket
         net::server::Packet::Login(packet) => handle_login(server, packet, addr),
         net::server::Packet::Move(packet) => handle_move(server, packet, addr),
         net::server::Packet::Heartbeat => handle_heartbeat(server, addr),
-        net::server::Packet::Disconnect => disconnect(server, addr, None)?        
+        net::server::Packet::Disconnect => disconnect(server, addr, None)?,
+        net::server::Packet::ModifyInventory(packet) => handle_modify_inventory(server, packet, addr)
     };
 
     Ok(())
@@ -224,4 +227,23 @@ fn disconnect(server: &mut Server, addr: SocketAddr, reason: Option<String>) -> 
 
     server.connections.remove(&addr);
     Ok(())
+}
+
+fn handle_modify_inventory(server: &mut Server, packet: &net::server::ModifyInventory, addr: SocketAddr) {
+    let Some(client) = server
+        .connections
+        .get_mut(&addr) else {
+            warn!("Cannot find client for addr {}", addr);
+            return;
+        };
+    
+    client.inventory.set(packet.stack);
+
+    println!("{:?}", packet.stack);
+    let packet = net::client::Packet::ModifyInventory(net::client::ModifyInventory {
+        stack: common::item::ItemStack { item: packet.stack.item, amount: 999 }
+    });
+
+    server.send(addr, &packet).unwrap();
+
 }

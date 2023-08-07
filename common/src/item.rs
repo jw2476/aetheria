@@ -1,10 +1,13 @@
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use serde::{Serialize, Deserialize};
+use std::ops::Deref;
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Item {
     Wood,
     Fireglow,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemStack {
     pub item: Item,
     pub amount: u32,
@@ -25,6 +28,14 @@ impl Inventory {
     pub fn add(&mut self, stack: ItemStack) {
         if let Some(existing) = self.inventory.iter_mut().find(|s| s.item == stack.item) {
             existing.amount += stack.amount;
+        } else {
+            self.inventory.push(stack);
+        }
+    }
+
+    pub fn set(&mut self, stack: ItemStack) {
+        if let Some(existing) = self.inventory.iter_mut().find(|s| s.item == stack.item) {
+            existing.amount = stack.amount;
         } else {
             self.inventory.push(stack);
         }
