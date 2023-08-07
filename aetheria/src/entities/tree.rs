@@ -5,7 +5,6 @@ use assets::MeshRegistry;
 use glam::Vec3;
 
 use crate::{
-    item::{Inventory, Item, ItemStack},
     renderer::Renderer,
     systems::{
         gather::Gatherable,
@@ -14,6 +13,7 @@ use crate::{
     },
     transform::Transform,
 };
+use common::item::{Inventory, Item, ItemStack};
 
 pub struct Tree {
     pub transform: Transform,

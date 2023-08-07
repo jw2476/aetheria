@@ -7,7 +7,6 @@ use rand::Rng;
 
 use super::Sun;
 use crate::{
-    item::{Inventory, Item, ItemStack},
     renderer::Renderer,
     systems::{
         gather::Gatherable,
@@ -17,6 +16,7 @@ use crate::{
     time::Time,
     transform::Transform,
 };
+use common::item::{Inventory, Item, ItemStack};
 
 const FIREFLY_SPEED: f32 = 60.0;
 
@@ -157,6 +157,6 @@ impl Gatherable for Firefly {
     }
 
     fn is_gatherable(&self) -> bool {
-        !self.gathered && self.light.strength > 0.0 
+        !self.gathered && self.light.strength > 0.0
     }
 }

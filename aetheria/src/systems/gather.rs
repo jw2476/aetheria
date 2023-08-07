@@ -5,10 +5,10 @@ use crate::{
     components,
     entities::Player,
     input::Keyboard,
-    item::Inventory,
     renderer::{RENDER_HEIGHT, RENDER_WIDTH},
     ui::{Element, Rectangle, Region, SizeConstraints},
 };
+use common::item::Inventory;
 
 use super::{Named, Positioned};
 

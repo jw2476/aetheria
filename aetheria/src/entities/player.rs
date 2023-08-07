@@ -1,19 +1,19 @@
 use std::{
     f32::consts::PI,
-    net::UdpSocket,
     sync::{Arc, Mutex},
 };
 
 use ash::vk;
 use assets::MeshRegistry;
+use common::net;
 use glam::{Vec2, Vec3};
-use net::{ServerboundOpcode, ServerboundPacket};
 use winit::event::VirtualKeyCode;
 
 use crate::{
     camera::Camera,
     input::{Keyboard, Mouse},
     renderer::Renderer,
+    socket::Socket,
     systems::{
         render::{Light, RenderObject, Renderable},
         Positioned, Systems,
@@ -75,7 +75,7 @@ impl Player {
         camera: &Camera,
         time: &Time,
         viewport: Vec2,
-        socket: &UdpSocket,
+        socket: &Socket,
     ) {
         let old_translation = self.player.transform.translation.clone();
 
@@ -111,12 +111,10 @@ impl Player {
         self.light.position = self.player.transform.translation + Vec3::new(0.0, 15.0, 0.0);
 
         if old_translation != self.player.transform.translation {
-            let packet = ServerboundPacket {
-                opcode: ServerboundOpcode::Move,
-                payload: bytemuck::cast::<Vec3, [u8; 12]>(self.player.transform.translation)
-                    .to_vec(),
-            };
-            socket.send(&packet.to_bytes()).unwrap();
+            let packet = net::server::Packet::Move(net::server::Move {
+                position: self.player.transform.translation.clone(),
+            });
+            socket.send(&packet).unwrap();
         }
     }
 }

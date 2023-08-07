@@ -4,10 +4,10 @@ members = [
   "assets",
   "aetheria",
   "arbiter",
+  "common",
   "gltf",
   "hecs",
   "hecs/macros",
-  "net",
   "vulkan"
 ]
 resolver = "2"

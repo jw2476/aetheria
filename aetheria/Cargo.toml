@@ -10,7 +10,7 @@ assets = { path = "../assets" }
 gltf = { path = "../gltf" }
 hecs = { path = "../hecs" }
 vulkan = { path = "../vulkan" }
-net = { path = "../net" }
+common = { path = "../common" }
 
 ash = { version = "0.37.2", features = ["linked"] }
 winit = "0.28"
@@ -24,3 +24,5 @@ qoi = "0.4"
 rand = "0.8.5"
 anyhow = "1.0.71"
 num-traits = "0.2.15"
+postcard = { version = "1.0.6", features = ["use-std"] }
+thiserror = "1.0.44"

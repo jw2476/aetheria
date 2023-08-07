@@ -9,11 +9,11 @@ mod camera;
 mod components;
 mod entities;
 mod input;
-mod item;
 mod macros;
 mod material;
 mod renderer;
 mod scenes;
+mod socket;
 mod systems;
 mod time;
 mod transform;
@@ -24,9 +24,9 @@ use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry, TextureRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
+use common::{item::Inventory, net};
 use glam::{IVec2, Quat, UVec2, Vec2, Vec3, Vec4};
 use input::{Keyboard, Mouse};
-use net::*;
 use num_traits::FromPrimitive;
 use std::{
     collections::HashMap,
@@ -48,9 +48,9 @@ use winit::{
 
 use crate::{
     entities::{Player, Tree},
-    item::Inventory,
     renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
     scenes::RootScene,
+    socket::Socket,
     systems::{gather, render, Systems},
     ui::{Element, Rectangle, Region, SizeConstraints, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
 };
@@ -84,17 +84,16 @@ fn main() {
     }
 
     let remote = SocketAddr::new(IpAddr::V4(ip.trim().parse().unwrap()), 8000);
-    let socket = UdpSocket::bind("[::]:0").unwrap();
+    let socket: Socket = UdpSocket::bind("[::]:0").unwrap().into();
     socket.connect(remote).unwrap();
     socket.set_nonblocking(true).unwrap();
     let mut username = String::new();
     println!("Enter your username: ");
     std::io::stdin().read_line(&mut username).unwrap();
-    let login = ServerboundPacket {
-        opcode: ServerboundOpcode::Login,
-        payload: username.as_bytes().to_vec(),
-    };
-    socket.send(&login.to_bytes()).unwrap();
+
+    let login = net::server::Packet::Login(net::server::Login { username });
+
+    socket.send(&login).unwrap();
 
     let (event_loop, window) = create_window();
     let window = Arc::new(window);
@@ -166,65 +165,48 @@ fn main() {
         match socket.recv(&mut data) {
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(e) => panic!("{e}"),
-            Ok(n) => {
-                let packet_size = u64::from_be_bytes(data[0..8].try_into().unwrap());
-                println!("Packet size: {}", n);
-                let packet = &data[8..(packet_size as usize + 8)];
-                let packet = ClientboundPacket {
-                    opcode: ClientboundOpcode::from_u32(u32::from_be_bytes(
-                        packet[0..4].try_into().unwrap(),
-                    ))
-                    .unwrap(),
-                    payload: packet[4..].to_vec(),
-                };
+            Ok(_) => {
+                let packet: net::client::Packet = postcard::from_bytes(&data).unwrap();
 
-                if let ClientboundOpcode::SpawnPlayer = packet.opcode {
-                    info!("Spawning player");
-                    let translation =
-                        bytemuck::cast::<[u8; 12], Vec3>(packet.payload[0..12].try_into().unwrap());
-                    let username = String::from_utf8(packet.payload[12..].to_vec()).unwrap();
-                    players.insert(
-                        username,
-                        Player::new(
-                            &mut renderer,
-                            &mut Systems {
-                                render: &mut render_system.lock().unwrap(),
-                                gather: &mut gather_system.lock().unwrap(),
-                            },
-                            &mut mesh_registry,
-                            Transform {
-                                translation,
-                                rotation: Quat::IDENTITY,
-                                scale: Vec3::ONE,
-                            },
-                        )
-                        .unwrap(),
-                    );
-                }
-
-                if let ClientboundOpcode::Move = packet.opcode {
-                    info!("Moving peer player");
-                    let translation =
-                        bytemuck::cast::<[u8; 12], Vec3>(packet.payload[0..12].try_into().unwrap());
-                    let username = String::from_utf8(packet.payload[12..].to_vec()).unwrap();
-                    players
-                        .get_mut(&username)
-                        .expect("Peer not found")
-                        .lock()
-                        .unwrap()
-                        .update_transform(|transform| transform.translation = translation);
-                }
-
-                if let ClientboundOpcode::DespawnPlayer = packet.opcode {
-                    info!("Deleting peer player");
-                    let username = String::from_utf8(packet.payload).unwrap();
-                    players.remove(&username);
-                }
-
-                if let ClientboundOpcode::NotifyDisconnection = packet.opcode {
-                    info!("Disconnecting due to server request");
-                    control_flow.set_exit();
-                    return;
+                match packet {
+                    net::client::Packet::SpawnPlayer(packet) => {
+                        info!("Spawning player");
+                        players.insert(
+                            packet.username,
+                            Player::new(
+                                &mut renderer,
+                                &mut Systems {
+                                    render: &mut render_system.lock().unwrap(),
+                                    gather: &mut gather_system.lock().unwrap(),
+                                },
+                                &mut mesh_registry,
+                                Transform {
+                                    translation: packet.position,
+                                    rotation: Quat::IDENTITY,
+                                    scale: Vec3::ONE,
+                                },
+                            )
+                            .unwrap(),
+                        );
+                    },
+                    net::client::Packet::Move(packet) => {
+                        info!("Moving peer player");
+                        players
+                            .get_mut(&packet.username)
+                            .expect("Peer not found")
+                            .lock()
+                            .unwrap()
+                            .update_transform(|transform| transform.translation = packet.position);
+                    },
+                    net::client::Packet::DespawnPlayer(packet) => {
+                        info!("Deleting peer player");
+                        players.remove(&packet.username);
+                    },
+                    net::client::Packet::NotifyDisconnection(packet) => {
+                        info!("Disconnecting due to {}", packet.reason);
+                        control_flow.set_exit();
+                        return;
+                    }
                 }
             }
         };
@@ -327,20 +309,16 @@ fn main() {
     });
 }
 
-fn heartbeat(socket: &UdpSocket) -> Result<()> {
-    let packet = ServerboundPacket {
-        opcode: ServerboundOpcode::Heartbeat,
-        payload: Vec::new(),
-    };
-    socket.send(&packet.to_bytes())?;
+fn handle_spawn_player(packet: &net::client::SpawnPlayer, players: &mut HashMap<String, Player>) {}
+
+fn heartbeat(socket: &Socket) -> Result<()> {
+    let packet = net::server::Packet::Heartbeat;
+    socket.send(&packet)?;
     Ok(())
 }
 
-fn disconnect(socket: &UdpSocket) -> Result<()> {
-    let packet = ServerboundPacket {
-        opcode: ServerboundOpcode::Disconnect,
-        payload: Vec::new(),
-    };
-    socket.send(&packet.to_bytes())?;
+fn disconnect(socket: &Socket) -> Result<()> {
+    let packet = net::server::Packet::Disconnect;
+    socket.send(&packet)?;
     Ok(())
 }

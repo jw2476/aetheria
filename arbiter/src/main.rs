@@ -4,9 +4,8 @@
 #![warn(clippy::expect_used)]
 
 use anyhow::Result;
+use common::net;
 use glam::Vec3;
-use net::{ClientboundOpcode, ClientboundPacket, ServerboundOpcode, ServerboundPacket};
-use num_traits::FromPrimitive;
 use std::{
     collections::HashMap,
     net::{SocketAddr, UdpSocket},
@@ -21,17 +20,25 @@ struct Client {
     last_heartbeat: Instant,
 }
 
-impl Client {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut data = bytemuck::cast::<Vec3, [u8; 12]>(self.player_translation).to_vec();
-        data.extend(self.username.as_bytes());
-        data
-    }
-}
-
 struct Server {
     socket: UdpSocket,
     connections: HashMap<SocketAddr, Client>,
+}
+
+#[derive(thiserror::Error, Debug)]
+enum SendError {
+    #[error("IO error")]
+    IOError(#[from] std::io::Error),
+    #[error("Encode error")]
+    EncodeError(#[from] postcard::Error),
+}
+
+impl Server {
+    pub fn send(&self, addr: SocketAddr, packet: &net::client::Packet) -> Result<(), SendError> {
+        let bytes = postcard::to_stdvec(packet)?;
+        self.socket.send_to(&bytes, addr)?;
+        Ok(())
+    }
 }
 
 fn main() -> Result<()> {
@@ -53,41 +60,18 @@ fn main() -> Result<()> {
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(e) => panic!("{e}"),
             Ok((_, addr)) => {
-                let packet_size =
-                    if let Some(array) = buf.get(0..8).and_then(|bytes| bytes.try_into().ok()) {
-                        u64::from_be_bytes(array)
-                    } else {
-                        warn!("Failed to read packet due to underflow");
+                let packet = match postcard::from_bytes(&buf) {
+                    Ok(packet) => packet,
+                    Err(e) => {
+                        warn!("Failed to decode packet due to {}", e);
                         continue;
-                    };
-
-                #[allow(clippy::cast_possible_truncation)]
-                let Some(packet) = buf.get(8..(packet_size as usize + 8)) else {
-                    warn!("Failed to read packet due to underflow");
-                    continue
+                    }
                 };
 
-                let opcode =
-                    if let Some(array) = packet.get(0..4).and_then(|bytes| bytes.try_into().ok()) {
-                        u32::from_be_bytes(array)
-                    } else {
-                        warn!("Packet of size {} is too short", packet.len());
-                        continue;
-                    };
-
-                let Some(opcode) = ServerboundOpcode::from_u32(opcode) else {
-                    warn!("Invalid opcode: {}", opcode);
-                    continue
-                };
-
-                let Some(payload) = packet.get(4..).map(<[u8]>::to_vec) else {
-                   warn!("Failed to read packet body");
-                   continue
-                };
-
-                let packet = ServerboundPacket { opcode, payload };
-
-                handle_packet(&mut server, &packet, addr);
+                if let Err(e) = handle_packet(&mut server, &packet, addr) {
+                    warn!("Handling packet failed with {e}");
+                    continue;
+                }
             }
         }
 
@@ -109,43 +93,31 @@ fn check_heartbeats(server: &mut Server) -> Result<()> {
     Ok(())
 }
 
-fn handle_login(server: &mut Server, packet: &ServerboundPacket, addr: SocketAddr) {
-    let username = match String::from_utf8(packet.payload.clone()) {
-        Ok(str) => str.trim().to_owned(),
-        Err(e) => {
-            warn!("Failed to parse username: {}", e);
-            if let Err(e) = disconnect(server, addr, Some("Invalid username".to_owned())) {
-                warn!("Failed to disconnect client due to {}", e);
-            }
-            return;
-        }
-    };
-
+fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAddr) {
     let client = Client {
-        username,
+        username: packet.username.clone(),
         player_translation: Vec3::new(0.0, 0.0, 0.0),
         last_heartbeat: Instant::now(),
     };
 
     // Notify peers about new client
     for peer_addr in server.connections.keys() {
-        let packet = ClientboundPacket {
-            opcode: ClientboundOpcode::SpawnPlayer,
-            payload: client.to_bytes(),
-        };
-        if let Err(e) = server.socket.send_to(&packet.to_bytes(), peer_addr) {
+        let packet = net::client::Packet::SpawnPlayer(net::client::SpawnPlayer {
+            username: client.username.clone(),
+            position: client.player_translation,
+        });
+        if let Err(e) = server.send(*peer_addr, &packet) {
             warn!("Failed to notify {} of new player due to {}", peer_addr, e);
         }
     }
 
     // Notify client about existing peers
     for (peer_addr, peer_client) in &server.connections {
-        let packet = ClientboundPacket {
-            opcode: ClientboundOpcode::SpawnPlayer,
-            payload: peer_client.to_bytes(),
-        };
-
-        if let Err(e) = server.socket.send_to(&packet.to_bytes(), addr) {
+        let packet = net::client::Packet::SpawnPlayer(net::client::SpawnPlayer {
+            username: peer_client.username.clone(),
+            position: peer_client.player_translation,
+        });
+        if let Err(e) = server.send(addr, &packet) {
             warn!(
                 "Failed to notify new player {} of player {} due to {}",
                 addr, peer_addr, e
@@ -157,7 +129,7 @@ fn handle_login(server: &mut Server, packet: &ServerboundPacket, addr: SocketAdd
     server.connections.insert(addr, client);
 }
 
-fn handle_move(server: &mut Server, packet: &ServerboundPacket, addr: SocketAddr) {
+fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr) {
     let Some(client) = server
         .connections
         .get_mut(&addr) else {
@@ -165,12 +137,7 @@ fn handle_move(server: &mut Server, packet: &ServerboundPacket, addr: SocketAddr
             return;
         };
 
-    let Some(bytes) = packet.payload.get(0..12).and_then(|bytes| bytes.try_into().ok()) else {
-        warn!("Failed to parse position from {} moving", client.username);
-        return;
-    };
-
-    client.player_translation = bytemuck::cast::<[u8; 12], Vec3>(bytes);
+    client.player_translation = packet.position;
 
     info!(
         "Updated position for {} to {:?}",
@@ -189,12 +156,12 @@ fn handle_move(server: &mut Server, packet: &ServerboundPacket, addr: SocketAddr
             continue;
         }
 
-        let packet = ClientboundPacket {
-            opcode: ClientboundOpcode::Move,
-            payload: client.to_bytes(),
-        };
+        let packet = net::client::Packet::Move(net::client::Move {
+            username: client.username.clone(),
+            position: client.player_translation
+        });
 
-        if let Err(e) = server.socket.send_to(&packet.to_bytes(), peer_addr) {
+        if let Err(e) = server.send(*peer_addr, &packet) {
             warn!(
                 "Failed to notify {} of {} moving due to {}",
                 peer_addr, client.username, e
@@ -204,7 +171,7 @@ fn handle_move(server: &mut Server, packet: &ServerboundPacket, addr: SocketAddr
     }
 }
 
-fn handle_heartbeat(server: &mut Server, _: &ServerboundPacket, addr: SocketAddr) {
+fn handle_heartbeat(server: &mut Server, addr: SocketAddr) {
     let Some(client) = server
         .connections
         .get_mut(&addr) else {
@@ -216,24 +183,15 @@ fn handle_heartbeat(server: &mut Server, _: &ServerboundPacket, addr: SocketAddr
     info!("{} heartbeat", client.username);
 }
 
-fn handle_packet(server: &mut Server, packet: &ServerboundPacket, addr: SocketAddr) {
-    if matches!(packet.opcode, ServerboundOpcode::Login) {
-        handle_login(server, packet, addr);
-    }
+fn handle_packet(server: &mut Server, packet: &net::server::Packet, addr: SocketAddr) -> Result<()> {
+    match packet {
+        net::server::Packet::Login(packet) => handle_login(server, packet, addr),
+        net::server::Packet::Move(packet) => handle_move(server, packet, addr),
+        net::server::Packet::Heartbeat => handle_heartbeat(server, addr),
+        net::server::Packet::Disconnect => disconnect(server, addr, None)?        
+    };
 
-    if matches!(packet.opcode, ServerboundOpcode::Move) {
-        handle_move(server, packet, addr);
-    }
-
-    if matches!(packet.opcode, ServerboundOpcode::Heartbeat) {
-        handle_heartbeat(server, packet, addr);
-    }
-
-    if matches!(packet.opcode, ServerboundOpcode::Disconnect) {
-        if let Err(e) = disconnect(server, addr, None) {
-            warn!("Failed to disconnect {} due to {}", addr, e);
-        }
-    }
+    Ok(())
 }
 
 fn disconnect(server: &mut Server, addr: SocketAddr, reason: Option<String>) -> Result<()> {
@@ -250,19 +208,18 @@ fn disconnect(server: &mut Server, addr: SocketAddr, reason: Option<String>) -> 
             continue;
         }
 
-        let packet = ClientboundPacket {
-            opcode: ClientboundOpcode::DespawnPlayer,
-            payload: client.username.as_bytes().to_vec(),
-        };
-        server.socket.send_to(&packet.to_bytes(), peer_addr)?;
+        let packet = net::client::Packet::DespawnPlayer(net::client::DespawnPlayer {
+            username: client.username.clone()
+        });
+
+        server.send(addr, &packet)?;
     }
 
     if let Some(reason) = reason {
-        let packet = ClientboundPacket {
-            opcode: ClientboundOpcode::DespawnPlayer,
-            payload: reason.as_bytes().to_vec(),
-        };
-        server.socket.send_to(&packet.payload, addr)?;
+        let packet = net::client::Packet::NotifyDisconnection(net::client::NotifyDisconnection {
+            reason
+        });
+        server.send(addr, &packet)?;
     }
 
     server.connections.remove(&addr);

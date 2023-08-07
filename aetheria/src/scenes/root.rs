@@ -1,5 +1,4 @@
 use std::{
-    net::UdpSocket,
     ops::Deref,
     sync::{Arc, Mutex},
 };
@@ -13,6 +12,7 @@ use crate::{
     entities::{Grass, Player, Sun},
     input::{Keyboard, Mouse},
     renderer::Renderer,
+    socket::Socket,
     systems::{render::Light, Systems},
     time::Time,
     transform::Transform,
@@ -34,7 +34,7 @@ impl RootScene {
         systems: &mut Systems,
         mesh_registry: &mut MeshRegistry,
     ) -> Result<Self, vk::Result> {
-        let mut player = {
+        let player = {
             let transform = Transform {
                 translation: Vec3::new(0.0, 10.0, 0.0),
                 rotation: Quat::IDENTITY,
@@ -75,7 +75,7 @@ impl RootScene {
         camera: &Camera,
         time: &Time,
         viewport: Vec2,
-        socket: &UdpSocket,
+        socket: &Socket,
     ) {
         self.player
             .lock()

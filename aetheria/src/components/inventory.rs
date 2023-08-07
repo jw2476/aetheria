@@ -1,9 +1,7 @@
 use glam::{UVec2, Vec4};
 
-use crate::{
-    item::Inventory,
-    ui::{Element, Rectangle, Region, SizeConstraints},
-};
+use crate::ui::{Element, Rectangle, Region, SizeConstraints};
+use common::item::Inventory;
 
 use super::components::{Container, Padding, Text};
 

@@ -28,7 +28,6 @@ impl Inventory {
         } else {
             self.inventory.push(stack);
         }
-        println!("{:#?}", self);
     }
 
     pub fn get_items(&self) -> &[ItemStack] {
