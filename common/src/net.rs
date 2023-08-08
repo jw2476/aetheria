@@ -1,16 +1,16 @@
 mod common {
-    use serde::{Deserialize, Serialize};
     use crate::item::ItemStack;
+    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct ModifyInventory {
-        pub stack: ItemStack
+        pub stack: ItemStack,
     }
 }
 
 pub mod server {
-    use serde::{Deserialize, Serialize};
     pub use super::common::ModifyInventory;
+    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Login {
@@ -22,20 +22,19 @@ pub mod server {
         pub position: glam::Vec3,
     }
 
-
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum Packet {
         Login(Login),
         Move(Move),
         Heartbeat,
         Disconnect,
-        ModifyInventory(ModifyInventory)
+        ModifyInventory(ModifyInventory),
     }
 }
 
 pub mod client {
-    use serde::{Deserialize, Serialize};
     pub use super::common::ModifyInventory;
+    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct SpawnPlayer {
@@ -65,6 +64,6 @@ pub mod client {
         DespawnPlayer(DespawnPlayer),
         Move(Move),
         NotifyDisconnection(NotifyDisconnection),
-        ModifyInventory(ModifyInventory)
+        ModifyInventory(ModifyInventory),
     }
 }

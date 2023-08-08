@@ -9,12 +9,15 @@ pub trait Observer<T> {
 
 pub struct Observable<T: Clone> {
     inner: T,
-    observers: Vec<Box<dyn Observer<T>>>
+    observers: Vec<Box<dyn Observer<T>>>,
 }
 
 impl<T: Clone> Observable<T> {
     pub fn new(inner: T) -> Self {
-        Self { inner, observers: Vec::new() }
+        Self {
+            inner,
+            observers: Vec::new(),
+        }
     }
 
     pub fn register(&mut self, observer: Box<dyn Observer<T>>) {
@@ -24,7 +27,9 @@ impl<T: Clone> Observable<T> {
     pub fn run<F: FnOnce(&mut T)>(&mut self, predicate: F) {
         let old = self.inner.clone();
         predicate(&mut self.inner);
-        self.observers.iter().for_each(|observer| observer.notify(&old, &self.inner))
+        self.observers
+            .iter()
+            .for_each(|observer| observer.notify(&old, &self.inner))
     }
 
     // Chose to do this instead of DerefMut to be more verbose about the fact observers won't be

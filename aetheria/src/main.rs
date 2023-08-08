@@ -73,14 +73,12 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
 const CAMERA_SENSITIVITY: f32 = 250.0;
 
 struct InventoryUpdater {
-    socket: Arc<Socket>
+    socket: Arc<Socket>,
 }
 
 impl InventoryUpdater {
     pub fn new(socket: Arc<Socket>) -> Self {
-        Self {
-            socket
-        }
+        Self { socket }
     }
 }
 
@@ -89,19 +87,22 @@ impl Observer<Inventory> for InventoryUpdater {
         let old = old.get_items();
         let new = new.get_items();
 
-        if old.len() == new.len() { // Either no change or change in quantity
+        if old.len() == new.len() {
+            // Either no change or change in quantity
             old.iter()
                 .zip(new.iter())
                 .filter(|(old, new)| old.amount != new.amount)
                 .for_each(|(_, &stack)| {
-                    let packet = net::server::Packet::ModifyInventory(net::server::ModifyInventory {
-                        stack 
-                    });
+                    let packet =
+                        net::server::Packet::ModifyInventory(net::server::ModifyInventory {
+                            stack,
+                        });
                     self.socket.send(&packet).unwrap()
                 });
-        } else { // New item stack, will always be last for now
+        } else {
+            // New item stack, will always be last for now
             let packet = net::server::Packet::ModifyInventory(net::server::ModifyInventory {
-                stack: *new.last().unwrap()
+                stack: *new.last().unwrap(),
             });
             self.socket.send(&packet).unwrap()
         }
@@ -127,7 +128,7 @@ fn main() {
     println!("Enter your username: ");
     std::io::stdin().read_line(&mut username).unwrap();
 
-    let login = net::server::Packet::Login(net::server::Login { username });
+    let login = net::server::Packet::Login(net::server::Login { username: username.trim().to_owned() });
 
     socket.send(&login).unwrap();
 
@@ -226,7 +227,7 @@ fn main() {
                             )
                             .unwrap(),
                         );
-                    },
+                    }
                     net::client::Packet::Move(packet) => {
                         info!("Moving peer player");
                         players
@@ -235,16 +236,16 @@ fn main() {
                             .lock()
                             .unwrap()
                             .update_transform(|transform| transform.translation = packet.position);
-                    },
+                    }
                     net::client::Packet::DespawnPlayer(packet) => {
                         info!("Deleting peer player");
                         players.remove(&packet.username);
-                    },
+                    }
                     net::client::Packet::NotifyDisconnection(packet) => {
                         info!("Disconnecting due to {}", packet.reason);
                         control_flow.set_exit();
                         return;
-                    },
+                    }
                     net::client::Packet::ModifyInventory(packet) => {
                         info!("Setting {:?} to {}", packet.stack.item, packet.stack.amount);
                         inventory.run_silent(|inventory| inventory.set(packet.stack));
@@ -303,12 +304,10 @@ fn main() {
 
                 let mut scene = Vec::new();
                 inventory.run(|inventory| {
-                    gather_system.lock().unwrap().frame_finished(
-                        &camera,
-                        &keyboard,
-                        &mut scene,
-                        inventory,
-                    );
+                    gather_system
+                        .lock()
+                        .unwrap()
+                        .frame_finished(&camera, &keyboard, &mut scene, inventory);
                 });
                 if inventory_open {
                     let mut inventory_window = components::inventory::Component::new(&inventory);
@@ -352,8 +351,6 @@ fn main() {
         }
     });
 }
-
-fn handle_spawn_player(packet: &net::client::SpawnPlayer, players: &mut HashMap<String, Player>) {}
 
 fn heartbeat(socket: &Socket) -> Result<()> {
     let packet = net::server::Packet::Heartbeat;

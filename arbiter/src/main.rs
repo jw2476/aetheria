@@ -4,26 +4,27 @@
 #![warn(clippy::expect_used)]
 
 use anyhow::Result;
-use common::{net, item::Inventory};
+use common::{item::Inventory, net};
 use glam::Vec3;
 use std::{
     collections::HashMap,
     net::{SocketAddr, UdpSocket},
     time::Instant,
 };
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 #[derive(Clone)]
 struct Client {
     player_translation: Vec3,
     username: String,
     last_heartbeat: Instant,
-    inventory: Inventory
+    inventory: Inventory,
 }
 
 struct Server {
     socket: UdpSocket,
-    connections: HashMap<SocketAddr, Client>,
+    clients: Vec<Client>,
+    connections: HashMap<SocketAddr, usize>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -40,6 +41,24 @@ impl Server {
         self.socket.send_to(&bytes, addr)?;
         Ok(())
     }
+
+    pub fn get_client(&self, addr: SocketAddr) -> Option<&Client> {
+        self.connections
+            .get(&addr)
+            .and_then(|&idx| self.clients.get(idx))
+    }
+
+    pub fn get_client_mut(&mut self, addr: SocketAddr) -> Option<&mut Client> {
+        self.connections
+            .get(&addr)
+            .and_then(|&idx| self.clients.get_mut(idx))
+    }
+
+    pub fn get_connections(&self) -> impl Iterator<Item = (SocketAddr, &Client)> {
+        self.connections
+            .iter()
+            .map(|(&addr, idx)| (addr, &self.clients[*idx]))
+    }
 }
 
 fn main() -> Result<()> {
@@ -49,6 +68,7 @@ fn main() -> Result<()> {
     socket.set_nonblocking(true)?;
     let mut server = Server {
         socket,
+        clients: Vec::new(),
         connections: HashMap::new(),
     };
     info!("Listening on 0.0.0.0:8000");
@@ -85,9 +105,16 @@ fn main() -> Result<()> {
 }
 
 fn check_heartbeats(server: &mut Server) -> Result<()> {
-    for (addr, client) in server.connections.clone() {
+    for (addr, id) in server.connections.clone() {
+        let client = server.clients[id].clone();
+
         if client.last_heartbeat.elapsed().as_secs_f32() > 20.0 {
-            disconnect(server, addr, Some("Heartbeat timeout".to_owned()))?;
+            if let Err(e) = disconnect(server, addr, Some("Heartbeat timeout".to_owned())) {
+                warn!("Failed to disconnect {} due to {}", client.username, e);
+                continue;
+            }
+
+            server.connections.remove(&addr);
         }
     }
 
@@ -95,11 +122,22 @@ fn check_heartbeats(server: &mut Server) -> Result<()> {
 }
 
 fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAddr) {
-    let client = Client {
-        username: packet.username.clone(),
-        player_translation: Vec3::new(0.0, 0.0, 0.0),
-        last_heartbeat: Instant::now(),
-        inventory: Inventory::new()
+    let (client_id, client) = if let Some(client) = server
+        .clients
+        .iter()
+        .enumerate()
+        .find(|(_, client)| client.username == packet.username)
+    {
+        client
+    } else {
+        let client = Client {
+            username: packet.username.clone(),
+            player_translation: Vec3::new(0.0, 0.0, 0.0),
+            last_heartbeat: Instant::now(),
+            inventory: Inventory::new(),
+        };
+        server.clients.push(client);
+        (server.clients.len() - 1, server.clients.last().unwrap())
     };
 
     // Notify peers about new client
@@ -114,11 +152,16 @@ fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAd
     }
 
     // Notify client about existing peers
-    for (peer_addr, peer_client) in &server.connections {
+    for (peer_addr, peer_client) in server.get_connections() {
+        if peer_client.username == packet.username {
+            continue;
+        }
+
         let packet = net::client::Packet::SpawnPlayer(net::client::SpawnPlayer {
             username: peer_client.username.clone(),
             position: peer_client.player_translation,
         });
+
         if let Err(e) = server.send(addr, &packet) {
             warn!(
                 "Failed to notify new player {} of player {} due to {}",
@@ -127,14 +170,31 @@ fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAd
         }
     }
 
+    // Set clients inventory
+    for stack in client.inventory.get_items() {
+        let packet =
+            net::client::Packet::ModifyInventory(net::client::ModifyInventory { stack: *stack });
+
+        if let Err(e) = server.send(addr, &packet) {
+            warn!(
+                "Failed to update player {}'s inventory stack {:?} due to {}",
+                client.username, stack, e
+            );
+            continue;
+        }
+
+        info!("Updating player {}'s stack {:?}", client.username, stack);
+    }
+
     info!("Added {} to connection list", client.username);
-    server.connections.insert(addr, client);
+    server.connections.insert(addr, client_id);
+
+    server.get_client_mut(addr).unwrap().last_heartbeat = Instant::now();
 }
 
 fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr) {
     let Some(client) = server
-        .connections
-        .get_mut(&addr) else {
+        .get_client_mut(addr) else {
             warn!("Cannot find client for addr {}", addr);
             return;
         };
@@ -147,8 +207,7 @@ fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr
     );
 
     let Some(client) = server
-        .connections
-        .get(&addr) else {
+        .get_client(addr) else {
             warn!("Cannot find client for addr {}", addr);
             return;
         };
@@ -160,7 +219,7 @@ fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr
 
         let packet = net::client::Packet::Move(net::client::Move {
             username: client.username.clone(),
-            position: client.player_translation
+            position: client.player_translation,
         });
 
         if let Err(e) = server.send(*peer_addr, &packet) {
@@ -175,8 +234,7 @@ fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr
 
 fn handle_heartbeat(server: &mut Server, addr: SocketAddr) {
     let Some(client) = server
-        .connections
-        .get_mut(&addr) else {
+        .get_client_mut(addr) else {
             warn!("Cannot find client for addr {}", addr);
             return;
         };
@@ -185,22 +243,27 @@ fn handle_heartbeat(server: &mut Server, addr: SocketAddr) {
     info!("{} heartbeat", client.username);
 }
 
-fn handle_packet(server: &mut Server, packet: &net::server::Packet, addr: SocketAddr) -> Result<()> {
+fn handle_packet(
+    server: &mut Server,
+    packet: &net::server::Packet,
+    addr: SocketAddr,
+) -> Result<()> {
     match packet {
         net::server::Packet::Login(packet) => handle_login(server, packet, addr),
         net::server::Packet::Move(packet) => handle_move(server, packet, addr),
         net::server::Packet::Heartbeat => handle_heartbeat(server, addr),
         net::server::Packet::Disconnect => disconnect(server, addr, None)?,
-        net::server::Packet::ModifyInventory(packet) => handle_modify_inventory(server, packet, addr)
+        net::server::Packet::ModifyInventory(packet) => {
+            handle_modify_inventory(server, packet, addr)
+        }
     };
 
     Ok(())
 }
 
-fn disconnect(server: &mut Server, addr: SocketAddr, reason: Option<String>) -> Result<()> {
+fn disconnect(server: &Server, addr: SocketAddr, reason: Option<String>) -> Result<()> {
     let Some(client) = server
-        .connections
-        .get(&addr) else {
+        .get_client(addr) else {
             warn!("Cannot find client for addr {}", addr);
             return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Client not found").into());
         };
@@ -212,38 +275,33 @@ fn disconnect(server: &mut Server, addr: SocketAddr, reason: Option<String>) -> 
         }
 
         let packet = net::client::Packet::DespawnPlayer(net::client::DespawnPlayer {
-            username: client.username.clone()
+            username: client.username.clone(),
         });
 
-        server.send(addr, &packet)?;
+        server.send(*peer_addr, &packet)?;
     }
 
     if let Some(reason) = reason {
-        let packet = net::client::Packet::NotifyDisconnection(net::client::NotifyDisconnection {
-            reason
-        });
+        let packet =
+            net::client::Packet::NotifyDisconnection(net::client::NotifyDisconnection { reason });
         server.send(addr, &packet)?;
     }
 
-    server.connections.remove(&addr);
     Ok(())
 }
 
-fn handle_modify_inventory(server: &mut Server, packet: &net::server::ModifyInventory, addr: SocketAddr) {
+fn handle_modify_inventory(
+    server: &mut Server,
+    packet: &net::server::ModifyInventory,
+    addr: SocketAddr,
+) {
     let Some(client) = server
-        .connections
-        .get_mut(&addr) else {
+        .get_client_mut(addr) else {
             warn!("Cannot find client for addr {}", addr);
             return;
         };
-    
+
     client.inventory.set(packet.stack);
 
     println!("{:?}", packet.stack);
-    let packet = net::client::Packet::ModifyInventory(net::client::ModifyInventory {
-        stack: common::item::ItemStack { item: packet.stack.item, amount: 999 }
-    });
-
-    server.send(addr, &packet).unwrap();
-
 }
