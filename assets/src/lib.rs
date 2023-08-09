@@ -1,35 +1,57 @@
-use std::{collections::HashMap, path::Path, sync::{Arc, Weak}};
-use bytemuck::{Pod, Zeroable, cast_slice};
-use vulkan::{graphics::Shader, buffer::Buffer, device::Device, context::Context};
 use ash::vk;
+use bytemuck::{cast_slice, Pod, Zeroable};
 use glam::{Vec2, Vec3};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::{Arc, Weak},
+};
+use vulkan::{buffer::Buffer, context::Context, device::Device, graphics::Shader, Texture};
 
 pub struct ShaderRegistry {
-    registry: HashMap<String, Weak<Shader>>
+    registry: HashMap<String, Weak<Shader>>,
 }
 
 impl ShaderRegistry {
     pub fn new() -> Self {
         Self {
-            registry: HashMap::new()
+            registry: HashMap::new(),
         }
     }
 
     pub fn load(&mut self, device: &Device, path: &str) -> Arc<Shader> {
-        let registry_value = self.registry.get(&path.to_owned()).map(|weak| weak.upgrade()).flatten();
+        let registry_value = self
+            .registry
+            .get(&path.to_owned())
+            .map(|weak| weak.upgrade())
+            .flatten();
 
         match registry_value {
             Some(value) => value,
             None => {
-                let spv = Path::new("assets/shaders/compiled").join(path).with_extension("spv");
-                let stage = match spv.file_stem().unwrap().to_str().unwrap().split(".").last().unwrap() {
+                let spv = Path::new("assets/shaders/compiled")
+                    .join(path)
+                    .with_extension("spv");
+                let stage = match spv
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .split(".")
+                    .last()
+                    .unwrap()
+                {
                     "vert" => vk::ShaderStageFlags::VERTEX,
                     "frag" => vk::ShaderStageFlags::FRAGMENT,
-                    shader_type => panic!("Unexpected shader type: {}", shader_type)
+                    "comp" => vk::ShaderStageFlags::COMPUTE,
+                    shader_type => panic!("Unexpected shader type: {}", shader_type),
                 };
-                let code = std::fs::read(spv).ok().unwrap();
+                let code = std::fs::read(spv)
+                    .ok()
+                    .expect(&format!("Cannot find file: {}", path));
                 let shader = Arc::new(Shader::new(device, &code, stage).unwrap());
-                self.registry.insert(path.to_owned(), Arc::downgrade(&shader));
+                self.registry
+                    .insert(path.to_owned(), Arc::downgrade(&shader));
                 shader
             }
         }
@@ -37,31 +59,43 @@ impl ShaderRegistry {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable, Default)]
 pub struct Vertex {
     pub pos: Vec3,
-    pub uv: Vec2,
+    pub _padding: f32,
     pub normal: Vec3,
+    pub _padding2: f32,
 }
 
 pub struct Mesh {
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u32>,
 }
 
 pub struct MeshRegistry {
-    registry: HashMap<String, Weak<Mesh>>
+    registry: HashMap<String, Weak<Mesh>>,
 }
 
 impl MeshRegistry {
     pub fn new() -> Self {
         Self {
-            registry: HashMap::new()
+            registry: HashMap::new(),
         }
     }
 
+    pub fn get_meshes(&self) -> Vec<Arc<Mesh>> {
+        self.registry
+            .values()
+            .filter_map(|weak| weak.upgrade())
+            .collect()
+    }
+
     pub fn load(&mut self, ctx: &Context, path: &str) -> Arc<Mesh> {
-        let registry_value = self.registry.get(&path.to_owned()).map(|weak| weak.upgrade()).flatten();
+        let registry_value = self
+            .registry
+            .get(&path.to_owned())
+            .map(|weak| weak.upgrade())
+            .flatten();
 
         match registry_value {
             Some(value) => value,
@@ -74,42 +108,93 @@ impl MeshRegistry {
                     panic!("Obj file: {} has too many meshes", path);
                 }
 
-                let mesh = models.first()
+                let mesh = models
+                    .first()
                     .map(|model| &model.mesh)
-                    .map(|mesh| { 
-                        let positions = mesh.positions
+                    .map(|mesh| {
+                        let positions = mesh
+                            .positions
+                            .chunks_exact(3)
+                            .map(|slice| Vec3::from_slice(slice) * 100.0) // to compensate for
+                            // pixel based
+                            // coordinate system
+                            .collect::<Vec<Vec3>>();
+
+                        let normals = mesh
+                            .normals
                             .chunks_exact(3)
                             .map(|slice| Vec3::from_slice(slice))
                             .collect::<Vec<Vec3>>();
 
-                        let uvs = mesh.texcoords
-                            .chunks_exact(2)
-                            .map(|slice| Vec2::from_slice(slice))
-                            .collect::<Vec<Vec2>>();
-                        let normals = mesh.normals
-                            .chunks_exact(3)
-                            .map(|slice| Vec3::from_slice(slice))
-                            .collect::<Vec<Vec3>>();
-
-                        let vertices = std::iter::zip(positions, std::iter::zip(uvs, normals))
-                            .map(|(pos, (uv, normal))| Vertex { pos, uv, normal })
+                        let vertices = std::iter::zip(positions, normals)
+                            .map(|(pos, normal)| Vertex {
+                                pos,
+                                normal,
+                                ..Default::default()
+                            })
                             .collect::<Vec<Vertex>>();
 
+                        let indices: Vec<u32> = mesh
+                            .indices
+                            .chunks_exact(3)
+                            .flat_map(|slice| [slice[0], slice[2], slice[1]])
+                            .collect();
 
-                        let vertex_buffer = Buffer::new(
-                            ctx,
-                            cast_slice(&vertices),
-                            vk::BufferUsageFlags::VERTEX_BUFFER,
-                        ).unwrap();
-                        let index_buffer =
-                            Buffer::new(ctx, cast_slice(&mesh.indices), vk::BufferUsageFlags::INDEX_BUFFER).unwrap();
-
-                        Mesh { vertex_buffer, index_buffer }
-                    }).unwrap();
+                        Mesh { vertices, indices }
+                    })
+                    .unwrap();
 
                 let mesh = Arc::new(mesh);
                 self.registry.insert(path.to_owned(), Arc::downgrade(&mesh));
                 mesh
+            }
+        }
+    }
+}
+
+pub struct TextureRegistry {
+    registry: HashMap<String, Weak<Texture>>,
+}
+
+impl TextureRegistry {
+    pub fn new() -> Self {
+        Self {
+            registry: HashMap::new(),
+        }
+    }
+
+    pub fn get_meshes(&self) -> Vec<Arc<Texture>> {
+        self.registry
+            .values()
+            .filter_map(|weak| weak.upgrade())
+            .collect()
+    }
+
+    pub fn load(&mut self, ctx: &mut Context, path: &str, normalized_uv: bool) -> Arc<Texture> {
+        let registry_value = self
+            .registry
+            .get(&path.to_owned())
+            .map(|weak| weak.upgrade())
+            .flatten();
+
+        match registry_value {
+            Some(value) => value,
+            None => {
+                let texture = Path::new("assets/textures/compiled").join(path);
+                println!("Loading: {}", texture.display());
+
+                let texture = Arc::new(
+                    Texture::new(
+                        ctx,
+                        &std::fs::read(texture).expect("Failed to read texture"),
+                        normalized_uv,
+                    )
+                    .expect("Failed to read texture"),
+                );
+
+                self.registry
+                    .insert(path.to_owned(), Arc::downgrade(&texture));
+                texture
             }
         }
     }

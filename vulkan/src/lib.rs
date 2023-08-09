@@ -35,6 +35,8 @@ pub use swapchain::Swapchain;
 
 pub mod compute;
 
+pub mod allocator;
+
 use cstr::cstr;
 use std::{clone::Clone, cmp::Eq, collections::HashSet, ffi::CStr, hash::Hash};
 

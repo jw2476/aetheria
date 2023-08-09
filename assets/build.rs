@@ -1,12 +1,11 @@
 #![feature(let_chains)]
 
+use image::io::Reader as ImageReader;
 use std::{
     fs::{self, File},
     io::{Read, Write},
     path::PathBuf,
 };
-use image::io::Reader as ImageReader;
-
 
 fn main() {
     // SHADERS
@@ -45,15 +44,20 @@ fn main() {
 
         let source = String::from_utf8(buf).unwrap();
 
-        let kind = if source.starts_with("VERTEX") {
-            shaderc::ShaderKind::Vertex
-        } else if source.starts_with("FRAGMENT") {
-            shaderc::ShaderKind::Fragment
-        } else {
-            panic!("Unknown shader type in file {}", input.display())
+        let kind = match input
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .split(".")
+            .last()
+            .unwrap()
+        {
+            "vert" => shaderc::ShaderKind::Vertex,
+            "frag" => shaderc::ShaderKind::Fragment,
+            "comp" => shaderc::ShaderKind::Compute,
+            shader_type => panic!("Unexpected shader type: {}", shader_type),
         };
-
-        let source = source.lines().skip(1).collect::<Vec<&str>>().join("\n");
 
         let spirv = compiler
             .compile_into_spirv(

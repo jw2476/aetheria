@@ -5,27 +5,55 @@
 
 extern crate core;
 
-mod macros;
-mod renderer;
-mod mesh;
-mod material;
-mod time;
 mod camera;
-mod transform;
+mod components;
+mod entities;
 mod input;
+mod macros;
+mod material;
+mod renderer;
+mod scenes;
+mod socket;
+mod systems;
+mod time;
+mod transform;
+mod ui;
 
-use std::sync::Arc;
+use anyhow::Result;
 use ash::vk;
-use assets::MeshRegistry;
+use assets::{MeshRegistry, ShaderRegistry, TextureRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
+use common::{item::Inventory, net, Observable, Observer};
+use glam::{IVec2, Quat, UVec2, Vec2, Vec3, Vec4};
+use input::{Keyboard, Mouse};
+use num_traits::FromPrimitive;
+use std::{
+    collections::HashMap,
+    f32::consts::PI,
+    io,
+    net::{IpAddr, SocketAddr, UdpSocket},
+    ops::DerefMut,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 use time::Time;
+use tracing::info;
 use transform::Transform;
 use vulkan::Context;
-use renderer::{Renderer, RenderObject, Renderable};
-use winit::{event_loop::ControlFlow, event::{VirtualKeyCode, MouseButton}};
-use glam::{Vec3, Quat, Vec4};
-use input::{Keyboard, Mouse};
+use winit::{
+    event::{MouseButton, VirtualKeyCode},
+    event_loop::ControlFlow,
+};
+
+use crate::{
+    entities::{Player, Tree},
+    renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
+    scenes::RootScene,
+    socket::Socket,
+    systems::{gather, render, Systems},
+    ui::{Element, Rectangle, Region, SizeConstraints, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
+};
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -42,179 +70,279 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
     (event_loop, window)
 }
 
-
-struct Tree {
-    pub transform: Transform,
-    trunk: RenderObject,
-    foliage: RenderObject,
-}
-
-impl Tree {
-    pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Tree, vk::Result> {
-        let trunk = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("tree.trunk.obj")?
-            .set_color(Vec4::new(0.9150942, 0.6063219, 0.4359647, 1.0))
-            .set_transform(transform.clone())
-            .build()?;
-        let foliage = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("tree.foliage.obj")?
-            .set_color(Vec4::new(0.2588235, 0.7921569, 0.6034038, 1.0))
-            .set_transform(transform.clone())
-            .build()?;
-
-        Ok(Self {
-            transform,
-            trunk,
-            foliage
-        })
-    }
-
-    pub fn update_transform(&mut self) -> Result<(), vk::Result> {
-        let mut trunk = self.trunk.transform.lock();
-        let mut foliage = self.foliage.transform.lock();
-        trunk.transform = self.transform.clone();
-        trunk.update()?;
-        foliage.transform = self.transform.clone();
-        foliage.update()?;
-        Ok(())
-    }
-}
-
-impl Renderable for Tree {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![&self.trunk, &self.foliage]
-    }
-}
-
-struct Rock {
-    pub transform: Transform,
-    rock: RenderObject
-}
-
-impl Rock {
-    pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Self, vk::Result> {
-        let rock = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("rocks.obj")?
-            .set_color(Vec4::new(0.6916608, 0.8617874, 0.9339623, 1.0))
-            .set_transform(transform.clone())
-            .build()?;
-        Ok(Self { transform, rock })
-    }
-}
-
-impl Renderable for Rock {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![&self.rock]
-    }
-}
-
-struct Grass {
-    pub transform: Transform,
-    grass: RenderObject
-}
-
-impl Grass {
-    pub fn load(renderer: &mut Renderer, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Self, vk::Result> {
-        let grass = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("grass.obj")?
-            .set_color(Vec4::new(0.2588235, 0.7921569, 0.6034038, 1.0))
-            .set_transform(transform.clone())
-            .build()?;
-        Ok(Self { transform, grass })
-    }
-}
-
-impl Renderable for Grass {
-    fn get_objects(&self) -> Vec<&RenderObject> {
-        vec![&self.grass]
-    }
-}
-
-fn get_coord() -> f32 {
-    (rand::random::<f32>() - 0.5) * 25.0
-}
-
-
 const CAMERA_SENSITIVITY: f32 = 250.0;
-const MOVEMENT_SENSITIVITY: f32 = 0.15;
+
+struct InventoryUpdater {
+    socket: Arc<Socket>,
+}
+
+impl InventoryUpdater {
+    pub fn new(socket: Arc<Socket>) -> Self {
+        Self { socket }
+    }
+}
+
+impl Observer<Inventory> for InventoryUpdater {
+    fn notify(&self, old: &Inventory, new: &Inventory) {
+        let old = old.get_items();
+        let new = new.get_items();
+
+        if old.len() == new.len() {
+            // Either no change or change in quantity
+            old.iter()
+                .zip(new.iter())
+                .filter(|(old, new)| old.amount != new.amount)
+                .for_each(|(_, &stack)| {
+                    let packet =
+                        net::server::Packet::ModifyInventory(net::server::ModifyInventory {
+                            stack,
+                        });
+                    self.socket.send(&packet).unwrap()
+                });
+        } else {
+            // New item stack, will always be last for now
+            let packet = net::server::Packet::ModifyInventory(net::server::ModifyInventory {
+                stack: *new.last().unwrap(),
+            });
+            self.socket.send(&packet).unwrap()
+        }
+    }
+}
 
 fn main() {
     tracing_subscriber::fmt::init();
 
+    let mut ip = String::new();
+    println!("Enter server IP: ");
+    std::io::stdin().read_line(&mut ip).unwrap();
+
+    if ip.trim().is_empty() {
+        ip = "127.0.0.1".to_owned();
+    }
+
+    let remote = SocketAddr::new(IpAddr::V4(ip.trim().parse().unwrap()), 8000);
+    let socket: Arc<Socket> = Arc::new(UdpSocket::bind("[::]:0").unwrap().into());
+    socket.connect(remote).unwrap();
+    socket.set_nonblocking(true).unwrap();
+    let mut username = String::new();
+    println!("Enter your username: ");
+    std::io::stdin().read_line(&mut username).unwrap();
+
+    let login = net::server::Packet::Login(net::server::Login { username: username.trim().to_owned() });
+
+    socket.send(&login).unwrap();
+
     let (event_loop, window) = create_window();
     let window = Arc::new(window);
     let ctx = Context::new(&window);
-    
-    let mut renderer = Renderer::new(ctx, window.clone(), &event_loop).unwrap();
-    let mut camera = Camera::new(&renderer).unwrap();
-    let mut time = Time::new(&renderer).unwrap();
+
     let mut mesh_registry = MeshRegistry::new();
+    let mut shader_registry = ShaderRegistry::new();
+    let mut texture_registry = TextureRegistry::new();
+
+    let mut renderer = Renderer::new(ctx, window.clone()).unwrap();
+    let mut camera = Camera::new(480.0, 270.0, &renderer).unwrap();
+    let mut time = Time::new(&renderer).unwrap();
+    let render_system = Arc::new(Mutex::new(
+        render::System::new(&renderer, &mut shader_registry, &camera, &time).unwrap(),
+    ));
+    let gather_system = Arc::new(Mutex::new(gather::System::new()));
+
+    let mut inventory = Observable::new(Inventory::new());
+
+    inventory.register(Box::new(InventoryUpdater::new(socket.clone())));
+
+    let ui_pass = Arc::new(Mutex::new(
+        UIPass::new(
+            &mut renderer,
+            &mut shader_registry,
+            &mut texture_registry,
+            render_system.lock().unwrap().get_texture(),
+        )
+        .unwrap(),
+    ));
+    renderer.add_pass(render_system.clone());
+    renderer.add_pass(ui_pass.clone());
+    renderer.set_output_image(
+        ui_pass.lock().unwrap().get_texture().image.clone(),
+        vk::ImageLayout::GENERAL,
+    );
     let mut keyboard = Keyboard::new();
     let mut mouse = Mouse::new();
 
-    let mut renderables = Vec::new();
-    for _ in 0..100 {
-        let mut transform = Transform::IDENTITY;
-        transform.translation = Vec3::new(get_coord(), 0.0, get_coord());
-        let tree = Tree::load(&mut renderer, &mut mesh_registry, transform).unwrap();
-        let renderable: Box<dyn Renderable> = Box::new(tree);
-        renderables.push(renderable);
-    }
+    let mut root = RootScene::new(
+        &mut renderer,
+        &mut Systems {
+            render: &mut render_system.lock().unwrap(),
+            gather: &mut gather_system.lock().unwrap(),
+        },
+        &mut mesh_registry,
+    )
+    .expect("Failed to load scene");
 
-    for _ in 0..100 {
-        let mut transform = Transform::IDENTITY;
-        transform.translation = Vec3::new(get_coord(), 0.0, get_coord());
-        transform.scale *= 0.6;
-        let rock = Rock::load(&mut renderer, &mut mesh_registry, transform).unwrap();
-        let renderable: Box<dyn Renderable> = Box::new(rock);
-        renderables.push(renderable);
-    }
-    
-    let grass = Grass::load(&mut renderer, &mut mesh_registry, Transform::IDENTITY).unwrap();
+    gather_system
+        .lock()
+        .unwrap()
+        .set_player(root.player.clone());
+
+    let mut players: HashMap<String, Arc<Mutex<Player>>> = HashMap::new();
+    let mut last_heartbeat: Instant = Instant::now();
+
+    let mut inventory_open = false;
 
     event_loop.run(move |event, _, control_flow| {
         if let ControlFlow::ExitWithCode(_) = *control_flow {
             return;
         }
-        
+
         control_flow.set_poll();
 
         keyboard.on_event(&event);
         mouse.on_event(&event);
 
-        match event {
-            winit::event::Event::WindowEvent { event, .. } => {     
-                let egui_ctx = &renderer.egui_ctx;
-                renderer.egui_winit_state.lock().on_event(egui_ctx, &event);
-                           
-                match event {
-                    winit::event::WindowEvent::Resized(size) => {
-                        renderer.recreate_swapchain().unwrap();
-                        camera.width = size.width as f32;
-                        camera.height = size.height as f32;
-                        camera.update();
-                    },
-                    winit::event::WindowEvent::CloseRequested => {
-                        control_flow.set_exit()
-                    },
-                    _ => ()     
-                }
+        let mut data = [0; 4096];
+        match socket.recv(&mut data) {
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => panic!("{e}"),
+            Ok(_) => {
+                let packet: net::client::Packet = postcard::from_bytes(&data).unwrap();
 
+                match packet {
+                    net::client::Packet::SpawnPlayer(packet) => {
+                        info!("Spawning player");
+                        players.insert(
+                            packet.username,
+                            Player::new(
+                                &mut renderer,
+                                &mut Systems {
+                                    render: &mut render_system.lock().unwrap(),
+                                    gather: &mut gather_system.lock().unwrap(),
+                                },
+                                &mut mesh_registry,
+                                Transform {
+                                    translation: packet.position,
+                                    rotation: Quat::IDENTITY,
+                                    scale: Vec3::ONE,
+                                },
+                            )
+                            .unwrap(),
+                        );
+                    }
+                    net::client::Packet::Move(packet) => {
+                        info!("Moving peer player");
+                        players
+                            .get_mut(&packet.username)
+                            .expect("Peer not found")
+                            .lock()
+                            .unwrap()
+                            .update_transform(|transform| transform.translation = packet.position);
+                    }
+                    net::client::Packet::DespawnPlayer(packet) => {
+                        info!("Deleting peer player");
+                        players.remove(&packet.username);
+                    }
+                    net::client::Packet::NotifyDisconnection(packet) => {
+                        info!("Disconnecting due to {}", packet.reason);
+                        control_flow.set_exit();
+                        return;
+                    }
+                    net::client::Packet::ModifyInventory(packet) => {
+                        info!("Setting {:?} to {}", packet.stack.item, packet.stack.amount);
+                        inventory.run_silent(|inventory| inventory.set(packet.stack));
+                    }
+                }
+            }
+        };
+
+        if last_heartbeat.elapsed().as_secs_f32() > 10.0 {
+            heartbeat(&socket).unwrap();
+            last_heartbeat = Instant::now();
+        }
+
+        match event {
+            winit::event::Event::WindowEvent { event, .. } => match event {
+                winit::event::WindowEvent::Resized(size) => {
+                    renderer.recreate_swapchain().unwrap();
+                    camera.width = size.width as f32;
+                    camera.height = size.height as f32;
+                }
+                winit::event::WindowEvent::CloseRequested => {
+                    disconnect(&socket).unwrap();
+                    control_flow.set_exit()
+                }
+                _ => (),
             },
             winit::event::Event::MainEventsCleared => {
-                if keyboard.is_key_down(VirtualKeyCode::Escape) { control_flow.set_exit() }
-                if mouse.is_button_down(MouseButton::Right) { camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY }
-                if keyboard.is_key_down(VirtualKeyCode::W) { camera.target -= camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
-                if keyboard.is_key_down(VirtualKeyCode::S) { camera.target += camera.get_rotation() * Vec3::new(0.0, 0.0, MOVEMENT_SENSITIVITY) }
-                if keyboard.is_key_down(VirtualKeyCode::A) { camera.target -= camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
-                if keyboard.is_key_down(VirtualKeyCode::D) { camera.target += camera.get_rotation() * Vec3::new(MOVEMENT_SENSITIVITY, 0.0, 0.0) }
-                renderer.render(&renderables, &grass, &camera);
+                if keyboard.is_key_down(VirtualKeyCode::Escape) {
+                    disconnect(&socket).unwrap();
+                    control_flow.set_exit()
+                }
+                if mouse.is_button_down(MouseButton::Right) {
+                    camera.theta -= mouse.delta.x / CAMERA_SENSITIVITY
+                }
+                if keyboard.is_key_down(VirtualKeyCode::Left) {
+                    let mut sun = root.sun.lock().unwrap();
+                    let theta = sun.get_theta() + PI / 60.0;
+                    sun.update_theta(theta);
+                }
+                if keyboard.is_key_down(VirtualKeyCode::Right) {
+                    let mut sun = root.sun.lock().unwrap();
+                    let theta = sun.get_theta() - PI / 60.0;
+                    sun.update_theta(theta);
+                }
+
+                if keyboard.is_key_pressed(VirtualKeyCode::I) {
+                    inventory_open = !inventory_open;
+                }
+
+                renderer.wait_for_frame();
+                render_system.lock().unwrap().set_geometry(
+                    &renderer,
+                    &mesh_registry,
+                    &root.get_lights(),
+                );
+
+                let mut scene = Vec::new();
+                inventory.run(|inventory| {
+                    gather_system
+                        .lock()
+                        .unwrap()
+                        .frame_finished(&camera, &keyboard, &mut scene, inventory);
+                });
+                if inventory_open {
+                    let mut inventory_window = components::inventory::Component::new(&inventory);
+                    let size = inventory_window.layout(SizeConstraints {
+                        min: UVec2::new(0, 0),
+                        max: UVec2::new(RENDER_WIDTH, RENDER_HEIGHT),
+                    });
+                    inventory_window.paint(
+                        Region {
+                            origin: UVec2::new(0, 0),
+                            size,
+                        },
+                        &mut scene,
+                    );
+                }
+                ui_pass
+                    .lock()
+                    .unwrap()
+                    .set_geometry(&renderer, &scene)
+                    .expect("Failed to set UI geometry");
+
+                renderer.render();
+                let viewport = Vec2::new(
+                    window.inner_size().width as f32,
+                    window.inner_size().height as f32,
+                );
+
+                root.frame_finished(&keyboard, &mouse, &camera, &time, viewport, &socket);
                 time.frame_finished();
                 keyboard.frame_finished();
                 camera.frame_finished();
                 mouse.frame_finished();
+                camera.target = root.player.lock().unwrap().get_transform().translation;
             }
-            _ => ()
+            _ => (),
         };
 
         if let ControlFlow::ExitWithCode(_) = *control_flow {
@@ -222,4 +350,16 @@ fn main() {
             unsafe { renderer.device.device_wait_idle().unwrap() };
         }
     });
+}
+
+fn heartbeat(socket: &Socket) -> Result<()> {
+    let packet = net::server::Packet::Heartbeat;
+    socket.send(&packet)?;
+    Ok(())
+}
+
+fn disconnect(socket: &Socket) -> Result<()> {
+    let packet = net::server::Packet::Disconnect;
+    socket.send(&packet)?;
+    Ok(())
 }

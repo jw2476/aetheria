@@ -1,6 +1,7 @@
-use std::time::Instant;
 use ash::vk;
 use bytemuck::cast_slice;
+use std::time::Instant;
+use tracing::info;
 use vulkan::Buffer;
 
 use crate::renderer::Renderer;
@@ -14,13 +15,13 @@ pub struct Time {
 
 impl Time {
     pub fn new(renderer: &Renderer) -> Result<Self, vk::Result> {
+        info!("Starting frame timer");
         let time = Self {
             last_frame: Instant::now(),
             current_frame: Instant::now(),
             time: 0.0,
-            buffer: Buffer::new(&renderer.ctx, cast_slice::<f32, u8>(&[0_f32; 2]), vk::BufferUsageFlags::UNIFORM_BUFFER)?
+            buffer: Buffer::new(renderer, [0_u8; 8], vk::BufferUsageFlags::UNIFORM_BUFFER)?,
         };
-        renderer.set_time(&time);
         Ok(time)
     }
 
@@ -28,15 +29,21 @@ impl Time {
         (self.current_frame - self.last_frame).as_secs_f32()
     }
 
+    fn update_buffer(&mut self) {
+        let delta = self.delta_seconds();
+        let data = &[self.time, delta];
+        let data = cast_slice::<f32, u8>(data);
+        self.buffer.upload(data);
+    }
+
     pub fn frame_finished(&mut self) {
         let delta = self.delta_seconds();
         self.time += delta;
 
         println!("FPS: {}", 1.0 / self.delta_seconds());
-        let buffer = [self.time, delta];
-        self.buffer.upload(cast_slice::<f32, u8>(&buffer));
 
         self.last_frame = self.current_frame;
         self.current_frame = Instant::now();
+        self.update_buffer();
     }
 }

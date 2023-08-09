@@ -66,7 +66,7 @@ impl Deref for PhysicalDevice {
 pub struct Extensions {
     pub surface: Option<khr::Surface>,
     pub xlib_surface: Option<khr::XlibSurface>,
-    pub win32_surface: Option<khr::Win32Surface>
+    pub win32_surface: Option<khr::Win32Surface>,
 }
 
 impl Extensions {

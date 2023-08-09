@@ -67,10 +67,7 @@ impl Renderpass {
         Ok(Self { renderpass })
     }
 
-    pub fn new_upscale_ui(
-        device: &Device,
-        color_format: vk::Format,
-    ) -> Result<Self, vk::Result> {
+    pub fn new_upscale_ui(device: &Device, color_format: vk::Format) -> Result<Self, vk::Result> {
         let color_attachment = vk::AttachmentDescription::builder()
             .format(color_format)
             .samples(vk::SampleCountFlags::TYPE_1)

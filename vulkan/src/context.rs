@@ -1,11 +1,6 @@
-use super::{command, Device, Instance, Surface, Swapchain};
+use super::{allocator::Allocator, command, Device, Instance, Surface, Swapchain};
 use ash::{vk, Entry};
-use gpu_allocator::{
-    vulkan::{Allocator, AllocatorCreateDesc},
-    AllocatorDebugSettings,
-};
 use std::sync::{Arc, Mutex};
-use std::{cell::RefCell, rc::Rc};
 
 pub struct Context {
     pub instance: Instance,
@@ -16,7 +11,7 @@ pub struct Context {
 
     pub image_available: vk::Semaphore,
 
-    pub(crate) allocator: Arc<Mutex<Allocator>>,
+    pub allocator: Arc<Mutex<Allocator>>,
 }
 
 impl Context {
@@ -36,14 +31,7 @@ impl Context {
         let semaphore_info = vk::SemaphoreCreateInfo::builder();
         let image_available = unsafe { device.create_semaphore(&semaphore_info, None).unwrap() };
 
-        let allocator = Allocator::new(&AllocatorCreateDesc {
-            instance: (*instance).clone(),
-            device: (*device).clone(),
-            physical_device: *device.physical,
-            debug_settings: AllocatorDebugSettings::default(),
-            buffer_device_address: false,
-        })
-        .unwrap();
+        let allocator = Allocator::new(&instance, device.clone()).unwrap();
 
         Self {
             instance,
@@ -58,10 +46,6 @@ impl Context {
 
     pub unsafe fn start_frame(&mut self, in_flight: vk::Fence) -> Result<u32, vk::Result> {
         unsafe {
-            self.device
-                .wait_for_fences(&[in_flight], true, u64::MAX)
-                .unwrap();
-
             let image_index = self
                 .device
                 .extensions
@@ -77,6 +61,7 @@ impl Context {
                 .0;
 
             self.device.reset_fences(&[in_flight]).unwrap();
+            self.allocator.lock().unwrap().flush_frees();
 
             Ok(image_index)
         }

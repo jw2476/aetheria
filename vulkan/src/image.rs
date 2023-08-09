@@ -1,9 +1,10 @@
-use super::{Buffer, Context, Device, Pool};
+use super::{
+    allocator::{Allocation, Allocator},
+    Buffer, Context, Device, Pool,
+};
 use crate::command::TransitionLayoutOptions;
 use crate::Set;
-use ash::vk;
-use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator};
-use gpu_allocator::MemoryLocation;
+use ash::vk::{self, MemoryPropertyFlags};
 use std::cell::OnceCell;
 use std::ops::Deref;
 use std::path::Path;
@@ -27,7 +28,7 @@ impl Image {
         height: u32,
         format: vk::Format,
         usage: vk::ImageUsageFlags,
-    ) -> Result<Self, vk::Result> {
+    ) -> Result<Arc<Self>, vk::Result> {
         let create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
@@ -44,46 +45,31 @@ impl Image {
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
 
-        let image = unsafe { ctx.device.create_image(&create_info, None)? };
-
-        let requirements = unsafe { ctx.device.get_image_memory_requirements(image) };
-        let allocation_info = AllocationCreateDesc {
-            name: "image",
-            requirements,
-            location: MemoryLocation::GpuOnly,
-            linear: true,
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-        };
-        let allocation = ctx
+        let (image, allocation) = ctx
             .allocator
             .lock()
             .unwrap()
-            .allocate(&allocation_info)
-            .unwrap();
-        unsafe {
-            ctx.device
-                .bind_image_memory(image, allocation.memory(), allocation.offset())?;
-        };
+            .create_image(&create_info, MemoryPropertyFlags::DEVICE_LOCAL)?;
 
-        Ok(Self {
+        Ok(Arc::new(Self {
             image,
             format,
             width,
             height,
             allocation: Some(allocation),
             allocator: Some(ctx.allocator.clone()),
-        })
+        }))
     }
 
-    pub const fn from_image(image: vk::Image, format: vk::Format, width: u32, height: u32) -> Self {
-        Self {
+    pub fn from_image(image: vk::Image, format: vk::Format, width: u32, height: u32) -> Arc<Self> {
+        Arc::new(Self {
             image,
             format,
             width,
             height,
             allocation: None,
             allocator: None,
-        }
+        })
     }
 
     pub fn create_view_without_context(
@@ -134,6 +120,7 @@ impl Image {
         ctx: &Context,
         mag_filter: vk::Filter,
         min_filter: vk::Filter,
+        normalized_uv: bool,
     ) -> Result<vk::Sampler, vk::Result> {
         let create_info = vk::SamplerCreateInfo::builder()
             .mag_filter(mag_filter)
@@ -150,7 +137,7 @@ impl Image {
             .min_lod(0.0)
             .max_lod(0.0)
             .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
-            .unnormalized_coordinates(false);
+            .unnormalized_coordinates(!normalized_uv);
 
         unsafe { ctx.device.create_sampler(&create_info, None) }
     }
@@ -175,13 +162,12 @@ impl Drop for Image {
             .unwrap()
             .lock()
             .unwrap()
-            .free(self.allocation.take().expect("Vulkan buffer double free"))
-            .expect("Failed to free vulkan buffer");
+            .free(&self.allocation.unwrap())
     }
 }
 
 pub struct Texture {
-    pub image: Image,
+    pub image: Arc<Image>,
     pub view: vk::ImageView,
     pub sampler: vk::Sampler,
 }
@@ -197,10 +183,10 @@ impl Deref for Texture {
 impl Texture {
     pub const WHITE: OnceCell<Self> = OnceCell::new();
 
-    pub fn new(ctx: &mut Context, bytes: &[u8]) -> Result<Self, vk::Result> {
+    pub fn new(ctx: &mut Context, bytes: &[u8], normalized_uv: bool) -> Result<Self, vk::Result> {
         let (header, data) = qoi::decode_to_vec(bytes).unwrap();
 
-        Self::new_bytes(ctx, &data, header.width, header.height)
+        Self::new_bytes(ctx, &data, header.width, header.height, normalized_uv)
     }
 
     pub fn new_bytes(
@@ -208,6 +194,7 @@ impl Texture {
         data: &[u8],
         width: u32,
         height: u32,
+        normalized_uv: bool,
     ) -> Result<Self, vk::Result> {
         let texture_buffer = Buffer::new(ctx, data, vk::BufferUsageFlags::TRANSFER_SRC)?;
 
@@ -219,7 +206,8 @@ impl Texture {
             vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
         )?;
         let view = image.create_view(ctx)?;
-        let sampler = image.create_sampler(ctx, vk::Filter::LINEAR, vk::Filter::LINEAR)?;
+        let sampler =
+            image.create_sampler(ctx, vk::Filter::NEAREST, vk::Filter::NEAREST, normalized_uv)?;
 
         ctx.command_pool
             .allocate()
@@ -259,13 +247,19 @@ impl Texture {
         })
     }
 
-    pub fn from_image(ctx: &Context, image: Image, mag_filter: vk::Filter, min_filter: vk::Filter) -> Result<Self, vk::Result> {
+    pub fn from_image(
+        ctx: &Context,
+        image: Arc<Image>,
+        mag_filter: vk::Filter,
+        min_filter: vk::Filter,
+        normalized_uv: bool,
+    ) -> Result<Self, vk::Result> {
         let view = image.create_view(ctx)?;
-        let sampler = image.create_sampler(ctx, mag_filter, min_filter)?;
+        let sampler = image.create_sampler(ctx, mag_filter, min_filter, normalized_uv)?;
         Ok(Self {
             image,
             view,
-            sampler
+            sampler,
         })
     }
 }

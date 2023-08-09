@@ -1,11 +1,11 @@
 use ash::vk;
 use bytemuck::cast_slice;
 use glam::Vec4;
-use vulkan::{Set, Buffer};
+use vulkan::{Buffer, Set};
 
 use crate::renderer::Renderer;
 
-pub struct Material {
+/*pub struct Material {
     buffer: Buffer,
     pub set: Set,
 }
@@ -16,9 +16,9 @@ impl Material {
          let set = renderer.material_pool.allocate()?;
          set.update_buffer(&renderer.ctx.device, 0, &buffer);
 
-         Ok(Self { 
-             buffer, 
-             set, 
+         Ok(Self {
+             buffer,
+             set,
          })
     }
-}
+}*/

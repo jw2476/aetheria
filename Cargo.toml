@@ -1,12 +1,16 @@
 [workspace]
+default-members = ["aetheria"]
 members = [
   "assets",
   "aetheria",
+  "arbiter",
+  "common",
   "gltf",
   "hecs",
   "hecs/macros",
   "vulkan"
 ]
+resolver = "2"
 
 [profile.release]
 debug = true
