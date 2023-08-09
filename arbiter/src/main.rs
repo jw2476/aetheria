@@ -19,12 +19,12 @@ struct Client {
     username: String,
     last_heartbeat: Instant,
     inventory: Inventory,
+    addr: Option<SocketAddr>
 }
 
 struct Server {
     socket: UdpSocket,
     clients: Vec<Client>,
-    connections: HashMap<SocketAddr, usize>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -36,6 +36,13 @@ enum SendError {
 }
 
 impl Server {
+    pub fn new(socket: UdpSocket) -> Self {
+        Self {
+            socket,
+            clients: Vec::new()
+        }
+    }
+
     pub fn send(&self, addr: SocketAddr, packet: &net::client::Packet) -> Result<(), SendError> {
         let bytes = postcard::to_stdvec(packet)?;
         self.socket.send_to(&bytes, addr)?;
@@ -43,21 +50,15 @@ impl Server {
     }
 
     pub fn get_client(&self, addr: SocketAddr) -> Option<&Client> {
-        self.connections
-            .get(&addr)
-            .and_then(|&idx| self.clients.get(idx))
+        self.clients.iter().filter(|client| client.addr.is_some()).find(|client| client.addr.unwrap() == addr)
     }
 
     pub fn get_client_mut(&mut self, addr: SocketAddr) -> Option<&mut Client> {
-        self.connections
-            .get(&addr)
-            .and_then(|&idx| self.clients.get_mut(idx))
+        self.clients.iter_mut().filter(|client| client.addr.is_some()).find(|client| client.addr.unwrap() == addr)
     }
 
-    pub fn get_connections(&self) -> impl Iterator<Item = (SocketAddr, &Client)> {
-        self.connections
-            .iter()
-            .map(|(&addr, idx)| (addr, &self.clients[*idx]))
+    pub fn active_clients(&self) -> impl Iterator<Item=&Client> {
+        self.clients.iter().filter(|client| client.addr.is_some())
     }
 }
 
@@ -69,7 +70,6 @@ fn main() -> Result<()> {
     let mut server = Server {
         socket,
         clients: Vec::new(),
-        connections: HashMap::new(),
     };
     info!("Listening on 0.0.0.0:8000");
 
@@ -105,16 +105,16 @@ fn main() -> Result<()> {
 }
 
 fn check_heartbeats(server: &mut Server) -> Result<()> {
-    for (addr, id) in server.connections.clone() {
-        let client = server.clients[id].clone();
+    for client in server.clients.clone() {
+        if client.addr.is_none() { continue; }
 
         if client.last_heartbeat.elapsed().as_secs_f32() > 20.0 {
-            if let Err(e) = disconnect(server, addr, Some("Heartbeat timeout".to_owned())) {
+            if let Err(e) = disconnect(server, client.addr.unwrap(), Some("Heartbeat timeout".to_owned())) {
                 warn!("Failed to disconnect {} due to {}", client.username, e);
                 continue;
             }
 
-            server.connections.remove(&addr);
+            server.get_client_mut(client.addr.unwrap()).unwrap().addr = None
         }
     }
 
@@ -122,50 +122,51 @@ fn check_heartbeats(server: &mut Server) -> Result<()> {
 }
 
 fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAddr) {
-    let (client_id, client) = if let Some(client) = server
+    let client = if let Some(client) = server
         .clients
         .iter()
-        .enumerate()
-        .find(|(_, client)| client.username == packet.username)
+        .find(|client| client.username == packet.username)
     {
-        client
+        client.clone()
     } else {
         let client = Client {
             username: packet.username.clone(),
             player_translation: Vec3::new(0.0, 0.0, 0.0),
             last_heartbeat: Instant::now(),
             inventory: Inventory::new(),
+            addr: None
         };
         server.clients.push(client);
-        (server.clients.len() - 1, server.clients.last().unwrap())
+        server.clients.last().unwrap().clone()
     };
+    server.clients.iter_mut().find(|client| client.username == packet.username).unwrap().addr = Some(addr);
 
     // Notify peers about new client
-    for peer_addr in server.connections.keys() {
+    for peer in server.active_clients().filter(|client| client.username != packet.username) {
         let packet = net::client::Packet::SpawnPlayer(net::client::SpawnPlayer {
             username: client.username.clone(),
             position: client.player_translation,
         });
-        if let Err(e) = server.send(*peer_addr, &packet) {
-            warn!("Failed to notify {} of new player due to {}", peer_addr, e);
+        if let Err(e) = server.send(peer.addr.unwrap(), &packet) {
+            warn!("Failed to notify {} of new player due to {}", client.addr.unwrap(), e);
         }
     }
 
     // Notify client about existing peers
-    for (peer_addr, peer_client) in server.get_connections() {
-        if peer_client.username == packet.username {
+    for peer in server.clients.iter().filter(|client| client.addr.is_some()) {
+        if peer.username == packet.username {
             continue;
         }
 
         let packet = net::client::Packet::SpawnPlayer(net::client::SpawnPlayer {
-            username: peer_client.username.clone(),
-            position: peer_client.player_translation,
+            username: peer.username.clone(),
+            position: peer.player_translation,
         });
 
         if let Err(e) = server.send(addr, &packet) {
             warn!(
                 "Failed to notify new player {} of player {} due to {}",
-                addr, peer_addr, e
+                addr, peer.addr.unwrap(), e
             );
         }
     }
@@ -187,8 +188,6 @@ fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAd
     }
 
     info!("Added {} to connection list", client.username);
-    server.connections.insert(addr, client_id);
-
     server.get_client_mut(addr).unwrap().last_heartbeat = Instant::now();
 }
 
@@ -212,8 +211,8 @@ fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr
             return;
         };
 
-    for peer_addr in server.connections.keys() {
-        if *peer_addr == addr {
+    for peer in server.active_clients() {
+        if peer.addr.unwrap() == addr {
             continue;
         }
 
@@ -222,10 +221,10 @@ fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr
             position: client.player_translation,
         });
 
-        if let Err(e) = server.send(*peer_addr, &packet) {
+        if let Err(e) = server.send(peer.addr.unwrap(), &packet) {
             warn!(
                 "Failed to notify {} of {} moving due to {}",
-                peer_addr, client.username, e
+                peer.addr.unwrap(), client.username, e
             );
             continue;
         }
@@ -269,8 +268,8 @@ fn disconnect(server: &Server, addr: SocketAddr, reason: Option<String>) -> Resu
         };
     info!("{} is disconnecting", client.username);
 
-    for peer_addr in server.connections.keys() {
-        if *peer_addr == addr {
+    for peer in server.active_clients() {
+        if peer.addr.unwrap() == addr {
             continue;
         }
 
@@ -278,7 +277,7 @@ fn disconnect(server: &Server, addr: SocketAddr, reason: Option<String>) -> Resu
             username: client.username.clone(),
         });
 
-        server.send(*peer_addr, &packet)?;
+        server.send(peer.addr.unwrap(), &packet)?;
     }
 
     if let Some(reason) = reason {
