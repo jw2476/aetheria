@@ -7,24 +7,129 @@ use anyhow::Result;
 use common::{item::Inventory, net};
 use glam::Vec3;
 use std::{
-    collections::HashMap,
+    collections::{
+        hash_map::{Keys, Values},
+        HashMap, HashSet,
+    },
+    hash::{Hash, Hasher},
     net::{SocketAddr, UdpSocket},
+    ops::{Deref, DerefMut},
+    sync::{Arc, RwLock},
     time::Instant,
 };
 use tracing::{error, info, warn};
 
 #[derive(Clone)]
-struct Client {
-    player_translation: Vec3,
+struct Player {
+    position: Vec3,
     username: String,
-    last_heartbeat: Instant,
     inventory: Inventory,
-    addr: Option<SocketAddr>
+}
+
+#[derive(Clone)]
+struct Connection {
+    last_heartbeat: Instant,
+    addr: SocketAddr,
+    player: Player,
+}
+
+impl Deref for Connection {
+    type Target = Player;
+
+    fn deref(&self) -> &Self::Target {
+        &self.player
+    }
+}
+
+impl DerefMut for Connection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.player
+    }
+}
+
+trait Unique {
+    type Key: Eq + PartialEq + Hash;
+
+    fn get_unique_key(&self) -> Self::Key;
+}
+
+impl Unique for Connection {
+    type Key = SocketAddr;
+
+    fn get_unique_key(&self) -> Self::Key {
+        self.addr
+    }
+}
+
+impl Unique for Player {
+    type Key = String;
+
+    fn get_unique_key(&self) -> Self::Key {
+        self.username.clone()
+    }
+}
+
+struct IndexedMap<T>
+where
+    T: Unique,
+{
+    inner: HashMap<T::Key, T>,
+}
+
+impl<T> IndexedMap<T>
+where
+    T: Unique + Clone,
+{
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn get(&self, key: &T::Key) -> Option<&T> {
+        self.inner.get(key)
+    }
+
+    fn get_mut(&mut self, key: &T::Key) -> Option<&mut T> {
+        self.inner.get_mut(key)
+    }
+
+    fn insert(&mut self, value: T) {
+        self.inner.insert(value.get_unique_key(), value);
+    }
+
+    fn remove(&mut self, key: &T::Key) {
+        self.inner.remove(key);
+    }
+
+    fn values<'a>(&'a self) -> Values<'a, T::Key, T> {
+        self.inner.values()
+    }
+
+    fn keys<'a>(&'a self) -> Keys<'a, T::Key, T> {
+        self.inner.keys()
+    }
+
+    fn take(&mut self, key: &T::Key) -> Option<T> {
+        let value = self.get(key).cloned();
+        self.remove(key);
+        value
+    }
+}
+
+impl<T> Default for IndexedMap<T>
+where
+    T: Unique,
+{
+    fn default() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
 }
 
 struct Server {
     socket: UdpSocket,
-    clients: Vec<Client>,
+    offline: IndexedMap<Player>,
+    online: IndexedMap<Connection>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -39,26 +144,19 @@ impl Server {
     pub fn new(socket: UdpSocket) -> Self {
         Self {
             socket,
-            clients: Vec::new()
+            offline: IndexedMap::new(),
+            online: IndexedMap::new(),
         }
     }
 
-    pub fn send(&self, addr: SocketAddr, packet: &net::client::Packet) -> Result<(), SendError> {
+    pub fn send(
+        &self,
+        connection: &Connection,
+        packet: &net::client::Packet,
+    ) -> Result<(), SendError> {
         let bytes = postcard::to_stdvec(packet)?;
-        self.socket.send_to(&bytes, addr)?;
+        self.socket.send_to(&bytes, connection.addr)?;
         Ok(())
-    }
-
-    pub fn get_client(&self, addr: SocketAddr) -> Option<&Client> {
-        self.clients.iter().filter(|client| client.addr.is_some()).find(|client| client.addr.unwrap() == addr)
-    }
-
-    pub fn get_client_mut(&mut self, addr: SocketAddr) -> Option<&mut Client> {
-        self.clients.iter_mut().filter(|client| client.addr.is_some()).find(|client| client.addr.unwrap() == addr)
-    }
-
-    pub fn active_clients(&self) -> impl Iterator<Item=&Client> {
-        self.clients.iter().filter(|client| client.addr.is_some())
     }
 }
 
@@ -67,10 +165,7 @@ fn main() -> Result<()> {
 
     let socket = UdpSocket::bind("0.0.0.0:8000")?;
     socket.set_nonblocking(true)?;
-    let mut server = Server {
-        socket,
-        clients: Vec::new(),
-    };
+    let mut server = Server::new(socket);
     info!("Listening on 0.0.0.0:8000");
 
     let mut last_heartbeat_check = Instant::now();
@@ -105,16 +200,17 @@ fn main() -> Result<()> {
 }
 
 fn check_heartbeats(server: &mut Server) -> Result<()> {
-    for client in server.clients.clone() {
-        if client.addr.is_none() { continue; }
+    let dead = server
+        .online
+        .values()
+        .filter(|connection| connection.last_heartbeat.elapsed().as_secs_f32() > 20.0)
+        .map(|connection| connection.addr)
+        .collect::<Vec<SocketAddr>>();
 
-        if client.last_heartbeat.elapsed().as_secs_f32() > 20.0 {
-            if let Err(e) = disconnect(server, client.addr.unwrap(), Some("Heartbeat timeout".to_owned())) {
-                warn!("Failed to disconnect {} due to {}", client.username, e);
-                continue;
-            }
-
-            server.get_client_mut(client.addr.unwrap()).unwrap().addr = None
+    for addr in dead {
+        if let Err(e) = disconnect(server, addr, Some("Heartbeat timeout".to_owned())) {
+            warn!("Failed to disconnect {} due to {}", addr, e);
+            continue;
         }
     }
 
@@ -122,109 +218,100 @@ fn check_heartbeats(server: &mut Server) -> Result<()> {
 }
 
 fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAddr) {
-    let client = if let Some(client) = server
-        .clients
-        .iter()
-        .find(|client| client.username == packet.username)
+    let player = server.offline.take(&packet.username).unwrap_or(Player {
+        position: Vec3::ZERO,
+        username: packet.username.clone(),
+        inventory: Inventory::new()
+    });
+    
+    server.online.insert(Connection { last_heartbeat: Instant::now(), addr, player });
+    let connection = server.online.get(&addr).expect("Failed to get connection that was just inserted, this is very bad");
+
+    for peer in server
+        .online
+        .values()
+        .filter(|peer| peer.player.username != packet.username)
     {
-        client.clone()
-    } else {
-        let client = Client {
-            username: packet.username.clone(),
-            player_translation: Vec3::new(0.0, 0.0, 0.0),
-            last_heartbeat: Instant::now(),
-            inventory: Inventory::new(),
-            addr: None
-        };
-        server.clients.push(client);
-        server.clients.last().unwrap().clone()
-    };
-    server.clients.iter_mut().find(|client| client.username == packet.username).unwrap().addr = Some(addr);
-
-    // Notify peers about new client
-    for peer in server.active_clients().filter(|client| client.username != packet.username) {
+        // Notify peers about new client
         let packet = net::client::Packet::SpawnPlayer(net::client::SpawnPlayer {
-            username: client.username.clone(),
-            position: client.player_translation,
-        });
-        if let Err(e) = server.send(peer.addr.unwrap(), &packet) {
-            warn!("Failed to notify {} of new player due to {}", client.addr.unwrap(), e);
-        }
-    }
-
-    // Notify client about existing peers
-    for peer in server.clients.iter().filter(|client| client.addr.is_some()) {
-        if peer.username == packet.username {
-            continue;
-        }
-
-        let packet = net::client::Packet::SpawnPlayer(net::client::SpawnPlayer {
-            username: peer.username.clone(),
-            position: peer.player_translation,
+            username: connection.player.username.clone(),
+            position: connection.player.position,
         });
 
-        if let Err(e) = server.send(addr, &packet) {
+        if let Err(e) = server.send(peer, &packet) {
+            warn!("Failed to notify {} of new player due to {}", peer.addr, e);
+        }
+
+        // Notify new client about peers
+        let packet = net::client::Packet::SpawnPlayer(net::client::SpawnPlayer {
+            username: peer.player.username.clone(),
+            position: peer.player.position,
+        });
+
+        if let Err(e) = server.send(connection, &packet) {
             warn!(
                 "Failed to notify new player {} of player {} due to {}",
-                addr, peer.addr.unwrap(), e
+                addr, peer.addr, e
             );
         }
     }
 
     // Set clients inventory
-    for stack in client.inventory.get_items() {
+    for stack in connection.player.inventory.get_items() {
         let packet =
             net::client::Packet::ModifyInventory(net::client::ModifyInventory { stack: *stack });
 
-        if let Err(e) = server.send(addr, &packet) {
+        if let Err(e) = server.send(connection, &packet) {
             warn!(
                 "Failed to update player {}'s inventory stack {:?} due to {}",
-                client.username, stack, e
+                connection.player.username, stack, e
             );
             continue;
         }
 
-        info!("Updating player {}'s stack {:?}", client.username, stack);
+        info!(
+            "Updating player {}'s stack {:?}",
+            connection.player.username, stack
+        );
     }
 
-    info!("Added {} to connection list", client.username);
-    server.get_client_mut(addr).unwrap().last_heartbeat = Instant::now();
+    info!("Added {} to connection list", connection.player.username);
 }
 
 fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr) {
-    let Some(client) = server
-        .get_client_mut(addr) else {
+    let Some(connection) = server.online
+        .get_mut(&addr) else {
             warn!("Cannot find client for addr {}", addr);
             return;
         };
 
-    client.player_translation = packet.position;
+    connection.player.position = packet.position;
 
     info!(
         "Updated position for {} to {:?}",
-        client.username, client.player_translation
+        connection.player.username, connection.player.position
     );
 
-    let Some(client) = server
-        .get_client(addr) else {
+    let Some(connection) = server.online
+        .get(&addr) else {
             warn!("Cannot find client for addr {}", addr);
             return;
         };
 
-    for peer in server.active_clients() {
-        if peer.addr.unwrap() == addr {
-            continue;
-        }
-
+    for peer in server
+        .online
+        .values()
+        .filter(|peer| peer.username != connection.username)
+    {
         let packet = net::client::Packet::Move(net::client::Move {
-            username: client.username.clone(),
-            position: client.player_translation,
+            username: connection.player.username.clone(),
+            position: connection.player.position,
         });
 
-        if let Err(e) = server.send(peer.addr.unwrap(), &packet) {
+        if let Err(e) = server.send(peer, &packet) {
             warn!(
                 "Failed to notify {} of {} moving due to {}",
-                peer.addr.unwrap(), client.username, e
+                peer.addr, connection.player.username, e
             );
             continue;
         }
@@ -232,14 +319,14 @@ fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr
 }
 
 fn handle_heartbeat(server: &mut Server, addr: SocketAddr) {
-    let Some(client) = server
-        .get_client_mut(addr) else {
+    let Some(connection) = server.online
+        .get_mut(&addr) else {
             warn!("Cannot find client for addr {}", addr);
             return;
         };
 
-    client.last_heartbeat = Instant::now();
-    info!("{} heartbeat", client.username);
+    connection.last_heartbeat = Instant::now();
+    info!("{} heartbeat", connection.username);
 }
 
 fn handle_packet(
@@ -260,31 +347,34 @@ fn handle_packet(
     Ok(())
 }
 
-fn disconnect(server: &Server, addr: SocketAddr, reason: Option<String>) -> Result<()> {
-    let Some(client) = server
-        .get_client(addr) else {
+fn disconnect(server: &mut Server, addr: SocketAddr, reason: Option<String>) -> Result<()> {
+    let Some(connection) = server.online
+        .get(&addr) else {
             warn!("Cannot find client for addr {}", addr);
             return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Client not found").into());
         };
-    info!("{} is disconnecting", client.username);
+    info!("{} is disconnecting", connection.player.username);
 
-    for peer in server.active_clients() {
-        if peer.addr.unwrap() == addr {
-            continue;
-        }
-
+    for peer in server
+        .online
+        .values()
+        .filter(|peer| peer.username != connection.username)
+    {
         let packet = net::client::Packet::DespawnPlayer(net::client::DespawnPlayer {
-            username: client.username.clone(),
+            username: connection.player.username.clone(),
         });
 
-        server.send(peer.addr.unwrap(), &packet)?;
+        server.send(peer, &packet)?;
     }
 
     if let Some(reason) = reason {
         let packet =
             net::client::Packet::NotifyDisconnection(net::client::NotifyDisconnection { reason });
-        server.send(addr, &packet)?;
+        server.send(&connection, &packet)?;
     }
+
+    server.offline.insert(connection.player.clone());
+    server.online.remove(&connection.get_unique_key());
 
     Ok(())
 }
@@ -294,13 +384,13 @@ fn handle_modify_inventory(
     packet: &net::server::ModifyInventory,
     addr: SocketAddr,
 ) {
-    let Some(client) = server
-        .get_client_mut(addr) else {
+    let Some(connection) = server.online
+        .get_mut(&addr) else {
             warn!("Cannot find client for addr {}", addr);
             return;
         };
 
-    client.inventory.set(packet.stack);
+    connection.player.inventory.set(packet.stack);
 
     println!("{:?}", packet.stack);
 }
