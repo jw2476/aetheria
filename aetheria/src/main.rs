@@ -128,7 +128,9 @@ fn main() {
     println!("Enter your username: ");
     std::io::stdin().read_line(&mut username).unwrap();
 
-    let login = net::server::Packet::Login(net::server::Login { username: username.trim().to_owned() });
+    let login = net::server::Packet::Login(net::server::Login {
+        username: username.trim().to_owned(),
+    });
 
     socket.send(&login).unwrap();
 
