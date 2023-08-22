@@ -105,7 +105,11 @@ impl MeshRegistry {
 
                 let (models, _) = tobj::load_obj(obj, &tobj::GPU_LOAD_OPTIONS).unwrap();
                 if models.len() != 1 {
-                    panic!("Obj file: {} has too many meshes", path);
+                    panic!(
+                        "Obj file: {} has too many meshes, {} instead of 1",
+                        path,
+                        models.len()
+                    );
                 }
 
                 let mesh = models

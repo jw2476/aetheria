@@ -213,3 +213,144 @@ impl Element for Text {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub enum HAlign {
+    Left,
+    Right,
+    Center,
+}
+
+#[derive(Clone, Debug)]
+pub struct VList<T: Element> {
+    pub children: Vec<T>,
+    pub separation: u32,
+    pub align: HAlign,
+}
+
+// TODO: Alignment
+impl<T: Element> Element for VList<T> {
+    fn layout(&mut self, constraint: SizeConstraints) -> UVec2 {
+        if self.children.len() == 0 {
+            return UVec2::new(0, 0);
+        }
+
+        let children_sizes = self
+            .children
+            .iter_mut()
+            .map(|child| child.layout(constraint.clone()))
+            .collect::<Vec<UVec2>>();
+        let width = children_sizes.iter().map(|size| size.x).max().unwrap();
+        let height = children_sizes.first().unwrap().y * self.children.len() as u32
+            + self.separation * (self.children.len() as u32 - 1);
+
+        UVec2 {
+            x: width,
+            y: height,
+        }
+    }
+
+    fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>) {
+        if self.children.len() == 0 {
+            return;
+        }
+
+        let height_per_child = (region.size.y + self.separation
+            - (self.children.len() as u32 * self.separation))
+            / (self.children.len() as u32);
+
+        for (i, child) in self.children.iter_mut().enumerate() {
+            child.paint(
+                Region {
+                    origin: region.origin
+                        + UVec2::new(0, (height_per_child + self.separation) * i as u32),
+                    size: UVec2::new(region.size.x, height_per_child),
+                },
+                scene,
+            );
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct VPair<T: Element, B: Element> {
+    pub top: T,
+    pub bottom: B,
+    pub align: HAlign,
+    pub separation: u32,
+    top_size: UVec2,
+    bottom_size: UVec2,
+}
+
+impl<T: Element, B: Element> VPair<T, B> {
+    pub fn new(top: T, bottom: B, align: HAlign, separation: u32) -> Self {
+        Self {
+            top,
+            bottom,
+            align,
+            separation,
+            top_size: UVec2::ZERO,
+            bottom_size: UVec2::ZERO,
+        }
+    }
+
+    fn get_left_padding(&self, wanted: u32, actual: u32) -> u32 {
+        println!("Wanted: {}, Actual: {}", wanted, actual);
+        match self.align {
+            HAlign::Left => 0,
+            HAlign::Right => wanted - actual,
+            HAlign::Center => (wanted - actual) / 2,
+        }
+    }
+
+    fn get_right_padding(&self, wanted: u32, actual: u32) -> u32 {
+        (wanted - actual) - self.get_left_padding(wanted, actual)
+    }
+}
+
+impl<T: Element, B: Element> Element for VPair<T, B> {
+    fn layout(&mut self, constraint: SizeConstraints) -> UVec2 {
+        self.top_size = self.top.layout(constraint.clone());
+        self.bottom_size = self.bottom.layout(SizeConstraints {
+            min: constraint.min,
+            max: constraint.max - UVec2::new(0, self.top_size.y + self.separation),
+        });
+
+        UVec2::new(
+            *[self.top_size.x, self.bottom_size.x].iter().max().unwrap(),
+            self.top_size.y + self.bottom_size.y + self.separation,
+        )
+    }
+
+    fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>) {
+        let mut top = Padding {
+            child: self.top.clone(),
+            left: self.get_left_padding(region.size.x, self.top_size.x),
+            right: self.get_right_padding(region.size.x, self.top_size.x),
+            top: 0,
+            bottom: 0,
+        };
+        top.paint(
+            Region {
+                origin: region.origin,
+                size: UVec2::new(region.size.x, self.top_size.y),
+            },
+            scene,
+        );
+
+        let mut bottom = Padding {
+            child: self.bottom.clone(),
+            left: self.get_left_padding(region.size.x, self.bottom_size.x),
+            right: self.get_right_padding(region.size.x, self.bottom_size.x),
+            top: 0,
+            bottom: 0,
+        };
+        bottom.paint(
+            Region {
+                origin: region.origin + UVec2::new(0, self.top_size.y + self.separation),
+                size: UVec2::new(region.size.x, self.bottom_size.y),
+            },
+            scene,
+        );
+    }
+}

@@ -53,9 +53,7 @@ impl Player {
             light: Light::new(Vec3::ZERO, 5000.0, Vec3::new(1.0, 1.0, 1.0)),
         }));
 
-        systems
-            .render
-            .add_renderable(player.clone() as Arc<Mutex<dyn Renderable>>);
+        systems.render.add(player.clone());
 
         Ok(player)
     }

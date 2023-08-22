@@ -1,10 +1,10 @@
 use glam::Vec3;
 
-pub mod gather;
+pub mod interact;
 pub mod render;
 
 pub struct Systems<'a> {
-    pub gather: &'a mut gather::System,
+    pub interact: &'a mut interact::System,
     pub render: &'a mut render::System,
 }
 

@@ -1,3 +1,4 @@
 pub mod components;
-pub mod gather;
+pub mod craft;
+pub mod interact;
 pub mod inventory;

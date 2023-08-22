@@ -337,8 +337,9 @@ impl System {
         &self.texture
     }
 
-    pub fn add_renderable(&mut self, renderable: Arc<Mutex<dyn Renderable>>) {
-        self.renderables.push(Arc::downgrade(&renderable));
+    pub fn add<T: Renderable + Sized + 'static>(&mut self, renderable: Arc<Mutex<T>>) {
+        self.renderables
+            .push(Arc::downgrade(&(renderable as Arc<Mutex<dyn Renderable>>)));
     }
 }
 

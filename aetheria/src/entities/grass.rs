@@ -31,9 +31,7 @@ impl Grass {
             .set_transform(transform.clone())
             .build()?;
         let grass = Arc::new(Mutex::new(Self { transform, grass }));
-        systems
-            .render
-            .add_renderable(grass.clone() as Arc<Mutex<dyn Renderable>>);
+        systems.render.add(grass.clone());
         Ok(grass)
     }
 }

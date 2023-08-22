@@ -12,3 +12,6 @@ pub use sun::Sun;
 
 mod tree;
 pub use tree::Tree;
+
+mod furnace;
+pub use furnace::Furnace;
