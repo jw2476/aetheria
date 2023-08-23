@@ -15,3 +15,6 @@ pub use tree::Tree;
 
 mod furnace;
 pub use furnace::Furnace;
+
+mod crafting_bench;
+pub use crafting_bench::CraftingBench;

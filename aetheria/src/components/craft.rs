@@ -2,35 +2,12 @@ use common::item::ItemStack;
 
 use super::components::{Container, HAlign, Padding, Text, VList, VPair};
 use crate::{
-    data::inventory::Inventory,
+    data::{inventory::Inventory, Recipe, Data},
     input::Mouse,
     ui::{self, Element},
 };
 use glam::Vec4;
 use std::{rc::Rc, ops::{Deref, DerefMut}};
-
-#[derive(Clone, Debug)]
-pub struct Recipe {
-    pub ingredients: Vec<ItemStack>,
-    pub outputs: Vec<ItemStack>,
-}
-
-impl Recipe {
-    pub fn has_ingredients(&self, inventory: &Inventory) -> bool {
-        self
-            .ingredients
-            .iter()
-            .map(|ingredient| {
-                ingredient.amount
-                    <= inventory
-                        .get_items()
-                        .iter()
-                        .find(|stack| stack.item == ingredient.item)
-                        .map(|stack| stack.amount)
-                        .unwrap_or(0)
-            }).all(|x| x)
-    }
-}
 
 pub struct Button<'a, H: Handler> {
     component: Container<Padding<Text>>,
@@ -85,24 +62,26 @@ impl<H: Handler> Element for Button<'_, H> {
 
 pub struct CraftButtonHandler<'a> {
     recipe: Recipe,
-    inventory: &'a mut Inventory
+    data: &'a mut Data
 }
 
 impl Handler for CraftButtonHandler<'_> {
     fn handle(&mut self) {
-        if !self.recipe.has_ingredients(self.inventory) { return; }
+        if !self.recipe.has_ingredients(&self.data.inventory) { return; }
 
-        self.recipe.ingredients.iter().for_each(|stack| self.inventory.remove(*stack));
-        self.recipe.outputs.iter().for_each(|stack| self.inventory.add(*stack));
+        self.recipe.ingredients.iter().for_each(|stack| self.data.inventory.remove(*stack));
+        self.recipe.outputs.iter().for_each(|stack| self.data.inventory.add(*stack));
+
+        self.data.current_recipe = None;
     }
 }
 
 pub type Component<'a> = Container<Padding<VPair<VList<Text>, Button<'a, CraftButtonHandler<'a>>>>>;
 
 impl<'a> Component<'a> {
-    pub fn new(inventory: &'a mut Inventory, recipe: Recipe, mouse: &'a Mouse) -> Self {
+    pub fn new(data: &'a mut Data, mouse: &'a Mouse) -> Option<Self> {
         let mut text = Vec::new();
-        let color = if recipe.has_ingredients(inventory) {
+        let color = if data.current_recipe.as_ref()?.has_ingredients(&data.inventory) {
             ui::color::get_success()
         } else {
             ui::color::get_highlight()
@@ -112,8 +91,8 @@ impl<'a> Component<'a> {
             color,
             content: "Ingredients".to_owned(),
         });
-        recipe.ingredients.iter().for_each(|ingredient| {
-            let inventory_amount = inventory
+        data.current_recipe.as_ref()?.ingredients.iter().for_each(|ingredient| {
+            let inventory_amount = data.inventory
                 .get_items()
                 .iter()
                 .find(|stack| stack.item == ingredient.item)
@@ -142,7 +121,7 @@ impl<'a> Component<'a> {
             color: ui::color::get_highlight(),
             content: "Outputs".to_owned(),
         });
-        recipe.outputs.iter().for_each(|output| {
+        data.current_recipe.as_ref()?.outputs.iter().for_each(|output| {
             text.push(Text {
                 color: ui::color::get_highlight(),
                 content: format!("{}", output),
@@ -155,16 +134,17 @@ impl<'a> Component<'a> {
             align: HAlign::Left,
         };
 
-        let handler = CraftButtonHandler { recipe: recipe.clone(), inventory };
+        let handler = CraftButtonHandler { recipe: data.current_recipe.clone()?, data };
         let button = Button::new(mouse, "Craft", handler);
 
         let pair = VPair::new(text, button, HAlign::Center, 6);
 
-        Self {
+        Some(Self {
             child: Padding::new_uniform(pair, 2),
             color: ui::color::get_background(),
             border_color: ui::color::get_highlight(),
             border_radius: 1,
-        }
+        })
     }
 }
+

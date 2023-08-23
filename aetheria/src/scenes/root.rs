@@ -9,7 +9,7 @@ use glam::{Quat, Vec2, Vec3};
 
 use crate::{
     camera::Camera,
-    entities::{Furnace, Grass, Player, Sun},
+    entities::{Furnace, Grass, Player, Sun, CraftingBench},
     input::{Keyboard, Mouse},
     renderer::Renderer,
     socket::Socket,
@@ -27,6 +27,7 @@ pub struct RootScene {
     pub trees: Trees,
     pub fireflies: Fireflies,
     pub furnace: Arc<Mutex<Furnace>>,
+    pub crafting_bench: Arc<Mutex<CraftingBench>>
 }
 
 impl RootScene {
@@ -60,6 +61,7 @@ impl RootScene {
             },
         )?;
 
+        let crafting_bench = CraftingBench::new(renderer, systems, mesh_registry, Transform { translation: Vec3::new(100.0, 0.0, 30.0), rotation: Quat::IDENTITY, scale: Vec3::new(0.1, 0.1, 0.1) })?;
         Ok(Self {
             player,
             sun,
@@ -67,6 +69,7 @@ impl RootScene {
             trees,
             fireflies,
             furnace,
+            crafting_bench
         })
         }
 

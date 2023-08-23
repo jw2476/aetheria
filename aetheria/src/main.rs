@@ -52,7 +52,7 @@ use winit::{
 };
 
 use crate::{
-    components::craft::{self, Recipe},
+    components::craft,
     data::{inventory::Inventory, Data},
     entities::{Player, Tree},
     renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
@@ -122,6 +122,7 @@ fn main() {
 
     let mut data = Data {
         inventory: Inventory::new(socket.clone()),
+        current_recipe: None
     };
 
     let ui_pass = Arc::new(Mutex::new(
@@ -280,37 +281,10 @@ fn main() {
                     .unwrap()
                     .frame_finished(&camera, &keyboard, &mut scene, &mut data);
 
-                let mut craft_ui = craft::Component::new(
-                    &mut data.inventory,
-                    Recipe {
-                        ingredients: vec![
-                            ItemStack {
-                                item: Item::Wood,
-                                amount: 3,
-                            },
-                            ItemStack {
-                                item: Item::Fireglow,
-                                amount: 2,
-                            },
-                        ],
-                        outputs: vec![ItemStack {
-                            item: Item::Lamp,
-                            amount: 1,
-                        }],
-                    },
-                    &mouse,
-                );
-                let size = craft_ui.layout(SizeConstraints {
-                    min: UVec2::ZERO,
-                    max: UVec2::new(480, 270),
-                });
-                craft_ui.paint(
-                    Region {
-                        origin: UVec2::ZERO,
-                        size,
-                    },
-                    &mut scene,
-                );
+                if let Some(mut component) = craft::Component::new(&mut data, &mouse) {
+                    let size = component.layout(SizeConstraints { min: UVec2::new(0, 0), max: UVec2::new(480, 270) });
+                    component.paint(Region { origin: UVec2::new(0, 0), size }, &mut scene)
+                }
 
                 if inventory_open {
                     let mut inventory_window =
