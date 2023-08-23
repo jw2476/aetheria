@@ -27,5 +27,6 @@ impl Recipe {
 
 pub struct Data {
     pub inventory: inventory::Inventory,
-    pub current_recipe: Option<Recipe>
+    pub current_recipe: Option<Recipe>,
+    pub recipe_selections: Option<Vec<Recipe>>
 }

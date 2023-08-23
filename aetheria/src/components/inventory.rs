@@ -15,7 +15,7 @@ impl Component {
             .iter()
             .map(|stack| Text {
                 color: ui::color::get_highlight(),
-                content: format!("{:?} x{}", stack.item, stack.amount),
+                content: format!("{}", stack),
             })
             .collect::<Vec<Text>>();
         let vlist = VList {

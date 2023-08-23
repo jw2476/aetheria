@@ -50,9 +50,15 @@ impl Interactable for CraftingBench {
     }
 
     fn interact(&mut self, data: &mut Data) {
-         data.current_recipe = Some(Recipe {
-             ingredients: vec![ItemStack { item: Item::Wood, amount: 3 }, ItemStack { item: Item::Fireglow, amount: 2 }],
-             outputs: vec![ItemStack { item: Item::Lamp, amount: 1 }]
-         }) 
+         data.recipe_selections = Some(vec![
+            Recipe {
+                ingredients: vec![ItemStack { item: Item::Wood, amount: 3 }, ItemStack { item: Item::Fireglow, amount: 2 }],
+                outputs: vec![ItemStack { item: Item::Lamp, amount: 1 }]
+            },
+            Recipe {
+                ingredients: vec![ItemStack { item: Item::Wood, amount: 2 }, ItemStack { item: Item::CopperIngot, amount: 2 }],
+                outputs: vec![ItemStack { item: Item::CopperSword, amount: 1 }]
+            }
+         ]) 
     }
 }

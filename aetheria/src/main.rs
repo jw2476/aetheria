@@ -52,7 +52,7 @@ use winit::{
 };
 
 use crate::{
-    components::craft,
+    components::{craft, recipe_selector},
     data::{inventory::Inventory, Data},
     entities::{Player, Tree},
     renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
@@ -61,6 +61,8 @@ use crate::{
     systems::{interact, render, Systems},
     ui::{Element, Rectangle, Region, SizeConstraints, UIPass},
 };
+
+use dialog::DialogBox;
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -82,9 +84,11 @@ const CAMERA_SENSITIVITY: f32 = 250.0;
 fn main() {
     tracing_subscriber::fmt::init();
 
-    let mut ip = String::new();
-    println!("Enter server IP: ");
-    std::io::stdin().read_line(&mut ip).unwrap();
+    let mut ip = dialog::Input::new("Enter Server IP:")
+        .title("IP")
+        .show()
+        .expect("Failed to show IP dialog box")
+        .unwrap_or("".to_owned());
 
     if ip.trim().is_empty() {
         ip = "127.0.0.1".to_owned();
@@ -94,9 +98,21 @@ fn main() {
     let socket: Arc<Socket> = Arc::new(UdpSocket::bind("[::]:0").unwrap().into());
     socket.connect(remote).unwrap();
     socket.set_nonblocking(true).unwrap();
-    let mut username = String::new();
-    println!("Enter your username: ");
-    std::io::stdin().read_line(&mut username).unwrap();
+
+    let username = dialog::Input::new("Enter username:")
+        .title("Username")
+        .show()
+        .expect("Failed to show username dialog box");
+
+    if username.is_none() || username.as_ref().unwrap().trim().is_empty() {
+        dialog::Message::new("Username cannot be empty")
+            .title("Username error")
+            .show()
+            .expect("Failed to show error dialog box");
+
+        return
+    }
+    let username = username.unwrap();
 
     let login = net::server::Packet::Login(net::server::Login {
         username: username.trim().to_owned(),
@@ -122,7 +138,8 @@ fn main() {
 
     let mut data = Data {
         inventory: Inventory::new(socket.clone()),
-        current_recipe: None
+        current_recipe: None,
+        recipe_selections: None
     };
 
     let ui_pass = Arc::new(Mutex::new(
@@ -286,6 +303,11 @@ fn main() {
                     component.paint(Region { origin: UVec2::new(0, 0), size }, &mut scene)
                 }
 
+                if let Some(mut component) = recipe_selector::Component::new(&mut data, &mouse) {
+                    let size = component.layout(SizeConstraints { min: UVec2::new(0, 0), max: UVec2::new(480, 270) });
+                    component.paint(Region { origin: UVec2::new(0, 0), size }, &mut scene)
+                }
+
                 if inventory_open {
                     let mut inventory_window =
                         components::inventory::Component::new(&data.inventory);
@@ -295,7 +317,7 @@ fn main() {
                     });
                     inventory_window.paint(
                         Region {
-                            origin: UVec2::new(0, 0),
+                            origin: UVec2::new(480 - (size.x + 2), 270 - (size.y + 2)),
                             size,
                         },
                         &mut scene,

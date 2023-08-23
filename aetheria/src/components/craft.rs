@@ -1,82 +1,41 @@
 use common::item::ItemStack;
 
-use super::components::{Container, HAlign, Padding, Text, VList, VPair};
+use super::components::{Container, HAlign, Padding, Text, VList, VPair, Handler, Button, HPair, VAlign};
 use crate::{
     data::{inventory::Inventory, Recipe, Data},
     input::Mouse,
     ui::{self, Element},
 };
 use glam::Vec4;
-use std::{rc::Rc, ops::{Deref, DerefMut}};
-
-pub struct Button<'a, H: Handler> {
-    component: Container<Padding<Text>>,
-    mouse: &'a Mouse,
-    on_click: H
-}
-
-pub trait Handler {
-    fn handle(&mut self);
-}
-
-impl<'a, H: Handler> Button<'a, H> {
-    pub fn new(mouse: &'a Mouse, text: &str, on_click: H) -> Self {
-        Self {
-            component: Container {
-                child: Padding::new_uniform(
-                    Text {
-                        color: ui::color::get_highlight(),
-                        content: text.to_owned(),
-                    },
-                    3,
-                ),
-                color: ui::color::get_background(),
-                border_color: ui::color::get_highlight(),
-                border_radius: 1,
-            },
-            mouse,
-            on_click
-        }
-    }
-}
-
-impl<H: Handler> Element for Button<'_, H> {
-    fn layout(&mut self, constraint: ui::SizeConstraints) -> glam::UVec2 {
-        self.component.layout(constraint)
-    }
-
-    fn paint(&mut self, region: ui::Region, scene: &mut Vec<ui::Rectangle>) {
-        if ui::input::hovering(self.mouse, &region) {
-            self.component.color = Vec4::ONE;
-        } else {
-            self.component.color = ui::color::get_background();
-        }
-
-        if ui::input::clicked(self.mouse, &region, winit::event::MouseButton::Left) {
-            self.on_click.handle()
-        }
-
-        self.component.paint(region, scene)
-    }
-}
+use std::sync::{Arc, Mutex};
 
 pub struct CraftButtonHandler<'a> {
     recipe: Recipe,
-    data: &'a mut Data
+    data: Arc<Mutex<&'a mut Data>>
 }
 
 impl Handler for CraftButtonHandler<'_> {
     fn handle(&mut self) {
-        if !self.recipe.has_ingredients(&self.data.inventory) { return; }
+        if !self.recipe.has_ingredients(&self.data.lock().unwrap().inventory) { return; }
 
-        self.recipe.ingredients.iter().for_each(|stack| self.data.inventory.remove(*stack));
-        self.recipe.outputs.iter().for_each(|stack| self.data.inventory.add(*stack));
+        self.recipe.ingredients.iter().for_each(|stack| self.data.lock().unwrap().inventory.remove(*stack));
+        self.recipe.outputs.iter().for_each(|stack| self.data.lock().unwrap().inventory.add(*stack));
 
-        self.data.current_recipe = None;
+        self.data.lock().unwrap().current_recipe = None;
     }
 }
 
-pub type Component<'a> = Container<Padding<VPair<VList<Text>, Button<'a, CraftButtonHandler<'a>>>>>;
+pub struct CloseHandler<'a> {
+    data: Arc<Mutex<&'a mut Data>>
+}
+
+impl Handler for CloseHandler<'_> {
+    fn handle(&mut self) {
+        self.data.lock().unwrap().current_recipe = None
+    }
+}
+
+pub type Component<'a> = Container<Padding<VPair<VList<Text>, HPair<Button<'a, CloseHandler<'a>>, Button<'a, CraftButtonHandler<'a>>>>>>;
 
 impl<'a> Component<'a> {
     pub fn new(data: &'a mut Data, mouse: &'a Mouse) -> Option<Self> {
@@ -134,10 +93,14 @@ impl<'a> Component<'a> {
             align: HAlign::Left,
         };
 
-        let handler = CraftButtonHandler { recipe: data.current_recipe.clone()?, data };
-        let button = Button::new(mouse, "Craft", handler);
+        let recipe = data.current_recipe.clone()?;
+        let data_mutex = Arc::new(Mutex::new(data));
+        let craft_handler = CraftButtonHandler { recipe, data: data_mutex.clone() };
+        let craft_button = Button::new(mouse, "Craft", craft_handler);
+        let close_handler = CloseHandler { data: data_mutex };
+        let close_button = Button::new(mouse, "Cancel", close_handler);
 
-        let pair = VPair::new(text, button, HAlign::Center, 6);
+        let pair = VPair::new(text, HPair::new(close_button, craft_button, VAlign::Top, 4), HAlign::Center, 6);
 
         Some(Self {
             child: Padding::new_uniform(pair, 2),

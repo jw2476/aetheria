@@ -18,7 +18,7 @@ use crate::{
     transform::Transform,
 };
 
-use super::{Fireflies, Trees};
+use super::{Fireflies, Trees, Ores};
 
 pub struct RootScene {
     pub player: Arc<Mutex<Player>>,
@@ -27,7 +27,8 @@ pub struct RootScene {
     pub trees: Trees,
     pub fireflies: Fireflies,
     pub furnace: Arc<Mutex<Furnace>>,
-    pub crafting_bench: Arc<Mutex<CraftingBench>>
+    pub crafting_bench: Arc<Mutex<CraftingBench>>,
+    pub ores: Ores
 }
 
 impl RootScene {
@@ -61,6 +62,8 @@ impl RootScene {
             },
         )?;
 
+        let ores = Ores::new(renderer, systems, mesh_registry)?;
+
         let crafting_bench = CraftingBench::new(renderer, systems, mesh_registry, Transform { translation: Vec3::new(100.0, 0.0, 30.0), rotation: Quat::IDENTITY, scale: Vec3::new(0.1, 0.1, 0.1) })?;
         Ok(Self {
             player,
@@ -69,7 +72,8 @@ impl RootScene {
             trees,
             fireflies,
             furnace,
-            crafting_bench
+            crafting_bench,
+            ores
         })
         }
 

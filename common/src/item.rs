@@ -6,6 +6,9 @@ pub enum Item {
     Wood,
     Fireglow,
     Lamp,
+    CopperOre,
+    CopperIngot,
+    CopperSword
 }
 
 impl Display for Item {
@@ -17,6 +20,9 @@ impl Display for Item {
                 Self::Wood => "Wood",
                 Self::Fireglow => "Fireglow",
                 Self::Lamp => "Lamp",
+                Self::CopperOre => "Copper Ore",
+                Self::CopperIngot => "Copper Ingot",
+                Self::CopperSword => "Copper Sword"
             }
         )
     }

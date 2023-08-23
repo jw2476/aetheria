@@ -1,4 +1,4 @@
-use crate::ui::{Element, Rectangle, Region, SizeConstraints};
+use crate::{ui::{Element, Rectangle, Region, SizeConstraints, self}, input::Mouse};
 use glam::{UVec2, Vec4};
 
 #[derive(Clone, Debug)]
@@ -258,7 +258,7 @@ static CHARACTER_MAP: [(char, u32); 38] = [
     ('X', 5),
     ('Y', 5),
     ('Z', 5),
-    (' ', 3),
+    (' ', 5),
     ('0', 5),
     ('1', 3),
     ('2', 4),
@@ -468,5 +468,56 @@ impl<T: Element, B: Element> Element for VPair<T, B> {
             );
         }
 
+    }
+}
+
+pub struct Button<'a, H: Handler> {
+    component: Container<Padding<Text>>,
+    mouse: &'a Mouse,
+    on_click: H
+}
+
+pub trait Handler {
+    fn handle(&mut self);
+}
+
+impl<'a, H: Handler> Button<'a, H> {
+    pub fn new(mouse: &'a Mouse, text: &str, on_click: H) -> Self {
+        Self {
+            component: Container {
+                child: Padding::new_uniform(
+                    Text {
+                        color: ui::color::get_highlight(),
+                        content: text.to_owned(),
+                    },
+                    3,
+                ),
+                color: ui::color::get_background(),
+                border_color: ui::color::get_highlight(),
+                border_radius: 1,
+            },
+            mouse,
+            on_click
+        }
+    }
+}
+
+impl<H: Handler> Element for Button<'_, H> {
+    fn layout(&mut self, constraint: ui::SizeConstraints) -> glam::UVec2 {
+        self.component.layout(constraint)
+    }
+
+    fn paint(&mut self, region: ui::Region, scene: &mut Vec<ui::Rectangle>) {
+        if ui::input::hovering(self.mouse, &region) {
+            self.component.color = Vec4::ONE;
+        } else {
+            self.component.color = ui::color::get_background();
+        }
+
+        if ui::input::clicked(self.mouse, &region, winit::event::MouseButton::Left) {
+            self.on_click.handle()
+        }
+
+        self.component.paint(region, scene)
     }
 }
