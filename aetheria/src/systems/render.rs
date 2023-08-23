@@ -15,6 +15,7 @@ use crate::{
     renderer::{Pass, Renderer, RENDER_HEIGHT, RENDER_WIDTH},
     transform::Transform,
     Camera, Time,
+    data::Data
 };
 
 pub struct RenderObjectBuilder<'a> {
@@ -139,6 +140,10 @@ impl Light {
     }
 }
 
+pub trait Emissive {
+    fn get_lights(&self, data: &Data) -> Vec<Light>;
+}
+
 pub struct System {
     texture: Texture,
 
@@ -152,6 +157,7 @@ pub struct System {
     pipeline: compute::Pipeline,
 
     renderables: Vec<Weak<Mutex<dyn Renderable>>>,
+    lights: Vec<Weak<Mutex<dyn Emissive>>>,
 }
 
 impl System {
@@ -209,6 +215,7 @@ impl System {
             geometry_set,
             pipeline,
             renderables: Vec::new(),
+            lights: Vec::new(),
         })
     }
 
@@ -230,18 +237,20 @@ impl System {
         return (min, max);
     }
 
-    pub fn set_geometry(
-        &self,
-        renderer: &Renderer,
-        mesh_registry: &MeshRegistry,
-        lights: &[Light],
-    ) {
+    pub fn set_geometry(&self, data: &Data, renderer: &Renderer, mesh_registry: &MeshRegistry) {
         let objects = self
             .renderables
             .iter()
             .filter_map(|renderable| renderable.upgrade())
             .flat_map(|renderable| renderable.lock().unwrap().get_objects().clone())
             .collect::<Vec<RenderObject>>();
+
+        let lights = self
+            .lights
+            .iter()
+            .filter_map(|emissive| emissive.upgrade())
+            .flat_map(|emissive| emissive.lock().unwrap().get_lights(data).clone())
+            .collect::<Vec<Light>>();
 
         let mut meshes: Vec<MeshData> = Vec::new();
         let mut vertices: Vec<Vertex> = Vec::new();
@@ -311,7 +320,7 @@ impl System {
         )
         .unwrap();
 
-        let mut light_data = cast_slice::<Light, u8>(lights).to_vec();
+        let mut light_data = cast_slice::<Light, u8>(&lights).to_vec();
         let mut light_buffer = cast_slice::<i32, u8>(&[lights.len() as i32, 0, 0, 0]).to_vec();
         light_buffer.append(&mut light_data);
         let light_buffer = Buffer::new(
@@ -337,8 +346,14 @@ impl System {
         &self.texture
     }
 
-    pub fn add_renderable(&mut self, renderable: Arc<Mutex<dyn Renderable>>) {
-        self.renderables.push(Arc::downgrade(&renderable));
+    pub fn add<T: Renderable + Sized + 'static>(&mut self, renderable: Arc<Mutex<T>>) {
+        self.renderables
+            .push(Arc::downgrade(&(renderable as Arc<Mutex<dyn Renderable>>)));
+    }
+
+    pub fn add_light<T: Emissive + Sized + 'static>(&mut self, emissive: Arc<Mutex<T>>) {
+        self.lights
+            .push(Arc::downgrade(&(emissive as Arc<Mutex<dyn Emissive>>)));
     }
 }
 

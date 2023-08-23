@@ -1,4 +1,4 @@
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Default)]
@@ -54,6 +54,7 @@ pub struct Mouse {
     pub position: Vec2,
     down: HashSet<winit::event::MouseButton>,
     pressed: HashSet<winit::event::MouseButton>,
+    scale_factor: Vec2,
 }
 
 impl Mouse {
@@ -84,6 +85,11 @@ impl Mouse {
             if let winit::event::WindowEvent::CursorMoved { position, .. } = event {
                 self.position = Vec2::new(position.x as f32, position.y as f32);
             }
+
+            if let winit::event::WindowEvent::Resized(size) = event {
+                self.scale_factor =
+                    Vec2::new(size.width as f32 / 480.0, size.height as f32 / 270.0);
+            }
         }
 
         if let winit::event::Event::DeviceEvent { event, .. } = event {
@@ -92,6 +98,13 @@ impl Mouse {
                 self.delta.y = delta.1 as f32;
             }
         }
+    }
+
+    pub fn get_position(&self) -> UVec2 {
+        UVec2::new(
+            (self.position.x / self.scale_factor.x) as u32,
+            (self.position.y / self.scale_factor.y) as u32,
+        )
     }
 
     pub fn frame_finished(&mut self) {

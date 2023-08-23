@@ -26,3 +26,4 @@ anyhow = "1.0.71"
 num-traits = "0.2.15"
 postcard = { version = "1.0.6", features = ["use-std"] }
 thiserror = "1.0.44"
+dialog = "0.3.0"

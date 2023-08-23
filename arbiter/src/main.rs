@@ -4,7 +4,7 @@
 #![warn(clippy::expect_used)]
 
 use anyhow::Result;
-use common::{item::Inventory, net};
+use common::{item::ItemStack, net};
 use glam::Vec3;
 use std::{
     collections::{
@@ -18,6 +18,39 @@ use std::{
     time::Instant,
 };
 use tracing::{error, info, warn};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Inventory {
+    inventory: Vec<ItemStack>,
+}
+
+impl Inventory {
+    pub fn new() -> Self {
+        Self {
+            inventory: Vec::new(),
+        }
+    }
+
+    pub fn add(&mut self, stack: ItemStack) {
+        if let Some(existing) = self.inventory.iter_mut().find(|s| s.item == stack.item) {
+            existing.amount += stack.amount;
+        } else {
+            self.inventory.push(stack);
+        }
+    }
+
+    pub fn set(&mut self, stack: ItemStack) {
+        if let Some(existing) = self.inventory.iter_mut().find(|s| s.item == stack.item) {
+            existing.amount = stack.amount;
+        } else {
+            self.inventory.push(stack);
+        }
+    }
+
+    pub fn get_items(&self) -> &[ItemStack] {
+        &self.inventory
+    }
+}
 
 #[derive(Clone)]
 struct Player {
@@ -221,11 +254,18 @@ fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAd
     let player = server.offline.take(&packet.username).unwrap_or(Player {
         position: Vec3::ZERO,
         username: packet.username.clone(),
-        inventory: Inventory::new()
+        inventory: Inventory::new(),
     });
-    
-    server.online.insert(Connection { last_heartbeat: Instant::now(), addr, player });
-    let connection = server.online.get(&addr).expect("Failed to get connection that was just inserted, this is very bad");
+
+    server.online.insert(Connection {
+        last_heartbeat: Instant::now(),
+        addr,
+        player,
+    });
+    let connection = server
+        .online
+        .get(&addr)
+        .expect("Failed to get connection that was just inserted, this is very bad");
 
     for peer in server
         .online

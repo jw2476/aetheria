@@ -6,3 +6,6 @@ pub use root::RootScene;
 
 mod trees;
 pub use trees::Trees;
+
+mod ores;
+pub use ores::Ores;

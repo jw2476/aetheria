@@ -262,7 +262,7 @@ vec3 per_pixel(Ray incoming) {
 
 		HitPayload hit2 = trace_ray(outgoing, light.position);
 		bool lightVisible = !hit2.hit || (hit2.t > distance);
-		diffuse += light.color * lightContribution * float(lightVisible);
+		diffuse += light.color * lightContribution * (0.4 + 0.8 * float(lightVisible));
 	}
 
 	if (length(diffuse) < 0.05) { diffuse = AMBIENT; }
@@ -272,6 +272,7 @@ vec3 per_pixel(Ray incoming) {
 	return color;
 }
 
+float ZOOM = 1 / 0.8;
 
 void main() {
  	vec2 pixelPos = vec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y) - viewport/2;
@@ -279,7 +280,7 @@ void main() {
 	ray.direction = normalize(camera.target - camera.eye);
 	vec3 u = normalize(cross(ray.direction, vec3(0, 1, 0)));
 	vec3 v = normalize(cross(ray.direction, u));
-	ray.origin = camera.eye + u*pixelPos.x + v*pixelPos.y;
+	ray.origin = camera.eye + u*pixelPos.x * ZOOM + v*pixelPos.y * ZOOM;
 	
 	vec3 color = per_pixel(ray);
 	vec4 outputColor = vec4(color, 1.0);

@@ -9,7 +9,7 @@ use glam::{Quat, Vec2, Vec3};
 
 use crate::{
     camera::Camera,
-    entities::{Grass, Player, Sun},
+    entities::{Furnace, Grass, Player, Sun, CraftingBench},
     input::{Keyboard, Mouse},
     renderer::Renderer,
     socket::Socket,
@@ -18,7 +18,7 @@ use crate::{
     transform::Transform,
 };
 
-use super::{Fireflies, Trees};
+use super::{Fireflies, Trees, Ores};
 
 pub struct RootScene {
     pub player: Arc<Mutex<Player>>,
@@ -26,6 +26,9 @@ pub struct RootScene {
     pub grass: Arc<Mutex<Grass>>,
     pub trees: Trees,
     pub fireflies: Fireflies,
+    pub furnace: Arc<Mutex<Furnace>>,
+    pub crafting_bench: Arc<Mutex<CraftingBench>>,
+    pub ores: Ores
 }
 
 impl RootScene {
@@ -42,31 +45,37 @@ impl RootScene {
             };
             Player::new(renderer, systems, mesh_registry, transform).unwrap()
         };
-        let sun = Sun::new(Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
+        let sun = Sun::new(systems, Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
         let grass = Grass::new(renderer, systems, mesh_registry, Transform::IDENTITY).unwrap();
 
         let trees = Trees::new(renderer, systems, mesh_registry)?;
         let fireflies = Fireflies::new(renderer, systems, mesh_registry)?;
 
+        let furnace = Furnace::new(
+            renderer,
+            systems,
+            mesh_registry,
+            Transform {
+                translation: Vec3::new(100.0, 0.0, 100.0),
+                scale: Vec3::new(0.2, 0.2, 0.2),
+                ..Default::default()
+            },
+        )?;
+
+        let ores = Ores::new(renderer, systems, mesh_registry)?;
+
+        let crafting_bench = CraftingBench::new(renderer, systems, mesh_registry, Transform { translation: Vec3::new(100.0, 0.0, 30.0), rotation: Quat::IDENTITY, scale: Vec3::new(0.1, 0.1, 0.1) })?;
         Ok(Self {
             player,
             sun,
             grass,
             trees,
             fireflies,
+            furnace,
+            crafting_bench,
+            ores
         })
-    }
-
-    pub fn get_lights(&self) -> Vec<Light> {
-        let mut data = self
-            .fireflies
-            .iter()
-            .map(|firefly| *firefly.lock().unwrap().as_ref())
-            .collect::<Vec<Light>>();
-        data.push(self.sun.lock().unwrap().light);
-        data.push(self.player.lock().unwrap().light);
-        data
-    }
+        }
 
     pub fn frame_finished(
         &mut self,

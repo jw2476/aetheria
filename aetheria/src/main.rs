@@ -1,5 +1,6 @@
 #![feature(let_chains)]
 #![feature(trivial_bounds)]
+#![feature(associated_type_defaults)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
@@ -7,6 +8,7 @@ extern crate core;
 
 mod camera;
 mod components;
+mod data;
 mod entities;
 mod input;
 mod macros;
@@ -24,7 +26,10 @@ use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry, TextureRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
-use common::{item::Inventory, net, Observable, Observer};
+use common::{
+    item::{Item, ItemStack},
+    net, Observable, Observer,
+};
 use glam::{IVec2, Quat, UVec2, Vec2, Vec3, Vec4};
 use input::{Keyboard, Mouse};
 use num_traits::FromPrimitive;
@@ -47,13 +52,17 @@ use winit::{
 };
 
 use crate::{
+    components::{craft, recipe_selector},
+    data::{inventory::Inventory, Data},
     entities::{Player, Tree},
     renderer::{Renderer, RENDER_HEIGHT, RENDER_WIDTH},
     scenes::RootScene,
     socket::Socket,
-    systems::{gather, render, Systems},
-    ui::{Element, Rectangle, Region, SizeConstraints, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
+    systems::{interact, render, Systems},
+    ui::{Element, Rectangle, Region, SizeConstraints, UIPass},
 };
+
+use dialog::DialogBox;
 
 struct Indices(Vec<u32>);
 impl From<Indices> for Vec<u8> {
@@ -72,49 +81,14 @@ fn create_window() -> (winit::event_loop::EventLoop<()>, winit::window::Window) 
 
 const CAMERA_SENSITIVITY: f32 = 250.0;
 
-struct InventoryUpdater {
-    socket: Arc<Socket>,
-}
-
-impl InventoryUpdater {
-    pub fn new(socket: Arc<Socket>) -> Self {
-        Self { socket }
-    }
-}
-
-impl Observer<Inventory> for InventoryUpdater {
-    fn notify(&self, old: &Inventory, new: &Inventory) {
-        let old = old.get_items();
-        let new = new.get_items();
-
-        if old.len() == new.len() {
-            // Either no change or change in quantity
-            old.iter()
-                .zip(new.iter())
-                .filter(|(old, new)| old.amount != new.amount)
-                .for_each(|(_, &stack)| {
-                    let packet =
-                        net::server::Packet::ModifyInventory(net::server::ModifyInventory {
-                            stack,
-                        });
-                    self.socket.send(&packet).unwrap()
-                });
-        } else {
-            // New item stack, will always be last for now
-            let packet = net::server::Packet::ModifyInventory(net::server::ModifyInventory {
-                stack: *new.last().unwrap(),
-            });
-            self.socket.send(&packet).unwrap()
-        }
-    }
-}
-
 fn main() {
     tracing_subscriber::fmt::init();
 
-    let mut ip = String::new();
-    println!("Enter server IP: ");
-    std::io::stdin().read_line(&mut ip).unwrap();
+    let mut ip = dialog::Input::new("Enter Server IP:")
+        .title("IP")
+        .show()
+        .expect("Failed to show IP dialog box")
+        .unwrap_or("".to_owned());
 
     if ip.trim().is_empty() {
         ip = "127.0.0.1".to_owned();
@@ -124,9 +98,21 @@ fn main() {
     let socket: Arc<Socket> = Arc::new(UdpSocket::bind("[::]:0").unwrap().into());
     socket.connect(remote).unwrap();
     socket.set_nonblocking(true).unwrap();
-    let mut username = String::new();
-    println!("Enter your username: ");
-    std::io::stdin().read_line(&mut username).unwrap();
+
+    let username = dialog::Input::new("Enter username:")
+        .title("Username")
+        .show()
+        .expect("Failed to show username dialog box");
+
+    if username.is_none() || username.as_ref().unwrap().trim().is_empty() {
+        dialog::Message::new("Username cannot be empty")
+            .title("Username error")
+            .show()
+            .expect("Failed to show error dialog box");
+
+        return
+    }
+    let username = username.unwrap();
 
     let login = net::server::Packet::Login(net::server::Login {
         username: username.trim().to_owned(),
@@ -148,11 +134,13 @@ fn main() {
     let render_system = Arc::new(Mutex::new(
         render::System::new(&renderer, &mut shader_registry, &camera, &time).unwrap(),
     ));
-    let gather_system = Arc::new(Mutex::new(gather::System::new()));
+    let interact_system = Arc::new(Mutex::new(interact::System::new()));
 
-    let mut inventory = Observable::new(Inventory::new());
-
-    inventory.register(Box::new(InventoryUpdater::new(socket.clone())));
+    let mut data = Data {
+        inventory: Inventory::new(socket.clone()),
+        current_recipe: None,
+        recipe_selections: None
+    };
 
     let ui_pass = Arc::new(Mutex::new(
         UIPass::new(
@@ -176,13 +164,13 @@ fn main() {
         &mut renderer,
         &mut Systems {
             render: &mut render_system.lock().unwrap(),
-            gather: &mut gather_system.lock().unwrap(),
+            interact: &mut interact_system.lock().unwrap(),
         },
         &mut mesh_registry,
     )
     .expect("Failed to load scene");
 
-    gather_system
+    interact_system
         .lock()
         .unwrap()
         .set_player(root.player.clone());
@@ -202,12 +190,12 @@ fn main() {
         keyboard.on_event(&event);
         mouse.on_event(&event);
 
-        let mut data = [0; 4096];
-        match socket.recv(&mut data) {
+        let mut buf = [0; 4096];
+        match socket.recv(&mut buf) {
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(e) => panic!("{e}"),
             Ok(_) => {
-                let packet: net::client::Packet = postcard::from_bytes(&data).unwrap();
+                let packet: net::client::Packet = postcard::from_bytes(&buf).unwrap();
 
                 match packet {
                     net::client::Packet::SpawnPlayer(packet) => {
@@ -218,7 +206,7 @@ fn main() {
                                 &mut renderer,
                                 &mut Systems {
                                     render: &mut render_system.lock().unwrap(),
-                                    gather: &mut gather_system.lock().unwrap(),
+                                    interact: &mut interact_system.lock().unwrap(),
                                 },
                                 &mut mesh_registry,
                                 Transform {
@@ -250,7 +238,7 @@ fn main() {
                     }
                     net::client::Packet::ModifyInventory(packet) => {
                         info!("Setting {:?} to {}", packet.stack.item, packet.stack.amount);
-                        inventory.run_silent(|inventory| inventory.set(packet.stack));
+                        data.inventory.set(packet.stack);
                     }
                 }
             }
@@ -298,28 +286,38 @@ fn main() {
                 }
 
                 renderer.wait_for_frame();
-                render_system.lock().unwrap().set_geometry(
-                    &renderer,
-                    &mesh_registry,
-                    &root.get_lights(),
-                );
+                render_system
+                    .lock()
+                    .unwrap()
+                    .set_geometry(&data, &renderer, &mesh_registry);
 
                 let mut scene = Vec::new();
-                inventory.run(|inventory| {
-                    gather_system
-                        .lock()
-                        .unwrap()
-                        .frame_finished(&camera, &keyboard, &mut scene, inventory);
-                });
+
+                interact_system
+                    .lock()
+                    .unwrap()
+                    .frame_finished(&camera, &keyboard, &mut scene, &mut data);
+
+                if let Some(mut component) = craft::Component::new(&mut data, &mouse) {
+                    let size = component.layout(SizeConstraints { min: UVec2::new(0, 0), max: UVec2::new(480, 270) });
+                    component.paint(Region { origin: UVec2::new(0, 0), size }, &mut scene)
+                }
+
+                if let Some(mut component) = recipe_selector::Component::new(&mut data, &mouse) {
+                    let size = component.layout(SizeConstraints { min: UVec2::new(0, 0), max: UVec2::new(480, 270) });
+                    component.paint(Region { origin: UVec2::new(0, 0), size }, &mut scene)
+                }
+
                 if inventory_open {
-                    let mut inventory_window = components::inventory::Component::new(&inventory);
+                    let mut inventory_window =
+                        components::inventory::Component::new(&data.inventory);
                     let size = inventory_window.layout(SizeConstraints {
                         min: UVec2::new(0, 0),
                         max: UVec2::new(RENDER_WIDTH, RENDER_HEIGHT),
                     });
                     inventory_window.paint(
                         Region {
-                            origin: UVec2::new(0, 0),
+                            origin: UVec2::new(480 - (size.x + 2), 270 - (size.y + 2)),
                             size,
                         },
                         &mut scene,
@@ -343,6 +341,8 @@ fn main() {
                 camera.frame_finished();
                 mouse.frame_finished();
                 camera.target = root.player.lock().unwrap().get_transform().translation;
+
+                println!("{}", mouse.position);
             }
             _ => (),
         };

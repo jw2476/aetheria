@@ -5,15 +5,16 @@ use assets::MeshRegistry;
 use glam::Vec3;
 
 use crate::{
+    data::{inventory::Inventory, Data},
     renderer::Renderer,
     systems::{
-        gather::Gatherable,
+        interact::Interactable,
         render::{RenderObject, Renderable},
         Named, Positioned, Systems,
     },
     transform::Transform,
 };
-use common::item::{Inventory, Item, ItemStack};
+use common::item::{Item, ItemStack};
 
 pub struct Tree {
     pub transform: Transform,
@@ -47,10 +48,8 @@ impl Tree {
             gathered: false,
         }));
 
-        systems
-            .render
-            .add_renderable(tree.clone() as Arc<Mutex<dyn Renderable>>);
-        systems.gather.add_gatherable(tree.clone());
+        systems.render.add(tree.clone());
+        systems.interact.add(tree.clone());
 
         Ok(tree)
     }
@@ -84,16 +83,16 @@ impl Positioned for Tree {
     }
 }
 
-impl Gatherable for Tree {
-    fn gather(&mut self, inventory: &mut Inventory) {
-        inventory.add(ItemStack {
+impl Interactable for Tree {
+    fn interact(&mut self, data: &mut Data) {
+        data.inventory.add(ItemStack {
             item: Item::Wood,
             amount: 1,
         });
         self.gathered = true;
     }
 
-    fn is_gatherable(&self) -> bool {
+    fn active(&self) -> bool {
         !self.gathered
     }
 }

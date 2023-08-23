@@ -7,16 +7,17 @@ use rand::Rng;
 
 use super::Sun;
 use crate::{
+    data::{inventory::Inventory, Data},
     renderer::Renderer,
     systems::{
-        gather::Gatherable,
-        render::{Light, RenderObject, Renderable, System},
+        interact::Interactable,
+        render::{Emissive, Light, RenderObject, Renderable, System},
         Named, Positioned, Systems,
     },
     time::Time,
     transform::Transform,
 };
-use common::item::{Inventory, Item, ItemStack};
+use common::item::{Item, ItemStack};
 
 const FIREFLY_SPEED: f32 = 60.0;
 
@@ -74,10 +75,9 @@ impl Firefly {
             gathered: false,
         }));
 
-        systems
-            .render
-            .add_renderable(firefly.clone() as Arc<Mutex<dyn Renderable>>);
-        systems.gather.add_gatherable(firefly.clone());
+        systems.render.add(firefly.clone());
+        systems.render.add_light(firefly.clone());
+        systems.interact.add(firefly.clone());
         Ok(firefly)
     }
 
@@ -119,9 +119,9 @@ impl Firefly {
     }
 }
 
-impl AsRef<Light> for Firefly {
-    fn as_ref(&self) -> &Light {
-        &self.light
+impl Emissive for Firefly {
+    fn get_lights(&self, _: &Data) -> Vec<Light> {
+        vec![self.light]
     }
 }
 
@@ -147,16 +147,16 @@ impl Positioned for Firefly {
     }
 }
 
-impl Gatherable for Firefly {
-    fn gather(&mut self, inventory: &mut Inventory) {
-        inventory.add(ItemStack {
+impl Interactable for Firefly {
+    fn interact(&mut self, data: &mut crate::data::Data) {
+        data.inventory.add(ItemStack {
             item: Item::Fireglow,
             amount: 1,
         });
         self.gathered = true;
     }
 
-    fn is_gatherable(&self) -> bool {
+    fn active(&self) -> bool {
         !self.gathered && self.light.strength > 0.0
     }
 }
