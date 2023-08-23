@@ -46,6 +46,16 @@ impl Inventory {
         self.update(stack.item);
     }
 
+    pub fn remove(&mut self, stack: ItemStack) {
+        if let Some(existing) = self.inventory.iter_mut().find(|s| s.item == stack.item) {
+            existing.amount -= stack.amount;
+        } else {
+            self.inventory.push(stack);
+        }
+
+        self.update(stack.item);
+    }
+
     pub fn set(&mut self, stack: ItemStack) {
         if let Some(existing) = self.inventory.iter_mut().find(|s| s.item == stack.item) {
             existing.amount = stack.amount;

@@ -43,7 +43,7 @@ impl RootScene {
             };
             Player::new(renderer, systems, mesh_registry, transform).unwrap()
         };
-        let sun = Sun::new(Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
+        let sun = Sun::new(systems, Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
         let grass = Grass::new(renderer, systems, mesh_registry, Transform::IDENTITY).unwrap();
 
         let trees = Trees::new(renderer, systems, mesh_registry)?;
@@ -68,18 +68,7 @@ impl RootScene {
             fireflies,
             furnace,
         })
-    }
-
-    pub fn get_lights(&self) -> Vec<Light> {
-        let mut data = self
-            .fireflies
-            .iter()
-            .map(|firefly| *firefly.lock().unwrap().as_ref())
-            .collect::<Vec<Light>>();
-        data.push(self.sun.lock().unwrap().light);
-        data.push(self.player.lock().unwrap().light);
-        data
-    }
+        }
 
     pub fn frame_finished(
         &mut self,

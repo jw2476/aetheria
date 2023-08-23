@@ -63,7 +63,7 @@ layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 float INFINITY = 1.0/0.0;
 float EPSILON = 0.000001;
-vec3 AMBIENT = vec3(0.094, 0.094, 0.106);
+vec3 AMBIENT = vec3(0.153, 0.153, 0.165);
 
 vec3 PALETTE[32] = {
 	vec3(0.7451, 0.2902, 0.1843),

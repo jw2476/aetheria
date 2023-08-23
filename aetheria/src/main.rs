@@ -1,5 +1,6 @@
 #![feature(let_chains)]
 #![feature(trivial_bounds)]
+#![feature(associated_type_defaults)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
@@ -25,7 +26,10 @@ use ash::vk;
 use assets::{MeshRegistry, ShaderRegistry, TextureRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
-use common::{item::{Item, ItemStack}, net, Observable, Observer};
+use common::{
+    item::{Item, ItemStack},
+    net, Observable, Observer,
+};
 use glam::{IVec2, Quat, UVec2, Vec2, Vec3, Vec4};
 use input::{Keyboard, Mouse};
 use num_traits::FromPrimitive;
@@ -55,7 +59,7 @@ use crate::{
     scenes::RootScene,
     socket::Socket,
     systems::{interact, render, Systems},
-    ui::{Element, Rectangle, Region, SizeConstraints, UIPass, CHAR_HEIGHT, CHAR_WIDTH},
+    ui::{Element, Rectangle, Region, SizeConstraints, UIPass},
 };
 
 struct Indices(Vec<u32>);
@@ -264,11 +268,10 @@ fn main() {
                 }
 
                 renderer.wait_for_frame();
-                render_system.lock().unwrap().set_geometry(
-                    &renderer,
-                    &mesh_registry,
-                    &root.get_lights(),
-                );
+                render_system
+                    .lock()
+                    .unwrap()
+                    .set_geometry(&data, &renderer, &mesh_registry);
 
                 let mut scene = Vec::new();
 
@@ -277,18 +280,37 @@ fn main() {
                     .unwrap()
                     .frame_finished(&camera, &keyboard, &mut scene, &mut data);
 
-                let mut craft_ui = craft::Component::new(Recipe {
-                    ingredients: vec![ItemStack {
-                        item: Item::Wood,
-                        amount: 3,
-                    }],
-                    outputs: vec![ItemStack {
-                        item: Item::Fireglow,
-                        amount: 2,
-                    }],
+                let mut craft_ui = craft::Component::new(
+                    &mut data.inventory,
+                    Recipe {
+                        ingredients: vec![
+                            ItemStack {
+                                item: Item::Wood,
+                                amount: 3,
+                            },
+                            ItemStack {
+                                item: Item::Fireglow,
+                                amount: 2,
+                            },
+                        ],
+                        outputs: vec![ItemStack {
+                            item: Item::Lamp,
+                            amount: 1,
+                        }],
+                    },
+                    &mouse,
+                );
+                let size = craft_ui.layout(SizeConstraints {
+                    min: UVec2::ZERO,
+                    max: UVec2::new(480, 270),
                 });
-                let size = craft_ui.layout(SizeConstraints { min: UVec2::ZERO, max: UVec2::new(480, 270) });
-                craft_ui.paint(Region { origin: UVec2::ZERO, size }, &mut scene);
+                craft_ui.paint(
+                    Region {
+                        origin: UVec2::ZERO,
+                        size,
+                    },
+                    &mut scene,
+                );
 
                 if inventory_open {
                     let mut inventory_window =
@@ -323,6 +345,8 @@ fn main() {
                 camera.frame_finished();
                 mouse.frame_finished();
                 camera.target = root.player.lock().unwrap().get_transform().translation;
+
+                println!("{}", mouse.position);
             }
             _ => (),
         };

@@ -7,11 +7,9 @@ use vulkan::{
     command, command::TransitionLayoutOptions, compute, Buffer, Image, Pool, Set, SetLayout,
     SetLayoutBuilder, Shader, Texture,
 };
+use winit::event::MouseButton;
 
 use crate::renderer::{Pass, Renderer, RENDER_HEIGHT, RENDER_WIDTH};
-
-pub const CHAR_WIDTH: u32 = 6;
-pub const CHAR_HEIGHT: u32 = 5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SizeConstraints {
@@ -25,17 +23,47 @@ pub struct Region {
     pub size: UVec2,
 }
 
-pub trait Element: Clone + std::fmt::Debug {
-    fn layout(&mut self, constraint: SizeConstraints) -> UVec2;
-    fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>);
+pub mod color {
+    use glam::Vec4;
 
-    fn get_highlight() -> Vec4 {
+    pub const fn get_highlight() -> Vec4 {
         Vec4::new(0.957, 0.247, 0.369, 1.0)
     }
 
-    fn get_background() -> Vec4 {
+    pub const fn get_background() -> Vec4 {
         Vec4::new(0.094, 0.094, 0.106, 1.0)
     }
+
+    pub const fn get_success() -> Vec4 {
+        Vec4::new(0.133, 0.773, 0.369, 1.0)
+    }
+}
+
+pub mod input {
+    use glam::UVec2;
+    use winit::event::MouseButton;
+
+    use crate::input::Mouse;
+
+    use super::Region;
+
+    pub fn hovering(mouse: &Mouse, region: &Region) -> bool {
+        let position = mouse.get_position();
+
+        let min = region.origin;
+        let max = region.origin + region.size;
+
+        min.x < position.x && position.x < max.x && min.y < position.y && position.y < max.y
+    }
+
+    pub fn clicked(mouse: &Mouse, region: &Region, button: MouseButton) -> bool {
+        hovering(mouse, region) && mouse.is_button_pressed(button)
+    }
+}
+
+pub trait Element {
+    fn layout(&mut self, constraint: SizeConstraints) -> UVec2;
+    fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>);
 }
 
 #[repr(C)]

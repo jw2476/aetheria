@@ -3,7 +3,7 @@ use glam::{UVec2, Vec4};
 use super::components::{Container, HAlign, Padding, Text, VList};
 use crate::{
     data::inventory::Inventory,
-    ui::{Element, Rectangle, Region, SizeConstraints},
+    ui::{self, Element, Rectangle, Region, SizeConstraints},
 };
 
 pub type Component = Container<Padding<VList<Text>>>;
@@ -14,7 +14,7 @@ impl Component {
             .get_items()
             .iter()
             .map(|stack| Text {
-                color: Self::get_highlight(),
+                color: ui::color::get_highlight(),
                 content: format!("{:?} x{}", stack.item, stack.amount),
             })
             .collect::<Vec<Text>>();
@@ -26,9 +26,9 @@ impl Component {
         let padding = Padding::new_uniform(vlist, 2);
         Self {
             child: padding,
-            color: Self::get_background(),
+            color: ui::color::get_background(),
             border_radius: 1,
-            border_color: Self::get_highlight(),
+            border_color: ui::color::get_highlight(),
         }
     }
 }

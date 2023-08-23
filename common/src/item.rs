@@ -5,6 +5,7 @@ use std::{fmt::Display, ops::Deref};
 pub enum Item {
     Wood,
     Fireglow,
+    Lamp,
 }
 
 impl Display for Item {
@@ -15,6 +16,7 @@ impl Display for Item {
             match self {
                 Self::Wood => "Wood",
                 Self::Fireglow => "Fireglow",
+                Self::Lamp => "Lamp",
             }
         )
     }

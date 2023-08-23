@@ -7,7 +7,10 @@ use std::{
 
 use glam::{Quat, Vec3};
 
-use crate::{systems::render::Light, time::Time};
+use crate::{
+    systems::{render::{Emissive, Light}, Systems},
+    time::Time, data::Data,
+};
 
 pub struct Sun {
     noon_pos: Vec3,
@@ -16,7 +19,7 @@ pub struct Sun {
 }
 
 impl Sun {
-    pub fn new(noon_pos: Vec3, color: Vec3) -> Arc<Mutex<Self>> {
+    pub fn new(systems: &mut Systems, noon_pos: Vec3, color: Vec3) -> Arc<Mutex<Self>> {
         let seconds = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_secs();
         let mut sun = Self {
             noon_pos,
@@ -24,7 +27,12 @@ impl Sun {
             theta: (seconds % 120) as f32 * (PI / 60.0),
         };
         sun.update_theta(sun.theta);
-        Arc::new(Mutex::new(sun))
+
+        let sun = Arc::new(Mutex::new(sun));
+
+        systems.render.add_light(sun.clone());
+
+        sun
     }
 
     pub fn update_theta(&mut self, theta: f32) {
@@ -46,10 +54,8 @@ impl Sun {
     }
 }
 
-impl Deref for Sun {
-    type Target = Light;
-
-    fn deref(&self) -> &Self::Target {
-        &self.light
+impl Emissive for Sun {
+    fn get_lights(&self, _: &Data) -> Vec<Light> {
+        vec![self.light]
     }
 }

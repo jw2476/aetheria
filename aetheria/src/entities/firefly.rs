@@ -7,11 +7,11 @@ use rand::Rng;
 
 use super::Sun;
 use crate::{
-    data::inventory::Inventory,
+    data::{inventory::Inventory, Data},
     renderer::Renderer,
     systems::{
         interact::Interactable,
-        render::{Light, RenderObject, Renderable, System},
+        render::{Emissive, Light, RenderObject, Renderable, System},
         Named, Positioned, Systems,
     },
     time::Time,
@@ -76,6 +76,7 @@ impl Firefly {
         }));
 
         systems.render.add(firefly.clone());
+        systems.render.add_light(firefly.clone());
         systems.interact.add(firefly.clone());
         Ok(firefly)
     }
@@ -118,9 +119,9 @@ impl Firefly {
     }
 }
 
-impl AsRef<Light> for Firefly {
-    fn as_ref(&self) -> &Light {
-        &self.light
+impl Emissive for Firefly {
+    fn get_lights(&self, _: &Data) -> Vec<Light> {
+        vec![self.light]
     }
 }
 

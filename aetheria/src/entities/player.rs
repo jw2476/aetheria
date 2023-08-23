@@ -5,7 +5,7 @@ use std::{
 
 use ash::vk;
 use assets::MeshRegistry;
-use common::net;
+use common::{net, item::{Item, ItemStack}};
 use glam::{Vec2, Vec3};
 use winit::event::VirtualKeyCode;
 
@@ -15,11 +15,11 @@ use crate::{
     renderer::Renderer,
     socket::Socket,
     systems::{
-        render::{Light, RenderObject, Renderable},
+        render::{Emissive, Light, RenderObject, Renderable},
         Positioned, Systems,
     },
     time::Time,
-    transform::Transform,
+    transform::Transform, data::Data,
 };
 
 const PLAYER_SPEED: f32 = 100.0;
@@ -54,6 +54,7 @@ impl Player {
         }));
 
         systems.render.add(player.clone());
+        systems.render.add_light(player.clone());
 
         Ok(player)
     }
@@ -113,6 +114,16 @@ impl Player {
                 position: self.player.transform.translation.clone(),
             });
             socket.send(&packet).unwrap();
+        }
+    }
+}
+
+impl Emissive for Player {
+    fn get_lights(&self, data: &Data) -> Vec<Light> {
+        if data.inventory.get_items().iter().find(|stack| stack.item == Item::Lamp).is_some() {
+            vec![self.light]
+        } else {
+            Vec::new()
         }
     }
 }
