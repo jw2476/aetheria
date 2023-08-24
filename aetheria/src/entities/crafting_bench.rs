@@ -40,7 +40,7 @@ impl Named for CraftingBench {
 
 impl Positioned for CraftingBench {
     fn get_position(&self) -> Vec3 {
-        self.render.transform.translation.clone()
+        self.render.get_transform().translation.clone()
     }
 }
 

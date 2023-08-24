@@ -55,11 +55,7 @@ impl RenderObjectBuilder<'_> {
         };
         let transform = self.transform.clone().unwrap_or(Transform::IDENTITY);
 
-        Ok(RenderObject {
-            mesh: self.mesh.clone().unwrap(),
-            material,
-            transform,
-        })
+        Ok(RenderObject::new(self.mesh.clone().unwrap(), material, transform.clone()))
     }
 }
 
@@ -67,7 +63,8 @@ impl RenderObjectBuilder<'_> {
 pub struct RenderObject {
     mesh: Arc<Mesh>,
     material: Material,
-    pub transform: Transform,
+    transform: Transform,
+    aabb: (Vec3, Vec3)
 }
 
 impl RenderObject {
@@ -82,6 +79,48 @@ impl RenderObject {
             color: None,
             transform: None,
         }
+    }
+
+    fn calculate_box(mesh: &Mesh, transform: &Transform) -> (Vec3, Vec3) {
+        let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+        for vertex in &mesh.vertices {
+            let v = transform.get_matrix()
+                * Vec4::new(vertex.pos.x, vertex.pos.y, vertex.pos.z, 1.0);
+            min.x = min.x.min(v.x);
+            min.y = min.y.min(v.y);
+            min.z = min.z.min(v.z);
+
+            max.x = max.x.max(v.x);
+            max.y = max.y.max(v.y);
+            max.z = max.z.max(v.z);
+        }
+
+        return (min, max);
+    }
+
+    pub fn new(mesh: Arc<Mesh>, material: Material, transform: Transform) -> Self {
+        let aabb = Self::calculate_box(&mesh, &transform);
+        Self {
+            mesh,
+            material,
+            transform,
+            aabb
+        }
+    }
+
+    pub fn set_transform(&mut self, transform: Transform) {
+        self.transform = transform;
+        self.aabb = Self::calculate_box(&self.mesh, &self.transform);
+    }
+
+    pub fn run_transform<F: Fn(&mut Transform)>(&mut self, func: F) {
+        func(&mut self.transform);
+        self.aabb = Self::calculate_box(&self.mesh, &self.transform);
+    }
+
+    pub fn get_transform(&self) -> &Transform {
+        &self.transform
     }
 }
 
@@ -113,7 +152,7 @@ struct MeshData {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
-struct Material {
+pub struct Material {
     albedo: Vec3,
     roughness: f32,
     metalness: f32,
@@ -219,24 +258,6 @@ impl System {
         })
     }
 
-    fn calculate_box(object: &RenderObject) -> (Vec3, Vec3) {
-        let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
-        let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
-        for vertex in &object.mesh.vertices {
-            let v = object.transform.get_matrix()
-                * Vec4::new(vertex.pos.x, vertex.pos.y, vertex.pos.z, 1.0);
-            min.x = min.x.min(v.x);
-            min.y = min.y.min(v.y);
-            min.z = min.z.min(v.z);
-
-            max.x = max.x.max(v.x);
-            max.y = max.y.max(v.y);
-            max.z = max.z.max(v.z);
-        }
-
-        return (min, max);
-    }
-
     pub fn set_geometry(&self, data: &Data, renderer: &Renderer, mesh_registry: &MeshRegistry) {
         let objects = self
             .renderables
@@ -273,7 +294,7 @@ impl System {
         }
 
         for (i, object) in objects.iter().enumerate() {
-            let (min_aabb, max_aabb) = Self::calculate_box(&object);
+            let (min_aabb, max_aabb) = object.aabb;
 
             let transform = object.transform.get_matrix().to_cols_array();
             let mesh = MeshData {
