@@ -55,8 +55,8 @@ impl Tree {
     }
 
     pub fn update_transform(&mut self) -> Result<(), vk::Result> {
-        self.trunk.transform = self.transform.clone();
-        self.foliage.transform = self.transform.clone();
+        self.trunk.set_transform(self.transform.clone());
+        self.foliage.set_transform(self.transform.clone());
         Ok(())
     }
 }

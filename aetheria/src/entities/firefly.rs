@@ -109,13 +109,13 @@ impl Firefly {
             .normalize_or_zero();
 
         self.light.position.y = self.light.position.y.clamp(5.0, 15.0);
-        self.front.transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0);
-        self.back.transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0);
+        self.front.run_transform(|transform| transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0));
+        self.back.run_transform(|transform| transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0));
 
         let v = Vec3::new(self.velocity.x, 0.0, self.velocity.z).normalize();
         let rotation = Quat::from_rotation_arc(Vec3::new(0.0, 0.0, 1.0), v);
-        self.front.transform.rotation = rotation.clone();
-        self.back.transform.rotation = rotation.clone();
+        self.front.run_transform(|transform| transform.rotation = rotation.clone());
+        self.back.run_transform(|transform| transform.rotation = rotation.clone());
     }
 }
 

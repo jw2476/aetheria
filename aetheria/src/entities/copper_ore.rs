@@ -52,7 +52,7 @@ impl Named for CopperOre {
 
 impl Positioned for CopperOre {
     fn get_position(&self) -> Vec3 {
-        self.rock.transform.translation.clone()
+        self.rock.get_transform().translation.clone()
     }
 }
 

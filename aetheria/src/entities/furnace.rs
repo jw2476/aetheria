@@ -57,7 +57,7 @@ impl Named for Furnace {
 
 impl Positioned for Furnace {
     fn get_position(&self) -> Vec3 {
-        self.render.transform.translation
+        self.render.get_transform().translation
     }
 }
 

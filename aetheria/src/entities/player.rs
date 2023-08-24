@@ -60,11 +60,11 @@ impl Player {
     }
 
     pub fn update_transform<F: Fn(&mut Transform)>(&mut self, predicate: F) {
-        predicate(&mut self.player.transform);
+        self.player.run_transform(predicate);
     }
 
     pub fn get_transform(&self) -> Transform {
-        self.player.transform.clone()
+        self.player.get_transform().clone()
     }
 
     pub fn frame_finished(
@@ -76,14 +76,14 @@ impl Player {
         viewport: Vec2,
         socket: &Socket,
     ) {
-        let old_translation = self.player.transform.translation.clone();
+        let old_translation = self.player.get_transform().translation.clone();
 
         // Dash
         if keyboard.is_key_pressed(VirtualKeyCode::Space) && self.jump_t >= (PI / 4.0) {
             let mouse_direction = (mouse.position - (viewport / 2.0)).normalize_or_zero();
             let mouse_direction =
                 camera.get_rotation() * Vec3::new(mouse_direction.x, 0.0, mouse_direction.y);
-            self.player.transform.translation += mouse_direction * DASH_DISTANCE;
+            self.player.run_transform(|transform| transform.translation += mouse_direction * DASH_DISTANCE);
         }
 
         // Jump
@@ -91,7 +91,7 @@ impl Player {
             self.jump_t = std::f32::consts::PI - 0.0001;
         }
 
-        self.player.transform.translation.y = self.jump_t.sin().powf(0.6) * JUMP_HEIGHT;
+        self.player.run_transform(|transform| transform.translation.y = self.jump_t.sin().powf(0.6) * JUMP_HEIGHT);
         self.jump_t -= time.delta_seconds() * JUMP_SPEED;
         self.jump_t = self.jump_t.max(0.0);
 
@@ -104,14 +104,14 @@ impl Player {
             let delta = Vec3::new(x as f32, 0.0, z as f32).normalize()
                 * PLAYER_SPEED
                 * time.delta_seconds();
-            self.player.transform.translation += camera.get_rotation() * delta;
+            self.player.run_transform(|transform| transform.translation += camera.get_rotation() * delta);
         }
 
-        self.light.position = self.player.transform.translation + Vec3::new(0.0, 15.0, 0.0);
+        self.light.position = self.player.get_transform().translation + Vec3::new(0.0, 15.0, 0.0);
 
-        if old_translation != self.player.transform.translation {
+        if old_translation != self.player.get_transform().translation {
             let packet = net::server::Packet::Move(net::server::Move {
-                position: self.player.transform.translation.clone(),
+                position: self.player.get_transform().translation.clone(),
             });
             socket.send(&packet).unwrap();
         }
