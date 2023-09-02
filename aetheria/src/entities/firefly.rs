@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, Weak};
 
 use ash::vk;
-use assets::MeshRegistry;
+use assets::{ModelRegistry, Transform};
 use glam::{Quat, Vec3};
 use rand::Rng;
 
@@ -15,7 +15,6 @@ use crate::{
         Named, Positioned, Systems,
     },
     time::Time,
-    transform::Transform,
 };
 use common::item::{Item, ItemStack};
 
@@ -25,8 +24,7 @@ pub struct Firefly {
     light: Light,
     velocity: Vec3,
     origin: Vec3,
-    front: RenderObject,
-    back: RenderObject,
+    render: RenderObject,
     gathered: bool,
 }
 
@@ -34,30 +32,14 @@ impl Firefly {
     pub fn new(
         renderer: &mut Renderer,
         systems: &mut Systems,
-        mesh_registry: &mut MeshRegistry,
-        position: Vec3,
+        model_registry: &mut ModelRegistry,
+        translation: Vec3,
         color: Vec3,
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
-        let light = Light::new(position, 0.0, color);
+        let light = Light::new(translation, 0.0, color);
 
-        let front = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("firefly_front.obj")?
-            .set_color(Vec3::new(0.0, 0.0, 0.0))
-            .set_transform(Transform {
-                translation: position,
-                rotation: Quat::IDENTITY,
-                scale: Vec3::ONE,
-            })
-            .build()?;
-        let back = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("firefly_back.obj")?
-            .set_color(Vec3::new(1.0, 1.0, 0.0))
-            .set_transform(Transform {
-                translation: position,
-                rotation: Quat::IDENTITY,
-                scale: Vec3::ONE,
-            })
-            .build()?;
+        let transform = Transform { translation, rotation: Quat::IDENTITY, scale: Vec3::ONE };
+        let render = RenderObject { model: model_registry.load("firefly.glb"), transform };
 
         let mut rng = rand::thread_rng();
         let velocity = Vec3::new(
@@ -69,9 +51,8 @@ impl Firefly {
         let firefly = Arc::new(Mutex::new(Self {
             light,
             velocity,
-            origin: position,
-            front,
-            back,
+            origin: translation,
+            render,
             gathered: false,
         }));
 
@@ -109,13 +90,11 @@ impl Firefly {
             .normalize_or_zero();
 
         self.light.position.y = self.light.position.y.clamp(5.0, 15.0);
-        self.front.run_transform(|transform| transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0));
-        self.back.run_transform(|transform| transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0));
+        self.render.transform.translation = self.light.position + Vec3::new(0.0, 5.0, 0.0);
 
         let v = Vec3::new(self.velocity.x, 0.0, self.velocity.z).normalize();
         let rotation = Quat::from_rotation_arc(Vec3::new(0.0, 0.0, 1.0), v);
-        self.front.run_transform(|transform| transform.rotation = rotation.clone());
-        self.back.run_transform(|transform| transform.rotation = rotation.clone());
+        self.render.transform.rotation = rotation;
     }
 }
 
@@ -128,7 +107,7 @@ impl Emissive for Firefly {
 impl Renderable for Firefly {
     fn get_objects(&self) -> Vec<RenderObject> {
         if self.light.strength != 0.0 && !self.gathered {
-            vec![self.front.clone(), self.back.clone()]
+            vec![self.render.clone()]
         } else {
             vec![]
         }

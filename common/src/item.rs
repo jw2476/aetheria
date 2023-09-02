@@ -8,7 +8,7 @@ pub enum Item {
     Lamp,
     CopperOre,
     CopperIngot,
-    CopperSword
+    CopperSword,
 }
 
 impl Display for Item {
@@ -22,7 +22,7 @@ impl Display for Item {
                 Self::Lamp => "Lamp",
                 Self::CopperOre => "Copper Ore",
                 Self::CopperIngot => "Copper Ingot",
-                Self::CopperSword => "Copper Sword"
+                Self::CopperSword => "Copper Sword",
             }
         )
     }

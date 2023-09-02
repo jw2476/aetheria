@@ -1,12 +1,13 @@
 use ash::vk;
 use bytemuck::{cast_slice, Pod, Zeroable};
-use glam::{Vec2, Vec3};
+use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 use std::{
     collections::HashMap,
     path::Path,
     sync::{Arc, Weak},
 };
 use vulkan::{buffer::Buffer, context::Context, device::Device, graphics::Shader, Texture};
+use uuid::Uuid;
 
 pub struct ShaderRegistry {
     registry: HashMap<String, Weak<Shader>>,
@@ -67,30 +68,160 @@ pub struct Vertex {
     pub _padding2: f32,
 }
 
+pub struct Model {
+    pub meshes: Vec<Mesh>,
+}
+
 pub struct Mesh {
+    pub id: Uuid,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
+    pub color: Vec4,
+    pub transform: Transform,
 }
 
-pub struct MeshRegistry {
-    registry: HashMap<String, Weak<Mesh>>,
+#[derive(Clone, Debug)]
+pub struct Transform {
+    pub translation: Vec3,
+    pub rotation: Quat,
+    pub scale: Vec3,
 }
 
-impl MeshRegistry {
+impl Transform {
+    pub const IDENTITY: Self = Self {
+        translation: Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+        scale: Vec3::ONE,
+    };
+
+    pub fn get_matrix(&self) -> Mat4 {
+        Mat4::from_scale_rotation_translation(self.scale, self.rotation.normalize(), self.translation)
+    }
+
+    pub fn from_matrix(matrix: &Mat4) -> Self {
+        let (scale, rotation, translation) = matrix.to_scale_rotation_translation();
+        Self {
+            translation,
+            rotation,
+            scale,
+        }
+    }
+
+    pub fn combine(&self, rhs: &Self) -> Self {
+        Self {
+            translation: self.translation + rhs.translation,
+            rotation: self.rotation * rhs.rotation,
+            scale: self.scale * rhs.scale
+        }
+    }
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        }
+    }
+}
+
+pub struct ModelRegistry {
+    registry: HashMap<String, Weak<Model>>,
+}
+
+impl ModelRegistry {
     pub fn new() -> Self {
         Self {
             registry: HashMap::new(),
         }
     }
 
-    pub fn get_meshes(&self) -> Vec<Arc<Mesh>> {
+    pub fn get_models(&self) -> Vec<Arc<Model>> {
         self.registry
             .values()
             .filter_map(|weak| weak.upgrade())
             .collect()
     }
 
-    pub fn load(&mut self, ctx: &Context, path: &str) -> Arc<Mesh> {
+    pub fn load(&mut self, path: &str) -> Arc<Model> {
+        fn get_transform(node: &gltf::Node) -> Mat4 {
+            if let Some(matrix) = node.matrix {
+                Mat4::from_cols_array(&matrix)
+            } else {
+                let scale = node
+                    .scale
+                    .map(|arr| Vec3::from_array(arr))
+                    .unwrap_or(Vec3::ONE);
+                let rotation = node
+                    .rotation
+                    .map(|arr| Quat::from_array(arr))
+                    .unwrap_or(Quat::IDENTITY);
+                let translation = node
+                    .translation
+                    .map(|arr| Vec3::from_array(arr))
+                    .unwrap_or(Vec3::ZERO);
+                Mat4::from_scale_rotation_translation(scale, rotation, translation)
+            }
+        }
+
+        fn get_meshes(glb: &gltf::Glb, node: &gltf::Node, parent_transform: Mat4) -> Vec<Mesh> {
+            let transform = get_transform(node) * parent_transform;
+
+            let mut meshes = match node.mesh {
+                None => Vec::new(),
+                Some(mesh) => {
+                    let mesh = &glb.gltf.meshes[mesh];
+                    mesh.primitives
+                        .iter()
+                        .map(|primitive| {
+                            let color = primitive
+                                .material
+                                .map(|material| &glb.gltf.materials[material])
+                                .and_then(|material| material.pbr.base_color_factor)
+                                .map(|arr| Vec4::from_array(arr))
+                                .unwrap_or(Vec4::ONE);
+
+                            let indices = primitive.get_indices_data(glb).expect("No indicies");
+                            let positions = primitive
+                                .get_attribute_data(glb, "POSITION")
+                                .expect("No positions");
+                            let positions = bytemuck::cast_slice::<u8, Vec3>(&positions).iter().map(|position| *position * 100.0).collect::<Vec<Vec3>>();
+                            let normals = primitive
+                                .get_attribute_data(glb, "NORMAL")
+                                .expect("No normals");
+                            let normals = bytemuck::cast_slice::<u8, Vec3>(&normals);
+                            let vertices: Vec<Vertex> = std::iter::zip(positions, normals)
+                                .map(|(pos, normal)| Vertex {
+                                    pos,
+                                    normal: *normal,
+                                    ..Default::default()
+                                })
+                                .collect();
+                            Mesh {
+                                id: Uuid::new_v4(),
+                                indices,
+                                vertices,
+                                color,
+                                transform: Transform::from_matrix(&transform),
+                            }
+                        })
+                        .collect()
+                }
+            };
+
+            meshes.append(
+                &mut node
+                    .children
+                    .iter()
+                    .map(|child| &glb.gltf.nodes[*child])
+                    .flat_map(|child| get_meshes(glb, child, transform))
+                    .collect(),
+            );
+
+            meshes
+        }
+
         let registry_value = self
             .registry
             .get(&path.to_owned())
@@ -100,57 +231,23 @@ impl MeshRegistry {
         match registry_value {
             Some(value) => value,
             None => {
-                let obj = Path::new("assets/meshes").join(path);
-                println!("Loading: {}", obj.display());
+                let glb_path = Path::new("assets/meshes").join(path);
+                println!("Loading: {}", glb_path.display());
 
-                let (models, _) = tobj::load_obj(obj, &tobj::GPU_LOAD_OPTIONS).unwrap();
-                if models.len() != 1 {
-                    panic!(
-                        "Obj file: {} has too many meshes, {} instead of 1",
-                        path,
-                        models.len()
-                    );
-                }
+                let glb = gltf::Glb::load(&std::fs::read(glb_path).unwrap()).unwrap();
+                let scene = &glb.gltf.scenes[glb.gltf.scene];
+                let meshes = scene
+                    .nodes
+                    .iter()
+                    .map(|node| &glb.gltf.nodes[*node])
+                    .flat_map(|node| get_meshes(&glb, node, Mat4::IDENTITY))
+                    .collect();
+                let model = Model { meshes };
 
-                let mesh = models
-                    .first()
-                    .map(|model| &model.mesh)
-                    .map(|mesh| {
-                        let positions = mesh
-                            .positions
-                            .chunks_exact(3)
-                            .map(|slice| Vec3::from_slice(slice) * 100.0) // to compensate for
-                            // pixel based
-                            // coordinate system
-                            .collect::<Vec<Vec3>>();
-
-                        let normals = mesh
-                            .normals
-                            .chunks_exact(3)
-                            .map(|slice| Vec3::from_slice(slice))
-                            .collect::<Vec<Vec3>>();
-
-                        let vertices = std::iter::zip(positions, normals)
-                            .map(|(pos, normal)| Vertex {
-                                pos,
-                                normal,
-                                ..Default::default()
-                            })
-                            .collect::<Vec<Vertex>>();
-
-                        let indices: Vec<u32> = mesh
-                            .indices
-                            .chunks_exact(3)
-                            .flat_map(|slice| [slice[0], slice[2], slice[1]])
-                            .collect();
-
-                        Mesh { vertices, indices }
-                    })
-                    .unwrap();
-
-                let mesh = Arc::new(mesh);
-                self.registry.insert(path.to_owned(), Arc::downgrade(&mesh));
-                mesh
+                let model = Arc::new(model);
+                self.registry
+                    .insert(path.to_owned(), Arc::downgrade(&model));
+                model
             }
         }
     }

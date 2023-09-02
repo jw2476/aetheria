@@ -1,38 +1,37 @@
 use crate::{
-    data::{Recipe, Data},
+    data::{Data, Recipe},
     renderer::Renderer,
     systems::{
         interact::Interactable,
-        render::{RenderObject, Renderable, Light, Emissive},
+        render::{Emissive, Light, RenderObject, Renderable},
         Named, Positioned, Systems,
     },
-    transform::Transform,
 };
 use ash::vk;
-use assets::MeshRegistry;
-use common::item::{Item,ItemStack};
+use assets::{Transform, ModelRegistry};
+use common::item::{Item, ItemStack};
 use glam::Vec3;
 use std::sync::{Arc, Mutex};
 
 pub struct Furnace {
     render: RenderObject,
-    light: Light
+    light: Light,
 }
 
 impl Furnace {
     pub fn new(
         renderer: &mut Renderer,
         systems: &mut Systems,
-        mesh_registry: &mut MeshRegistry,
+        model_registry: &mut ModelRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
-        let render = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("furnace.obj")?
-            .set_color(Vec3::new(0.7, 0.5, 0.5))
-            .set_transform(transform.clone())
-            .build()?;
+        let render = RenderObject { model: model_registry.load("furnace.glb"), transform: transform.clone() };
 
-        let light = Light::new(transform.translation + Vec3::new(0.0, 20.0, -10.0), 4000.0, Vec3::new(0.976, 0.451, 0.086));
+        let light = Light::new(
+            transform.translation + Vec3::new(0.0, 20.0, -10.0),
+            4000.0,
+            Vec3::new(0.976, 0.451, 0.086),
+        );
 
         let furnace = Arc::new(Mutex::new(Self { render, light }));
         systems.render.add(furnace.clone());
@@ -57,15 +56,21 @@ impl Named for Furnace {
 
 impl Positioned for Furnace {
     fn get_position(&self) -> Vec3 {
-        self.render.get_transform().translation
+        self.render.transform.translation
     }
 }
 
 impl Interactable for Furnace {
     fn interact(&mut self, data: &mut Data) {
         data.current_recipe = Some(Recipe {
-            ingredients: vec![ItemStack { item: Item::CopperOre, amount: 3 }],
-            outputs: vec![ItemStack { item: Item::CopperIngot, amount: 1 }]
+            ingredients: vec![ItemStack {
+                item: Item::CopperOre,
+                amount: 3,
+            }],
+            outputs: vec![ItemStack {
+                item: Item::CopperIngot,
+                amount: 1,
+            }],
         })
     }
 

@@ -1,4 +1,7 @@
-use crate::{ui::{Element, Rectangle, Region, SizeConstraints, self}, input::Mouse};
+use crate::{
+    input::Mouse,
+    ui::{self, Element, Rectangle, Region, SizeConstraints},
+};
 use glam::{UVec2, Vec4};
 
 #[derive(Clone, Debug)]
@@ -207,7 +210,7 @@ impl<L: Element, R: Element> Element for HPair<L, R> {
                 scene,
             );
         }
-        
+
         {
             let top = self.get_top_padding(region.size.y, self.right_size.y);
             let bottom = self.get_bottom_padding(region.size.y, self.right_size.y);
@@ -432,11 +435,11 @@ impl<T: Element, B: Element> Element for VPair<T, B> {
     fn paint(&mut self, region: Region, scene: &mut Vec<Rectangle>) {
         {
             let left = self.get_left_padding(region.size.x, self.top_size.x);
-            let right = self.get_right_padding(region.size.x, self.top_size.x);  
+            let right = self.get_right_padding(region.size.x, self.top_size.x);
             let mut top = PaddingRef {
                 child: &mut self.top,
                 left,
-                right, 
+                right,
                 top: 0,
                 bottom: 0,
             };
@@ -451,7 +454,7 @@ impl<T: Element, B: Element> Element for VPair<T, B> {
 
         {
             let left = self.get_left_padding(region.size.x, self.bottom_size.x);
-            let right = self.get_right_padding(region.size.x, self.bottom_size.x);  
+            let right = self.get_right_padding(region.size.x, self.bottom_size.x);
             let mut bottom = PaddingRef {
                 child: &mut self.bottom,
                 left,
@@ -467,14 +470,13 @@ impl<T: Element, B: Element> Element for VPair<T, B> {
                 scene,
             );
         }
-
     }
 }
 
 pub struct Button<'a, H: Handler> {
     component: Container<Padding<Text>>,
     mouse: &'a Mouse,
-    on_click: H
+    on_click: H,
 }
 
 pub trait Handler {
@@ -497,7 +499,7 @@ impl<'a, H: Handler> Button<'a, H> {
                 border_radius: 1,
             },
             mouse,
-            on_click
+            on_click,
         }
     }
 }

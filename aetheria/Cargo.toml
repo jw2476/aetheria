@@ -27,3 +27,4 @@ num-traits = "0.2.15"
 postcard = { version = "1.0.6", features = ["use-std"] }
 thiserror = "1.0.44"
 dialog = "0.3.0"
+uuid = { version = "1.4.1", features = ["v4", "fast-rng"] }

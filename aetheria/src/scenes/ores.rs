@@ -1,10 +1,14 @@
-use std::{sync::{Arc, Mutex}, f32::consts::PI, ops::{Deref, DerefMut}};
+use std::{
+    f32::consts::PI,
+    ops::{Deref, DerefMut},
+    sync::{Arc, Mutex},
+};
 
-use assets::MeshRegistry;
-use glam::{Vec3, Quat};
+use crate::{entities::CopperOre, renderer::Renderer, systems::Systems};
 use ash::vk;
+use assets::{Transform, ModelRegistry};
+use glam::{Quat, Vec3};
 use rand::Rng;
-use crate::{entities::CopperOre, renderer::Renderer, systems::Systems, transform::Transform};
 
 const NUM_ORES: u32 = 10;
 
@@ -16,7 +20,7 @@ impl Ores {
     pub fn new(
         renderer: &mut Renderer,
         systems: &mut Systems,
-        mesh_registry: &mut MeshRegistry,
+        model_registry: &mut ModelRegistry,
     ) -> Result<Self, vk::Result> {
         let mut trees = Vec::new();
 
@@ -34,7 +38,7 @@ impl Ores {
                 rotation,
                 scale: Vec3::new(0.1, 0.1, 0.1),
             };
-            trees.push(CopperOre::new(renderer, systems, mesh_registry, transform).unwrap());
+            trees.push(CopperOre::new(renderer, systems, model_registry, transform).unwrap());
         }
 
         Ok(Self { trees })
@@ -54,5 +58,3 @@ impl DerefMut for Ores {
         &mut self.trees
     }
 }
-
-

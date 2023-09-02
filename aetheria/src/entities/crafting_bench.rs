@@ -1,21 +1,30 @@
-use crate::{systems::{render::{RenderObject, Renderable}, Systems, Named, Positioned, interact::Interactable}, renderer::Renderer, transform::Transform, data::{Data, Recipe}};
+use crate::{
+    data::{Data, Recipe},
+    renderer::Renderer,
+    systems::{
+        interact::Interactable,
+        render::{RenderObject, Renderable},
+        Named, Positioned, Systems,
+    },
+};
 use ash::vk;
-use assets::MeshRegistry;
-use common::item::{ItemStack, Item};
-use std::sync::{Arc, Mutex};
+use assets::{Transform, ModelRegistry};
+use common::item::{Item, ItemStack};
 use glam::Vec3;
+use std::sync::{Arc, Mutex};
 
 pub struct CraftingBench {
-    render: RenderObject
+    render: RenderObject,
 }
 
 impl CraftingBench {
-    pub fn new(renderer: &mut Renderer, systems: &mut Systems, mesh_registry: &mut MeshRegistry, transform: Transform) -> Result<Arc<Mutex<Self>>, vk::Result> {
-        let render = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("crafting_bench.obj")?
-            .set_color(Vec3::new(0.486, 0.176, 0.071))
-            .set_transform(transform)
-            .build()?;
+    pub fn new(
+        renderer: &mut Renderer,
+        systems: &mut Systems,
+        model_registry: &mut ModelRegistry,
+        transform: Transform,
+    ) -> Result<Arc<Mutex<Self>>, vk::Result> {
+        let render = RenderObject { model: model_registry.load("crafting_bench.glb"), transform };
 
         let bench = Arc::new(Mutex::new(Self { render }));
 
@@ -40,7 +49,7 @@ impl Named for CraftingBench {
 
 impl Positioned for CraftingBench {
     fn get_position(&self) -> Vec3 {
-        self.render.get_transform().translation.clone()
+        self.render.transform.translation
     }
 }
 
@@ -50,15 +59,39 @@ impl Interactable for CraftingBench {
     }
 
     fn interact(&mut self, data: &mut Data) {
-         data.recipe_selections = Some(vec![
+        data.recipe_selections = Some(vec![
             Recipe {
-                ingredients: vec![ItemStack { item: Item::Wood, amount: 3 }, ItemStack { item: Item::Fireglow, amount: 2 }],
-                outputs: vec![ItemStack { item: Item::Lamp, amount: 1 }]
+                ingredients: vec![
+                    ItemStack {
+                        item: Item::Wood,
+                        amount: 3,
+                    },
+                    ItemStack {
+                        item: Item::Fireglow,
+                        amount: 2,
+                    },
+                ],
+                outputs: vec![ItemStack {
+                    item: Item::Lamp,
+                    amount: 1,
+                }],
             },
             Recipe {
-                ingredients: vec![ItemStack { item: Item::Wood, amount: 2 }, ItemStack { item: Item::CopperIngot, amount: 2 }],
-                outputs: vec![ItemStack { item: Item::CopperSword, amount: 1 }]
-            }
-         ]) 
+                ingredients: vec![
+                    ItemStack {
+                        item: Item::Wood,
+                        amount: 2,
+                    },
+                    ItemStack {
+                        item: Item::CopperIngot,
+                        amount: 2,
+                    },
+                ],
+                outputs: vec![ItemStack {
+                    item: Item::CopperSword,
+                    amount: 1,
+                }],
+            },
+        ])
     }
 }

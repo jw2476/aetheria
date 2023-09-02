@@ -2,6 +2,7 @@
 
 use std::{
     collections::HashMap,
+    fmt::Debug,
     io::{Cursor, Read},
 };
 

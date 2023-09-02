@@ -4,13 +4,17 @@ use std::{
 };
 
 use ash::vk;
-use assets::MeshRegistry;
-use common::{net, item::{Item, ItemStack}};
+use assets::{Transform, ModelRegistry};
+use common::{
+    item::{Item, ItemStack},
+    net,
+};
 use glam::{Vec2, Vec3};
 use winit::event::VirtualKeyCode;
 
 use crate::{
     camera::Camera,
+    data::Data,
     input::{Keyboard, Mouse},
     renderer::Renderer,
     socket::Socket,
@@ -19,7 +23,6 @@ use crate::{
         Positioned, Systems,
     },
     time::Time,
-    transform::Transform, data::Data,
 };
 
 const PLAYER_SPEED: f32 = 100.0;
@@ -29,7 +32,7 @@ const DASH_DISTANCE: f32 = 100.0;
 
 #[derive(Clone)]
 pub struct Player {
-    player: RenderObject,
+    pub player: RenderObject,
     jump_t: f32,
     pub light: Light,
 }
@@ -38,14 +41,10 @@ impl Player {
     pub fn new(
         renderer: &mut Renderer,
         systems: &mut Systems,
-        mesh_registry: &mut MeshRegistry,
+        model_registry: &mut ModelRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
-        let player = RenderObject::builder(renderer, mesh_registry)
-            .set_mesh("player.obj")?
-            .set_color(Vec3::new(1.0, 1.0, 1.0))
-            .set_transform(transform)
-            .build()?;
+        let player = RenderObject { model: model_registry.load("player.glb"), transform };
 
         let player = Arc::new(Mutex::new(Self {
             player,
@@ -59,14 +58,6 @@ impl Player {
         Ok(player)
     }
 
-    pub fn update_transform<F: Fn(&mut Transform)>(&mut self, predicate: F) {
-        self.player.run_transform(predicate);
-    }
-
-    pub fn get_transform(&self) -> Transform {
-        self.player.get_transform().clone()
-    }
-
     pub fn frame_finished(
         &mut self,
         keyboard: &Keyboard,
@@ -76,14 +67,14 @@ impl Player {
         viewport: Vec2,
         socket: &Socket,
     ) {
-        let old_translation = self.player.get_transform().translation.clone();
+        let old_translation = self.player.transform.translation.clone();
 
         // Dash
         if keyboard.is_key_pressed(VirtualKeyCode::Space) && self.jump_t >= (PI / 4.0) {
             let mouse_direction = (mouse.position - (viewport / 2.0)).normalize_or_zero();
             let mouse_direction =
                 camera.get_rotation() * Vec3::new(mouse_direction.x, 0.0, mouse_direction.y);
-            self.player.run_transform(|transform| transform.translation += mouse_direction * DASH_DISTANCE);
+            self.player.transform.translation += mouse_direction * DASH_DISTANCE
         }
 
         // Jump
@@ -91,27 +82,27 @@ impl Player {
             self.jump_t = std::f32::consts::PI - 0.0001;
         }
 
-        self.player.run_transform(|transform| transform.translation.y = self.jump_t.sin().powf(0.6) * JUMP_HEIGHT);
+        self.player.transform.translation.y = self.jump_t.sin().powf(0.6) * JUMP_HEIGHT;
         self.jump_t -= time.delta_seconds() * JUMP_SPEED;
         self.jump_t = self.jump_t.max(0.0);
 
         // Movement
-        let z = keyboard.is_key_down(VirtualKeyCode::S) as i32
-            - keyboard.is_key_down(VirtualKeyCode::W) as i32;
+        let z = keyboard.is_key_down(VirtualKeyCode::W) as i32
+            - keyboard.is_key_down(VirtualKeyCode::S) as i32;
         let x = keyboard.is_key_down(VirtualKeyCode::D) as i32
             - keyboard.is_key_down(VirtualKeyCode::A) as i32;
         if x != 0 || z != 0 {
             let delta = Vec3::new(x as f32, 0.0, z as f32).normalize()
                 * PLAYER_SPEED
                 * time.delta_seconds();
-            self.player.run_transform(|transform| transform.translation += camera.get_rotation() * delta);
+            self.player.transform.translation += camera.get_rotation() * delta;
         }
 
-        self.light.position = self.player.get_transform().translation + Vec3::new(0.0, 15.0, 0.0);
+        self.light.position = self.player.transform.translation + Vec3::new(0.0, 15.0, 0.0);
 
-        if old_translation != self.player.get_transform().translation {
+        if old_translation != self.player.transform.translation {
             let packet = net::server::Packet::Move(net::server::Move {
-                position: self.player.get_transform().translation.clone(),
+                position: self.player.transform.translation.clone(),
             });
             socket.send(&packet).unwrap();
         }
@@ -120,7 +111,13 @@ impl Player {
 
 impl Emissive for Player {
     fn get_lights(&self, data: &Data) -> Vec<Light> {
-        if data.inventory.get_items().iter().find(|stack| stack.item == Item::Lamp).is_some() {
+        if data
+            .inventory
+            .get_items()
+            .iter()
+            .find(|stack| stack.item == Item::Lamp)
+            .is_some()
+        {
             vec![self.light]
         } else {
             Vec::new()
@@ -136,6 +133,6 @@ impl Renderable for Player {
 
 impl Positioned for Player {
     fn get_position(&self) -> Vec3 {
-        self.get_transform().translation
+        self.player.transform.translation
     }
 }

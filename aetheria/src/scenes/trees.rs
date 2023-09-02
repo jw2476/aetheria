@@ -5,11 +5,11 @@ use std::{
 };
 
 use ash::vk;
-use assets::MeshRegistry;
+use assets::{ModelRegistry, Transform};
 use glam::{Quat, Vec3};
 use rand::Rng;
 
-use crate::{entities::Tree, renderer::Renderer, systems::Systems, transform::Transform};
+use crate::{entities::Tree, renderer::Renderer, systems::Systems};
 
 const NUM_TREES: u32 = 10;
 
@@ -21,7 +21,7 @@ impl Trees {
     pub fn new(
         renderer: &mut Renderer,
         systems: &mut Systems,
-        mesh_registry: &mut MeshRegistry,
+        model_registry: &mut ModelRegistry,
     ) -> Result<Self, vk::Result> {
         let mut trees = Vec::new();
 
@@ -39,7 +39,7 @@ impl Trees {
                 rotation,
                 scale: Vec3::new(0.1, 0.1, 0.1),
             };
-            trees.push(Tree::new(renderer, systems, mesh_registry, transform).unwrap());
+            trees.push(Tree::new(renderer, systems, model_registry, transform).unwrap());
         }
 
         Ok(Self { trees })

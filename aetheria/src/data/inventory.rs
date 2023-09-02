@@ -47,10 +47,18 @@ impl Inventory {
     }
 
     pub fn remove(&mut self, stack: ItemStack) {
-        if let Some((i, existing)) = self.inventory.iter_mut().enumerate().find(|(_, s)| s.item == stack.item) {
+        if let Some((i, existing)) = self
+            .inventory
+            .iter_mut()
+            .enumerate()
+            .find(|(_, s)| s.item == stack.item)
+        {
             if existing.amount < stack.amount {
-                warn!("Removing {} from inventory would give negative items", stack);
-                return
+                warn!(
+                    "Removing {} from inventory would give negative items",
+                    stack
+                );
+                return;
             }
 
             existing.amount -= stack.amount;

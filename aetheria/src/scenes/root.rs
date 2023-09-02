@@ -4,21 +4,20 @@ use std::{
 };
 
 use ash::vk;
-use assets::MeshRegistry;
+use assets::{Transform, ModelRegistry};
 use glam::{Quat, Vec2, Vec3};
 
 use crate::{
     camera::Camera,
-    entities::{Furnace, Grass, Player, Sun, CraftingBench},
+    entities::{CraftingBench, Furnace, Grass, Player, Sun},
     input::{Keyboard, Mouse},
     renderer::Renderer,
     socket::Socket,
     systems::{render::Light, Systems},
     time::Time,
-    transform::Transform,
 };
 
-use super::{Fireflies, Trees, Ores};
+use super::{Fireflies, Ores, Trees};
 
 pub struct RootScene {
     pub player: Arc<Mutex<Player>>,
@@ -28,14 +27,14 @@ pub struct RootScene {
     pub fireflies: Fireflies,
     pub furnace: Arc<Mutex<Furnace>>,
     pub crafting_bench: Arc<Mutex<CraftingBench>>,
-    pub ores: Ores
+    pub ores: Ores,
 }
 
 impl RootScene {
     pub fn new(
         renderer: &mut Renderer,
         systems: &mut Systems,
-        mesh_registry: &mut MeshRegistry,
+        model_registry: &mut ModelRegistry,
     ) -> Result<Self, vk::Result> {
         let player = {
             let transform = Transform {
@@ -43,18 +42,22 @@ impl RootScene {
                 rotation: Quat::IDENTITY,
                 scale: Vec3::ONE,
             };
-            Player::new(renderer, systems, mesh_registry, transform).unwrap()
+            Player::new(renderer, systems, model_registry, transform).unwrap()
         };
-        let sun = Sun::new(systems, Vec3::new(0.0, 1000000.0, 0.0), Vec3::new(0.8, 1.0, 0.5));
-        let grass = Grass::new(renderer, systems, mesh_registry, Transform::IDENTITY).unwrap();
+        let sun = Sun::new(
+            systems,
+            Vec3::new(0.0, 1000000.0, 0.0),
+            Vec3::new(0.8, 1.0, 0.5),
+        );
+        let grass = Grass::new(renderer, systems, model_registry, Transform::IDENTITY).unwrap();
 
-        let trees = Trees::new(renderer, systems, mesh_registry)?;
-        let fireflies = Fireflies::new(renderer, systems, mesh_registry)?;
+        let trees = Trees::new(renderer, systems, model_registry)?;
+        let fireflies = Fireflies::new(renderer, systems, model_registry)?;
 
         let furnace = Furnace::new(
             renderer,
             systems,
-            mesh_registry,
+            model_registry,
             Transform {
                 translation: Vec3::new(100.0, 0.0, 100.0),
                 scale: Vec3::new(0.2, 0.2, 0.2),
@@ -62,9 +65,18 @@ impl RootScene {
             },
         )?;
 
-        let ores = Ores::new(renderer, systems, mesh_registry)?;
+        let ores = Ores::new(renderer, systems, model_registry)?;
 
-        let crafting_bench = CraftingBench::new(renderer, systems, mesh_registry, Transform { translation: Vec3::new(100.0, 0.0, 30.0), rotation: Quat::IDENTITY, scale: Vec3::new(0.1, 0.1, 0.1) })?;
+        let crafting_bench = CraftingBench::new(
+            renderer,
+            systems,
+            model_registry,
+            Transform {
+                translation: Vec3::new(100.0, 0.0, 30.0),
+                rotation: Quat::IDENTITY,
+                scale: Vec3::new(0.1, 0.1, 0.1),
+            },
+        )?;
         Ok(Self {
             player,
             sun,
@@ -73,9 +85,9 @@ impl RootScene {
             fireflies,
             furnace,
             crafting_bench,
-            ores
+            ores,
         })
-        }
+    }
 
     pub fn frame_finished(
         &mut self,

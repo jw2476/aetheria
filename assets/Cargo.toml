@@ -10,9 +10,11 @@ qoi = "0.4"
 
 [dependencies]
 vulkan = { path = "../vulkan" }
+gltf = { path = "../gltf" }
 
 ash = "0.37.2"
 bytemuck = { version = "1.13", features = ["derive"] }
 tracing = "0.1"
 tobj = "4.0.0"
 glam = { version = "0.24", features = ["bytemuck"] }
+uuid = { version = "1.4.1", features = ["v4", "fast-rng"] }

@@ -1,5 +1,5 @@
 use ash::vk;
-use assets::{Mesh, MeshRegistry, ShaderRegistry, Vertex};
+use assets::{Mesh, Model, ShaderRegistry, Vertex, Transform, ModelRegistry};
 use bytemuck::{cast_slice, Pod, Zeroable};
 use glam::{Vec3, Vec4};
 use std::{
@@ -10,118 +10,36 @@ use vulkan::{
     command, command::TransitionLayoutOptions, compute, Buffer, Context, Image, Pool, Set,
     SetLayout, SetLayoutBuilder, Shader, Texture,
 };
+use uuid::Uuid;
 
 use crate::{
+    data::Data,
     renderer::{Pass, Renderer, RENDER_HEIGHT, RENDER_WIDTH},
-    transform::Transform,
     Camera, Time,
-    data::Data
 };
 
-pub struct RenderObjectBuilder<'a> {
-    renderer: &'a mut Renderer,
-    mesh_registry: &'a mut MeshRegistry,
-    mesh: Option<Arc<Mesh>>,
-    color: Option<Vec3>,
-    transform: Option<Transform>,
-}
+fn calculate_box(mesh: &Mesh, transform: &Transform) -> (Vec3, Vec3) {
+    let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+    let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for vertex in &mesh.vertices {
+        let v =
+            transform.get_matrix() * Vec4::new(vertex.pos.x, vertex.pos.y, vertex.pos.z, 1.0);
+        min.x = min.x.min(v.x);
+        min.y = min.y.min(v.y);
+        min.z = min.z.min(v.z);
 
-impl RenderObjectBuilder<'_> {
-    pub fn set_mesh(&mut self, path: &str) -> Result<&mut Self, vk::Result> {
-        self.mesh = Some(self.mesh_registry.load(self.renderer, path));
-        Ok(self)
+        max.x = max.x.max(v.x);
+        max.y = max.y.max(v.y);
+        max.z = max.z.max(v.z);
     }
 
-    pub fn set_color(&mut self, color: Vec3) -> &mut Self {
-        self.color = Some(color);
-        self
-    }
-
-    pub fn set_transform(&mut self, transform: Transform) -> &mut Self {
-        self.transform = Some(transform);
-        self
-    }
-
-    pub fn build(&mut self) -> Result<RenderObject, vk::Result> {
-        if self.mesh.is_none() {
-            panic!("Tried to create RenderObject with no mesh");
-        }
-
-        let material = Material {
-            albedo: self.color.unwrap_or_else(|| Vec3::new(1.0, 1.0, 1.0)),
-            roughness: 1.0,
-            metalness: 0.0,
-            ..Default::default()
-        };
-        let transform = self.transform.clone().unwrap_or(Transform::IDENTITY);
-
-        Ok(RenderObject::new(self.mesh.clone().unwrap(), material, transform.clone()))
-    }
+    return (min, max);
 }
 
 #[derive(Clone)]
 pub struct RenderObject {
-    mesh: Arc<Mesh>,
-    material: Material,
-    transform: Transform,
-    aabb: (Vec3, Vec3)
-}
-
-impl RenderObject {
-    pub fn builder<'a>(
-        renderer: &'a mut Renderer,
-        mesh_registry: &'a mut MeshRegistry,
-    ) -> RenderObjectBuilder<'a> {
-        RenderObjectBuilder {
-            renderer,
-            mesh_registry,
-            mesh: None,
-            color: None,
-            transform: None,
-        }
-    }
-
-    fn calculate_box(mesh: &Mesh, transform: &Transform) -> (Vec3, Vec3) {
-        let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
-        let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
-        for vertex in &mesh.vertices {
-            let v = transform.get_matrix()
-                * Vec4::new(vertex.pos.x, vertex.pos.y, vertex.pos.z, 1.0);
-            min.x = min.x.min(v.x);
-            min.y = min.y.min(v.y);
-            min.z = min.z.min(v.z);
-
-            max.x = max.x.max(v.x);
-            max.y = max.y.max(v.y);
-            max.z = max.z.max(v.z);
-        }
-
-        return (min, max);
-    }
-
-    pub fn new(mesh: Arc<Mesh>, material: Material, transform: Transform) -> Self {
-        let aabb = Self::calculate_box(&mesh, &transform);
-        Self {
-            mesh,
-            material,
-            transform,
-            aabb
-        }
-    }
-
-    pub fn set_transform(&mut self, transform: Transform) {
-        self.transform = transform;
-        self.aabb = Self::calculate_box(&self.mesh, &self.transform);
-    }
-
-    pub fn run_transform<F: Fn(&mut Transform)>(&mut self, func: F) {
-        func(&mut self.transform);
-        self.aabb = Self::calculate_box(&self.mesh, &self.transform);
-    }
-
-    pub fn get_transform(&self) -> &Transform {
-        &self.transform
-    }
+    pub model: Arc<Model>,
+    pub transform: Transform
 }
 
 pub trait Renderable {
@@ -153,10 +71,7 @@ struct MeshData {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 pub struct Material {
-    albedo: Vec3,
-    roughness: f32,
-    metalness: f32,
-    _padding: [f32; 3],
+    albedo: Vec4,
 }
 
 #[repr(C)]
@@ -258,12 +173,12 @@ impl System {
         })
     }
 
-    pub fn set_geometry(&self, data: &Data, renderer: &Renderer, mesh_registry: &MeshRegistry) {
+    pub fn set_geometry(&self, data: &Data, renderer: &Renderer, model_registry: &ModelRegistry) {
         let objects = self
             .renderables
             .iter()
             .filter_map(|renderable| renderable.upgrade())
-            .flat_map(|renderable| renderable.lock().unwrap().get_objects().clone())
+            .flat_map(|renderable| renderable.lock().unwrap().get_objects())
             .collect::<Vec<RenderObject>>();
 
         let lights = self
@@ -278,10 +193,10 @@ impl System {
         let mut indices: Vec<i32> = Vec::new();
         let mut materials: Vec<Material> = Vec::new();
 
-        let mut mesh_to_index: HashMap<*const Mesh, i32> = HashMap::new();
+        let mut mesh_to_index: HashMap<Uuid, i32> = HashMap::new();
 
-        for mesh in &mesh_registry.get_meshes() {
-            mesh_to_index.insert(Arc::as_ptr(&mesh), indices.len() as i32);
+        for mesh in model_registry.get_models().iter().flat_map(|model| &model.meshes) {
+            mesh_to_index.insert(mesh.id, indices.len() as i32);
             indices.append(
                 &mut mesh
                     .indices
@@ -293,23 +208,23 @@ impl System {
             vertices.append(&mut mesh.vertices.clone());
         }
 
-        for (i, object) in objects.iter().enumerate() {
-            let (min_aabb, max_aabb) = object.aabb;
-
-            let transform = object.transform.get_matrix().to_cols_array();
-            let mesh = MeshData {
+        for (i, (mesh, transform)) in objects.iter().flat_map(|object| object.model.meshes.iter().map(|mesh| (mesh, object.transform.clone()))).enumerate() {
+            let transform = transform.combine(&mesh.transform);
+            let (min_aabb, max_aabb) = calculate_box(&mesh, &transform);
+            
+            let mesh_data = MeshData {
                 first_index: *mesh_to_index
-                    .get(&Arc::as_ptr(&object.mesh))
+                    .get(&mesh.id)
                     .expect("Can't find index in mesh_to_index"),
-                num_indices: object.mesh.indices.len() as i32,
+                num_indices: mesh.indices.len() as i32,
                 material: i as i32,
-                transform,
+                transform: transform.get_matrix().to_cols_array(),
                 min_aabb: min_aabb.to_array(),
                 max_aabb: max_aabb.to_array(),
                 ..Default::default()
             };
-            meshes.push(mesh);
-            materials.push(object.material);
+            meshes.push(mesh_data);
+            materials.push(Material { albedo: mesh.color });
         }
 
         let mut mesh_data = cast_slice::<i32, u8>(&[meshes.len() as i32, 0, 0, 0]).to_vec();

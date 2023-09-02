@@ -4,7 +4,7 @@ use std::{
 };
 
 use ash::vk;
-use assets::MeshRegistry;
+use assets::{Transform, ModelRegistry};
 use glam::Vec3;
 use rand::Rng;
 
@@ -20,7 +20,7 @@ impl Fireflies {
     pub fn new(
         renderer: &mut Renderer,
         systems: &mut Systems,
-        mesh_registry: &mut MeshRegistry,
+        model_registry: &mut ModelRegistry,
     ) -> Result<Self, vk::Result> {
         let mut fireflies = Vec::new();
 
@@ -36,7 +36,7 @@ impl Fireflies {
                 Firefly::new(
                     renderer,
                     systems,
-                    mesh_registry,
+                    model_registry,
                     position,
                     Vec3::new(1.0, 1.0, 1.0),
                 )

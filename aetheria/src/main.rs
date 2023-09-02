@@ -12,18 +12,16 @@ mod data;
 mod entities;
 mod input;
 mod macros;
-mod material;
 mod renderer;
 mod scenes;
 mod socket;
 mod systems;
 mod time;
-mod transform;
 mod ui;
 
 use anyhow::Result;
 use ash::vk;
-use assets::{MeshRegistry, ShaderRegistry, TextureRegistry};
+use assets::{ModelRegistry, Transform, ShaderRegistry, TextureRegistry};
 use bytemuck::cast_slice;
 use camera::Camera;
 use common::{
@@ -44,7 +42,6 @@ use std::{
 };
 use time::Time;
 use tracing::info;
-use transform::Transform;
 use vulkan::Context;
 use winit::{
     event::{MouseButton, VirtualKeyCode},
@@ -110,7 +107,7 @@ fn main() {
             .show()
             .expect("Failed to show error dialog box");
 
-        return
+        return;
     }
     let username = username.unwrap();
 
@@ -124,7 +121,7 @@ fn main() {
     let window = Arc::new(window);
     let ctx = Context::new(&window);
 
-    let mut mesh_registry = MeshRegistry::new();
+    let mut model_registry = ModelRegistry::new();
     let mut shader_registry = ShaderRegistry::new();
     let mut texture_registry = TextureRegistry::new();
 
@@ -139,7 +136,7 @@ fn main() {
     let mut data = Data {
         inventory: Inventory::new(socket.clone()),
         current_recipe: None,
-        recipe_selections: None
+        recipe_selections: None,
     };
 
     let ui_pass = Arc::new(Mutex::new(
@@ -166,7 +163,7 @@ fn main() {
             render: &mut render_system.lock().unwrap(),
             interact: &mut interact_system.lock().unwrap(),
         },
-        &mut mesh_registry,
+        &mut model_registry,
     )
     .expect("Failed to load scene");
 
@@ -208,7 +205,7 @@ fn main() {
                                     render: &mut render_system.lock().unwrap(),
                                     interact: &mut interact_system.lock().unwrap(),
                                 },
-                                &mut mesh_registry,
+                                &mut model_registry,
                                 Transform {
                                     translation: packet.position,
                                     rotation: Quat::IDENTITY,
@@ -225,7 +222,7 @@ fn main() {
                             .expect("Peer not found")
                             .lock()
                             .unwrap()
-                            .update_transform(|transform| transform.translation = packet.position);
+                            .player.transform.translation = packet.position;
                     }
                     net::client::Packet::DespawnPlayer(packet) => {
                         info!("Deleting peer player");
@@ -289,7 +286,7 @@ fn main() {
                 render_system
                     .lock()
                     .unwrap()
-                    .set_geometry(&data, &renderer, &mesh_registry);
+                    .set_geometry(&data, &renderer, &model_registry);
 
                 let mut scene = Vec::new();
 
@@ -299,13 +296,31 @@ fn main() {
                     .frame_finished(&camera, &keyboard, &mut scene, &mut data);
 
                 if let Some(mut component) = craft::Component::new(&mut data, &mouse) {
-                    let size = component.layout(SizeConstraints { min: UVec2::new(0, 0), max: UVec2::new(480, 270) });
-                    component.paint(Region { origin: UVec2::new(0, 0), size }, &mut scene)
+                    let size = component.layout(SizeConstraints {
+                        min: UVec2::new(0, 0),
+                        max: UVec2::new(480, 270),
+                    });
+                    component.paint(
+                        Region {
+                            origin: UVec2::new(0, 0),
+                            size,
+                        },
+                        &mut scene,
+                    )
                 }
 
                 if let Some(mut component) = recipe_selector::Component::new(&mut data, &mouse) {
-                    let size = component.layout(SizeConstraints { min: UVec2::new(0, 0), max: UVec2::new(480, 270) });
-                    component.paint(Region { origin: UVec2::new(0, 0), size }, &mut scene)
+                    let size = component.layout(SizeConstraints {
+                        min: UVec2::new(0, 0),
+                        max: UVec2::new(480, 270),
+                    });
+                    component.paint(
+                        Region {
+                            origin: UVec2::new(0, 0),
+                            size,
+                        },
+                        &mut scene,
+                    )
                 }
 
                 if inventory_open {
@@ -340,7 +355,7 @@ fn main() {
                 keyboard.frame_finished();
                 camera.frame_finished();
                 mouse.frame_finished();
-                camera.target = root.player.lock().unwrap().get_transform().translation;
+                camera.target = root.player.lock().unwrap().player.transform.translation;
 
                 println!("{}", mouse.position);
             }

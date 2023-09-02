@@ -37,14 +37,8 @@ layout(std140, set = 1, binding = 3) buffer Meshes {
 	Mesh meshes[];
 } meshes;
 
-struct Material {
-	vec3 albedo;
-	float roughness;
-	float metalness;
-};
-
 layout(std140, set = 1, binding = 4) buffer Materials {
-	Material materials[];
+	vec3 materials[];
 } materials;
 
 
@@ -238,7 +232,7 @@ vec3 per_pixel(Ray incoming) {
 	if (!hit.hit) { return vec3(0.0, 0.0, 0.0); }
 
   Mesh mesh = meshes.meshes[hit.mesh];
-	Material material = materials.materials[hit.material];
+	vec3 material = materials.materials[hit.material];
 	
 	Ray outgoing;
 	outgoing.origin = hit.position + hit.normal;
@@ -266,7 +260,7 @@ vec3 per_pixel(Ray incoming) {
 	}
 
 	if (length(diffuse) < 0.05) { diffuse = AMBIENT; }
-	vec3 color = material.albedo * diffuse;
+	vec3 color = material * diffuse;
 
 	if (length(color) > 1.0) { color = normalize(color); }
 	return color;
@@ -280,7 +274,7 @@ void main() {
 	ray.direction = normalize(camera.target - camera.eye);
 	vec3 u = normalize(cross(ray.direction, vec3(0, 1, 0)));
 	vec3 v = normalize(cross(ray.direction, u));
-	ray.origin = camera.eye + u*pixelPos.x * ZOOM + v*pixelPos.y * ZOOM;
+	ray.origin = camera.eye - u*pixelPos.x * ZOOM + v*pixelPos.y * ZOOM;
 	
 	vec3 color = per_pixel(ray);
 	vec4 outputColor = vec4(color, 1.0);

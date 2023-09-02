@@ -1,12 +1,16 @@
+use super::components::{Button, Container, HAlign, Handler, Padding, VList};
+use crate::{
+    data::{Data, Recipe},
+    input::Mouse,
+    ui,
+};
 use std::sync::{Arc, Mutex};
-use super::components::{Container, Padding, VList, Button, Handler, HAlign};
-use crate::{data::{Recipe, Data}, input::Mouse, ui};
 
 pub type Component<'a> = Container<Padding<VList<Button<'a, RecipeSelectorHandler<'a>>>>>;
 
 pub struct RecipeSelectorHandler<'a> {
     recipe: Recipe,
-    data: Arc<Mutex<&'a mut Data>>
+    data: Arc<Mutex<&'a mut Data>>,
 }
 
 impl Handler for RecipeSelectorHandler<'_> {
@@ -20,16 +24,29 @@ impl<'a> Component<'a> {
     pub fn new(data: &'a mut Data, mouse: &'a Mouse) -> Option<Self> {
         let recipes = data.recipe_selections.as_ref()?.clone();
         let data_mutex = Arc::new(Mutex::new(data));
-        let buttons = recipes.iter().map(|recipe| {
-            let handler = RecipeSelectorHandler { recipe: recipe.clone(), data: data_mutex.clone() };
-            Button::new(mouse, &format!("{}", recipe.outputs[0]), handler)
-        }).collect();
+        let buttons = recipes
+            .iter()
+            .map(|recipe| {
+                let handler = RecipeSelectorHandler {
+                    recipe: recipe.clone(),
+                    data: data_mutex.clone(),
+                };
+                Button::new(mouse, &format!("{}", recipe.outputs[0]), handler)
+            })
+            .collect();
 
         Some(Self {
-            child: Padding::new_uniform(VList { children: buttons, separation: 2, align: HAlign::Left }, 2),
+            child: Padding::new_uniform(
+                VList {
+                    children: buttons,
+                    separation: 2,
+                    align: HAlign::Left,
+                },
+                2,
+            ),
             color: ui::color::get_background(),
             border_radius: 1,
-            border_color: ui::color::get_highlight()
+            border_color: ui::color::get_highlight(),
         })
     }
 }

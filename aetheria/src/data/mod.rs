@@ -10,8 +10,7 @@ pub struct Recipe {
 
 impl Recipe {
     pub fn has_ingredients(&self, inventory: &inventory::Inventory) -> bool {
-        self
-            .ingredients
+        self.ingredients
             .iter()
             .map(|ingredient| {
                 ingredient.amount
@@ -21,12 +20,13 @@ impl Recipe {
                         .find(|stack| stack.item == ingredient.item)
                         .map(|stack| stack.amount)
                         .unwrap_or(0)
-            }).all(|x| x)
+            })
+            .all(|x| x)
     }
 }
 
 pub struct Data {
     pub inventory: inventory::Inventory,
     pub current_recipe: Option<Recipe>,
-    pub recipe_selections: Option<Vec<Recipe>>
+    pub recipe_selections: Option<Vec<Recipe>>,
 }

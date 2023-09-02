@@ -8,8 +8,12 @@ use std::{
 use glam::{Quat, Vec3};
 
 use crate::{
-    systems::{render::{Emissive, Light}, Systems},
-    time::Time, data::Data,
+    data::Data,
+    systems::{
+        render::{Emissive, Light},
+        Systems,
+    },
+    time::Time,
 };
 
 pub struct Sun {
@@ -41,7 +45,7 @@ impl Sun {
             Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), self.theta) * self.noon_pos;
         self.light.color = Vec3::new(1.0, 1.0, 1.0);
         self.light.strength =
-            self.light.position.length().powf(2.0) * 0.5 * self.theta.cos().powf(0.13).max(0.0);
+            self.light.position.length().powf(2.0) * 1.5 * self.theta.cos().powf(0.13).max(0.0);
         self.light.strength = self.light.strength.max(0.0);
     }
 

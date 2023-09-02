@@ -23,7 +23,8 @@ impl Camera {
     const DAMPING: f32 = 0.2;
 
     pub fn new(width: f32, height: f32, renderer: &Renderer) -> Result<Self, vk::Result> {
-        let theta = -45.01_f32.to_radians();
+        //let theta = -45.01_f32.to_radians();
+        let theta = 0.0;
         let target = Vec3::new(0.0, 0.0, 0.0);
 
         let camera = Self {
@@ -45,7 +46,7 @@ impl Camera {
 
     pub fn update_buffer(&mut self) {
         let mut eye = Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), self.actual_theta)
-            * Vec3::new(0.0, 500.0 * 2.0_f32.powf(-0.5), 500.0);
+            * Vec3::new(0.0, 500.0 * 2.0_f32.powf(-0.5), -500.0);
         eye += self.actual_target;
 
         let vp = [Self::pad_vec3(eye), Self::pad_vec3(self.actual_target)]

@@ -55,6 +55,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "vulkan",
  "winit",
 ]
@@ -145,11 +146,13 @@ dependencies = [
  "ash",
  "bytemuck",
  "glam 0.24.1",
+ "gltf",
  "image",
  "qoi",
  "shaderc",
  "tobj",
  "tracing",
+ "uuid",
  "vulkan",
 ]
 
@@ -1715,6 +1718,16 @@ name = "unicode-ident"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84a22b9f218b40614adcb3f4ff08b703773ad44fa9423e4e0d346d5db86e4ebc"
+
+[[package]]
+name = "uuid"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79daa5ed5740825c40b389c5e50312b9c86df53fccd33f281df655642b43869d"
+dependencies = [
+ "getrandom",
+ "rand",
+]
 
 [[package]]
 name = "valuable"
