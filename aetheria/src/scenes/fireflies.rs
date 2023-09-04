@@ -4,7 +4,7 @@ use std::{
 };
 
 use ash::vk;
-use assets::{Transform, ModelRegistry};
+use assets::{ModelRegistry, Transform};
 use glam::Vec3;
 use rand::Rng;
 

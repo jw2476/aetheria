@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use ash::vk;
-use assets::{Transform, ModelRegistry};
+use assets::{ModelRegistry, Transform};
 use common::item::{Item, ItemStack};
 use glam::Vec3;
 use std::sync::{Arc, Mutex};
@@ -24,7 +24,10 @@ impl CraftingBench {
         model_registry: &mut ModelRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
-        let render = RenderObject { model: model_registry.load("crafting_bench.glb"), transform };
+        let render = RenderObject {
+            model: model_registry.load("crafting_bench.glb"),
+            transform,
+        };
 
         let bench = Arc::new(Mutex::new(Self { render }));
 

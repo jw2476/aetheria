@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use ash::vk;
-use assets::{Transform, ModelRegistry};
+use assets::{ModelRegistry, Transform};
 use glam::Vec3;
 
 use crate::{
@@ -23,7 +23,10 @@ impl Grass {
         model_registry: &mut ModelRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
-        let grass = RenderObject { model: model_registry.load("grass.glb"), transform }; 
+        let grass = RenderObject {
+            model: model_registry.load("grass.glb"),
+            transform,
+        };
         let grass = Arc::new(Mutex::new(Self { grass }));
         systems.render.add(grass.clone());
         Ok(grass)

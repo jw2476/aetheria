@@ -4,17 +4,17 @@
 #![warn(clippy::expect_used)]
 
 use anyhow::Result;
+use async_std::net::UdpSocket;
 use common::{item::ItemStack, net};
 use glam::Vec3;
 use std::{
     collections::{
         hash_map::{Keys, Values},
-        HashMap, HashSet,
+        HashMap,
     },
-    hash::{Hash, Hasher},
-    net::{SocketAddr, UdpSocket},
+    hash::Hash,
+    net::SocketAddr,
     ops::{Deref, DerefMut},
-    sync::{Arc, RwLock},
     time::Instant,
 };
 use tracing::{error, info, warn};
@@ -113,35 +113,35 @@ impl<T> IndexedMap<T>
 where
     T: Unique + Clone,
 {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
-    fn get(&self, key: &T::Key) -> Option<&T> {
+    pub fn get(&self, key: &T::Key) -> Option<&T> {
         self.inner.get(key)
     }
 
-    fn get_mut(&mut self, key: &T::Key) -> Option<&mut T> {
+    pub fn get_mut(&mut self, key: &T::Key) -> Option<&mut T> {
         self.inner.get_mut(key)
     }
 
-    fn insert(&mut self, value: T) {
+    pub fn insert(&mut self, value: T) {
         self.inner.insert(value.get_unique_key(), value);
     }
 
-    fn remove(&mut self, key: &T::Key) {
+    pub fn remove(&mut self, key: &T::Key) {
         self.inner.remove(key);
     }
 
-    fn values<'a>(&'a self) -> Values<'a, T::Key, T> {
+    pub fn values<'a>(&'a self) -> Values<'a, T::Key, T> {
         self.inner.values()
     }
 
-    fn keys<'a>(&'a self) -> Keys<'a, T::Key, T> {
+    pub fn keys<'a>(&'a self) -> Keys<'a, T::Key, T> {
         self.inner.keys()
     }
 
-    fn take(&mut self, key: &T::Key) -> Option<T> {
+    pub fn take(&mut self, key: &T::Key) -> Option<T> {
         let value = self.get(key).cloned();
         self.remove(key);
         value
@@ -182,22 +182,22 @@ impl Server {
         }
     }
 
-    pub fn send(
+    pub async fn send(
         &self,
         connection: &Connection,
         packet: &net::client::Packet,
     ) -> Result<(), SendError> {
         let bytes = postcard::to_stdvec(packet)?;
-        self.socket.send_to(&bytes, connection.addr)?;
+        self.socket.send_to(&bytes, connection.addr).await?;
         Ok(())
     }
 }
 
-fn main() -> Result<()> {
+#[async_std::main]
+async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let socket = UdpSocket::bind("0.0.0.0:8000")?;
-    socket.set_nonblocking(true)?;
+    let socket = UdpSocket::bind("0.0.0.0:8000").await?;
     let mut server = Server::new(socket);
     info!("Listening on 0.0.0.0:8000");
 
@@ -205,8 +205,7 @@ fn main() -> Result<()> {
 
     loop {
         let mut buf = [0; 4096];
-        match server.socket.recv_from(&mut buf) {
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+        match server.socket.recv_from(&mut buf).await {
             Err(e) => panic!("{e}"),
             Ok((_, addr)) => {
                 let packet = match postcard::from_bytes(&buf) {
@@ -217,7 +216,7 @@ fn main() -> Result<()> {
                     }
                 };
 
-                if let Err(e) = handle_packet(&mut server, &packet, addr) {
+                if let Err(e) = handle_packet(&mut server, &packet, addr).await {
                     warn!("Handling packet failed with {e}");
                     continue;
                 }
@@ -226,13 +225,13 @@ fn main() -> Result<()> {
 
         if last_heartbeat_check.elapsed().as_secs_f32() > 1.0 {
             info!("Checking heartbeats");
-            check_heartbeats(&mut server)?;
+            check_heartbeats(&mut server).await?;
             last_heartbeat_check = Instant::now();
         }
     }
 }
 
-fn check_heartbeats(server: &mut Server) -> Result<()> {
+async fn check_heartbeats(server: &mut Server) -> Result<()> {
     let dead = server
         .online
         .values()
@@ -241,7 +240,7 @@ fn check_heartbeats(server: &mut Server) -> Result<()> {
         .collect::<Vec<SocketAddr>>();
 
     for addr in dead {
-        if let Err(e) = disconnect(server, addr, Some("Heartbeat timeout".to_owned())) {
+        if let Err(e) = disconnect(server, addr, Some("Heartbeat timeout".to_owned())).await {
             warn!("Failed to disconnect {} due to {}", addr, e);
             continue;
         }
@@ -250,7 +249,7 @@ fn check_heartbeats(server: &mut Server) -> Result<()> {
     Ok(())
 }
 
-fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAddr) {
+async fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAddr) {
     let player = server.offline.take(&packet.username).unwrap_or(Player {
         position: Vec3::ZERO,
         username: packet.username.clone(),
@@ -278,7 +277,7 @@ fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAd
             position: connection.player.position,
         });
 
-        if let Err(e) = server.send(peer, &packet) {
+        if let Err(e) = server.send(peer, &packet).await {
             warn!("Failed to notify {} of new player due to {}", peer.addr, e);
         }
 
@@ -288,7 +287,7 @@ fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAd
             position: peer.player.position,
         });
 
-        if let Err(e) = server.send(connection, &packet) {
+        if let Err(e) = server.send(connection, &packet).await {
             warn!(
                 "Failed to notify new player {} of player {} due to {}",
                 addr, peer.addr, e
@@ -301,7 +300,7 @@ fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAd
         let packet =
             net::client::Packet::ModifyInventory(net::client::ModifyInventory { stack: *stack });
 
-        if let Err(e) = server.send(connection, &packet) {
+        if let Err(e) = server.send(connection, &packet).await {
             warn!(
                 "Failed to update player {}'s inventory stack {:?} due to {}",
                 connection.player.username, stack, e
@@ -318,7 +317,7 @@ fn handle_login(server: &mut Server, packet: &net::server::Login, addr: SocketAd
     info!("Added {} to connection list", connection.player.username);
 }
 
-fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr) {
+async fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr) {
     let Some(connection) = server.online
         .get_mut(&addr) else {
             warn!("Cannot find client for addr {}", addr);
@@ -348,7 +347,7 @@ fn handle_move(server: &mut Server, packet: &net::server::Move, addr: SocketAddr
             position: connection.player.position,
         });
 
-        if let Err(e) = server.send(peer, &packet) {
+        if let Err(e) = server.send(peer, &packet).await {
             warn!(
                 "Failed to notify {} of {} moving due to {}",
                 peer.addr, connection.player.username, e
@@ -369,16 +368,16 @@ fn handle_heartbeat(server: &mut Server, addr: SocketAddr) {
     info!("{} heartbeat", connection.username);
 }
 
-fn handle_packet(
+async fn handle_packet(
     server: &mut Server,
     packet: &net::server::Packet,
     addr: SocketAddr,
 ) -> Result<()> {
     match packet {
-        net::server::Packet::Login(packet) => handle_login(server, packet, addr),
-        net::server::Packet::Move(packet) => handle_move(server, packet, addr),
+        net::server::Packet::Login(packet) => handle_login(server, packet, addr).await,
+        net::server::Packet::Move(packet) => handle_move(server, packet, addr).await,
         net::server::Packet::Heartbeat => handle_heartbeat(server, addr),
-        net::server::Packet::Disconnect => disconnect(server, addr, None)?,
+        net::server::Packet::Disconnect => disconnect(server, addr, None).await?,
         net::server::Packet::ModifyInventory(packet) => {
             handle_modify_inventory(server, packet, addr)
         }
@@ -387,7 +386,7 @@ fn handle_packet(
     Ok(())
 }
 
-fn disconnect(server: &mut Server, addr: SocketAddr, reason: Option<String>) -> Result<()> {
+async fn disconnect(server: &mut Server, addr: SocketAddr, reason: Option<String>) -> Result<()> {
     let Some(connection) = server.online
         .get(&addr) else {
             warn!("Cannot find client for addr {}", addr);
@@ -404,13 +403,13 @@ fn disconnect(server: &mut Server, addr: SocketAddr, reason: Option<String>) -> 
             username: connection.player.username.clone(),
         });
 
-        server.send(peer, &packet)?;
+        server.send(peer, &packet).await?;
     }
 
     if let Some(reason) = reason {
         let packet =
             net::client::Packet::NotifyDisconnection(net::client::NotifyDisconnection { reason });
-        server.send(&connection, &packet)?;
+        server.send(&connection, &packet).await?;
     }
 
     server.offline.insert(connection.player.clone());

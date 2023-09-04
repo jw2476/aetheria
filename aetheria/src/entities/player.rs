@@ -4,7 +4,7 @@ use std::{
 };
 
 use ash::vk;
-use assets::{Transform, ModelRegistry};
+use assets::{ModelRegistry, Transform};
 use common::{
     item::{Item, ItemStack},
     net,
@@ -44,7 +44,10 @@ impl Player {
         model_registry: &mut ModelRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
-        let player = RenderObject { model: model_registry.load("player.glb"), transform };
+        let player = RenderObject {
+            model: model_registry.load("player.glb"),
+            transform,
+        };
 
         let player = Arc::new(Mutex::new(Self {
             player,

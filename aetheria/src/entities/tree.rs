@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use ash::vk;
-use assets::{Transform, ModelRegistry};
+use assets::{ModelRegistry, Transform};
 use glam::Vec3;
 
 use crate::{
@@ -27,7 +27,10 @@ impl Tree {
         model_registry: &mut ModelRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Tree>>, vk::Result> {
-        let tree = RenderObject { model: model_registry.load("tree.glb"), transform };
+        let tree = RenderObject {
+            model: model_registry.load("tree.glb"),
+            transform,
+        };
 
         let tree = Arc::new(Mutex::new(Self {
             tree,

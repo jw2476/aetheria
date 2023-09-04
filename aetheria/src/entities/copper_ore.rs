@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use ash::vk;
-use assets::{Transform, ModelRegistry};
+use assets::{ModelRegistry, Transform};
 use common::item::{Item, ItemStack};
 use glam::Vec3;
 use std::sync::{Arc, Mutex};
@@ -25,7 +25,10 @@ impl CopperOre {
         model_registry: &mut ModelRegistry,
         transform: Transform,
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
-        let render = RenderObject { model: model_registry.load("copper_ore.glb"), transform };
+        let render = RenderObject {
+            model: model_registry.load("copper_ore.glb"),
+            transform,
+        };
 
         let ore = Arc::new(Mutex::new(Self {
             render,

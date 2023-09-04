@@ -1,16 +1,16 @@
 use ash::vk;
-use assets::{Mesh, Model, ShaderRegistry, Vertex, Transform, ModelRegistry};
+use assets::{Mesh, Model, ModelRegistry, ShaderRegistry, Transform, Vertex};
 use bytemuck::{cast_slice, Pod, Zeroable};
 use glam::{Vec3, Vec4};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, Weak},
 };
+use uuid::Uuid;
 use vulkan::{
     command, command::TransitionLayoutOptions, compute, Buffer, Context, Image, Pool, Set,
     SetLayout, SetLayoutBuilder, Shader, Texture,
 };
-use uuid::Uuid;
 
 use crate::{
     data::Data,
@@ -22,8 +22,7 @@ fn calculate_box(mesh: &Mesh, transform: &Transform) -> (Vec3, Vec3) {
     let mut min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
     let mut max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
     for vertex in &mesh.vertices {
-        let v =
-            transform.get_matrix() * Vec4::new(vertex.pos.x, vertex.pos.y, vertex.pos.z, 1.0);
+        let v = transform.get_matrix() * Vec4::new(vertex.pos.x, vertex.pos.y, vertex.pos.z, 1.0);
         min.x = min.x.min(v.x);
         min.y = min.y.min(v.y);
         min.z = min.z.min(v.z);
@@ -39,7 +38,7 @@ fn calculate_box(mesh: &Mesh, transform: &Transform) -> (Vec3, Vec3) {
 #[derive(Clone)]
 pub struct RenderObject {
     pub model: Arc<Model>,
-    pub transform: Transform
+    pub transform: Transform,
 }
 
 pub trait Renderable {
@@ -195,7 +194,11 @@ impl System {
 
         let mut mesh_to_index: HashMap<Uuid, i32> = HashMap::new();
 
-        for mesh in model_registry.get_models().iter().flat_map(|model| &model.meshes) {
+        for mesh in model_registry
+            .get_models()
+            .iter()
+            .flat_map(|model| &model.meshes)
+        {
             mesh_to_index.insert(mesh.id, indices.len() as i32);
             indices.append(
                 &mut mesh
@@ -208,10 +211,20 @@ impl System {
             vertices.append(&mut mesh.vertices.clone());
         }
 
-        for (i, (mesh, transform)) in objects.iter().flat_map(|object| object.model.meshes.iter().map(|mesh| (mesh, object.transform.clone()))).enumerate() {
+        for (i, (mesh, transform)) in objects
+            .iter()
+            .flat_map(|object| {
+                object
+                    .model
+                    .meshes
+                    .iter()
+                    .map(|mesh| (mesh, object.transform.clone()))
+            })
+            .enumerate()
+        {
             let transform = transform.combine(&mesh.transform);
             let (min_aabb, max_aabb) = calculate_box(&mesh, &transform);
-            
+
             let mesh_data = MeshData {
                 first_index: *mesh_to_index
                     .get(&mesh.id)

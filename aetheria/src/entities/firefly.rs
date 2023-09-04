@@ -38,8 +38,15 @@ impl Firefly {
     ) -> Result<Arc<Mutex<Self>>, vk::Result> {
         let light = Light::new(translation, 0.0, color);
 
-        let transform = Transform { translation, rotation: Quat::IDENTITY, scale: Vec3::ONE };
-        let render = RenderObject { model: model_registry.load("firefly.glb"), transform };
+        let transform = Transform {
+            translation,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        };
+        let render = RenderObject {
+            model: model_registry.load("firefly.glb"),
+            transform,
+        };
 
         let mut rng = rand::thread_rng();
         let velocity = Vec3::new(

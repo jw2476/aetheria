@@ -6,8 +6,8 @@ use std::{
     path::Path,
     sync::{Arc, Weak},
 };
-use vulkan::{buffer::Buffer, context::Context, device::Device, graphics::Shader, Texture};
 use uuid::Uuid;
+use vulkan::{buffer::Buffer, context::Context, device::Device, graphics::Shader, Texture};
 
 pub struct ShaderRegistry {
     registry: HashMap<String, Weak<Shader>>,
@@ -95,7 +95,11 @@ impl Transform {
     };
 
     pub fn get_matrix(&self) -> Mat4 {
-        Mat4::from_scale_rotation_translation(self.scale, self.rotation.normalize(), self.translation)
+        Mat4::from_scale_rotation_translation(
+            self.scale,
+            self.rotation.normalize(),
+            self.translation,
+        )
     }
 
     pub fn from_matrix(matrix: &Mat4) -> Self {
@@ -111,7 +115,7 @@ impl Transform {
         Self {
             translation: self.translation + rhs.translation,
             rotation: self.rotation * rhs.rotation,
-            scale: self.scale * rhs.scale
+            scale: self.scale * rhs.scale,
         }
     }
 }
@@ -186,7 +190,10 @@ impl ModelRegistry {
                             let positions = primitive
                                 .get_attribute_data(glb, "POSITION")
                                 .expect("No positions");
-                            let positions = bytemuck::cast_slice::<u8, Vec3>(&positions).iter().map(|position| *position * 100.0).collect::<Vec<Vec3>>();
+                            let positions = bytemuck::cast_slice::<u8, Vec3>(&positions)
+                                .iter()
+                                .map(|position| *position * 100.0)
+                                .collect::<Vec<Vec3>>();
                             let normals = primitive
                                 .get_attribute_data(glb, "NORMAL")
                                 .expect("No normals");

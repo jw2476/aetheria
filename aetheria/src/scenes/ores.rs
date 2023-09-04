@@ -6,7 +6,7 @@ use std::{
 
 use crate::{entities::CopperOre, renderer::Renderer, systems::Systems};
 use ash::vk;
-use assets::{Transform, ModelRegistry};
+use assets::{ModelRegistry, Transform};
 use glam::{Quat, Vec3};
 use rand::Rng;
 

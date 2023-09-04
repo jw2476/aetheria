@@ -4,7 +4,7 @@ use std::{
 };
 
 use ash::vk;
-use assets::{Transform, ModelRegistry};
+use assets::{ModelRegistry, Transform};
 use glam::{Quat, Vec2, Vec3};
 
 use crate::{

@@ -21,7 +21,7 @@ mod ui;
 
 use anyhow::Result;
 use ash::vk;
-use assets::{ModelRegistry, Transform, ShaderRegistry, TextureRegistry};
+use assets::{ModelRegistry, ShaderRegistry, TextureRegistry, Transform};
 use bytemuck::cast_slice;
 use camera::Camera;
 use common::{
@@ -222,7 +222,9 @@ fn main() {
                             .expect("Peer not found")
                             .lock()
                             .unwrap()
-                            .player.transform.translation = packet.position;
+                            .player
+                            .transform
+                            .translation = packet.position;
                     }
                     net::client::Packet::DespawnPlayer(packet) => {
                         info!("Deleting peer player");
