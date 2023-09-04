@@ -18,6 +18,7 @@ use std::{
     time::Instant,
 };
 use tracing::{error, info, warn};
+use sqlx::SqlitePool;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Inventory {
@@ -163,6 +164,7 @@ struct Server {
     socket: UdpSocket,
     offline: IndexedMap<Player>,
     online: IndexedMap<Connection>,
+    pool: SqlitePool
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -174,11 +176,12 @@ enum SendError {
 }
 
 impl Server {
-    pub fn new(socket: UdpSocket) -> Self {
+    pub fn new(socket: UdpSocket, pool: SqlitePool) -> Self {
         Self {
             socket,
             offline: IndexedMap::new(),
             online: IndexedMap::new(),
+            pool
         }
     }
 
@@ -198,7 +201,11 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let socket = UdpSocket::bind("0.0.0.0:8000").await?;
-    let mut server = Server::new(socket);
+
+    let pool = SqlitePool::connect(&std::env::var("DATABASE_URL")?).await?;
+    sqlx::migrate!().run(&mut pool.acquire().await?).await?;
+
+    let mut server = Server::new(socket, pool);
     info!("Listening on 0.0.0.0:8000");
 
     let mut last_heartbeat_check = Instant::now();
