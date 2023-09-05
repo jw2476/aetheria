@@ -111,11 +111,44 @@ fn main() {
     }
     let username = username.unwrap();
 
-    let login = net::server::Packet::Login(net::server::Login {
-        username: username.trim().to_owned(),
-    });
+    let password = dialog::Password::new("Enter password:")
+        .title("Password")
+        .show()
+        .expect("Failed to show password dialog box");
 
-    socket.send(&login).unwrap();
+    if password.is_none() || password.as_ref().unwrap().trim().is_empty() {
+        dialog::Message::new("Password cannot be empty")
+            .title("Password error")
+            .show()
+            .expect("Failed to show error dialog box");
+
+        return;
+    }
+    let password = password.unwrap();
+
+    match dialog::Question::new("Do you have an existing account")
+        .title("Existing account")
+        .show()
+        .unwrap()
+    {
+        dialog::Choice::Yes => {
+            let login = net::server::Packet::Login(net::server::Login {
+                username: username.trim().to_owned(),
+                password: password.trim().to_owned(),
+            });
+
+            socket.send(&login).unwrap();
+        }
+        dialog::Choice::No => {
+            let signup = net::server::Packet::Signup(net::server::Signup {
+                username: username.trim().to_owned(),
+                password: password.trim().to_owned(),
+            });
+
+            socket.send(&signup).unwrap();
+        }
+        dialog::Choice::Cancel => return,
+    };
 
     let (event_loop, window) = create_window();
     let window = Arc::new(window);
@@ -238,6 +271,16 @@ fn main() {
                     net::client::Packet::ModifyInventory(packet) => {
                         info!("Setting {:?} to {}", packet.stack.item, packet.stack.amount);
                         data.inventory.set(packet.stack);
+                    }
+                    net::client::Packet::DisplayError(packet) => {
+                        dialog::Message::new(packet.message)
+                            .title("Error")
+                            .show()
+                            .unwrap();
+                        if packet.fatal {
+                            control_flow.set_exit();
+                            return;
+                        }
                     }
                 }
             }

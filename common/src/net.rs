@@ -15,11 +15,18 @@ pub mod server {
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Login {
         pub username: String,
+        pub password: String,
     }
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Move {
         pub position: glam::Vec3,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Signup {
+        pub username: String,
+        pub password: String,
     }
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -29,6 +36,7 @@ pub mod server {
         Heartbeat,
         Disconnect,
         ModifyInventory(ModifyInventory),
+        Signup(Signup),
     }
 }
 
@@ -59,11 +67,18 @@ pub mod client {
     }
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct DisplayError {
+        pub message: String,
+        pub fatal: bool,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum Packet {
         SpawnPlayer(SpawnPlayer),
         DespawnPlayer(DespawnPlayer),
         Move(Move),
         NotifyDisconnection(NotifyDisconnection),
         ModifyInventory(ModifyInventory),
+        DisplayError(DisplayError),
     }
 }

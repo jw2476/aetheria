@@ -1,7 +1,8 @@
+use num_derive::{FromPrimitive, ToPrimitive};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum Item {
     Wood,
     Fireglow,

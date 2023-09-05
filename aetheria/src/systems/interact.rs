@@ -78,7 +78,9 @@ impl System {
             .collect::<Vec<(usize, f32)>>();
 
         distances.sort_by(|(_, a), (_, b)| a.total_cmp(&b));
-        let Some(closest) = distances.first() else { return; };
+        let Some(closest) = distances.first() else {
+            return;
+        };
 
         if closest.1 < 50.0 {
             let interactable = self.interactables[closest.0].upgrade().unwrap();
